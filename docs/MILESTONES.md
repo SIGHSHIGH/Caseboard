@@ -274,7 +274,16 @@
 | git | `2.56.0.windows.2` | 可用，里程碑打 tag |
 | 工作目录 | `F:\DSH PROJECT\masaike board` | 项目根 |
 
-便捷脚本：`scripts/pnpm.cmd` 封装了上述直连命令，用法 `scripts\pnpm.cmd install`。
+便捷脚本：`scripts\pnpm.cmd` 封装了上述直连命令（**文件必须是 CRLF 行尾**，LF 会让 cmd 解析失败），用法 `scripts\pnpm.cmd install`。
+
+**安装通道实测（2026-10-18）**：`scripts\pnpm.cmd -C .probe-install add esbuild` → 成功，4.5s，装上 `esbuild 0.28.2`。
+但 pnpm 10 默认**忽略依赖的构建脚本**（提示 `Ignored build scripts: esbuild@0.28.2`），必须在根 `package.json` 显式放行：
+
+```json
+"pnpm": { "onlyBuiltDependencies": ["esbuild", "@tauri-apps/cli", "electron"] }
+```
+
+否则 esbuild / tauri CLI 的平台二进制可能缺失，表现为 `vite build` 报找不到可执行文件。
 
 ---
 
@@ -288,6 +297,7 @@
 | D4 | DSL 文件后缀 **`.cbd`**，项目文件 **`.caseboard`** | 规格 P2 给定 `.cbd`；`.caseboard` 为 zip 容器 | 文件关联与导入导出按此命名 |
 | D5 | 状态与持久化：Zustand + Immer + Command 栈；M1 落 localStorage（key `caseboard-autosave`），M4 迁 SQLite | 先跑通闭环，迁移成本被 service 层吸收 | 序列化格式需与 SQLite schema 对齐设计 |
 | D6 | 坐标体系统一为**画布世界坐标**；屏幕↔世界换算只允许走 `src/lib/coords.ts` 单点工具 | 自由图片节点（旋转/缩放）与 React Flow 坐标混用是最大缺陷来源 | 所有拖拽/吸附/导出计算复用同一函数 |
+| D7 | 依赖构建脚本白名单写进根 `package.json` 的 `pnpm.onlyBuiltDependencies`（esbuild / @tauri-apps/cli / electron） | pnpm 10 默认忽略 postinstall，缺失会让 vite、tauri 找不到平台二进制 | 新装带 postinstall 的依赖时必须先加白名单再装 |
 
 ---
 
