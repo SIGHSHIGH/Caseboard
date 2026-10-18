@@ -90,6 +90,8 @@ export function LeftPanel() {
 
       <div className="cb-panel__hint">
         <p>· 双击画布空白处：新增便签</p>
+        <p>· 空白处拖框：框选多个实体；Ctrl + 点选：加选/减选</p>
+        <p>· 按住空格 / 右键拖动：平移画布，滚轮缩放</p>
         <p>· 拖动节点四边圆点：拉出关系</p>
         <p>· 双击节点标题 / 关系标签：就地改名</p>
         <p>· 选中后按 Delete 删除</p>

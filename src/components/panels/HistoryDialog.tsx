@@ -6,12 +6,13 @@
  * 组件只做交互，读写全部走 src/services/storage.ts。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { replaceDocument, restoreEdge, restoreNode } from '../../commands';
+import { replaceDocument, restoreEdge, restoreEntities } from '../../commands';
 import type { SnapshotMeta } from '../../services/db/repo';
 import {
   createSnapshot,
   listSnapshotsInStorage,
   listTrashInStorage,
+  listTrashItemsInStorage,
   loadSnapshotFromStorage,
   purgeTrashInStorage,
   takeTrashFromStorage,
@@ -110,8 +111,22 @@ export function HistoryDialog({ onClose }: HistoryDialogProps) {
       const item = await takeTrashFromStorage(row.id);
       if (!item) throw new Error('该条目已被清理');
       if (item.kind === 'node') {
-        dispatch(restoreNode(item.payload as CaseNode));
-        return '已恢复实体：' + item.label;
+        const node = item.payload as CaseNode;
+        // 删除实体时挂在它身上的关系也进了回收站：一起取出来，用同一条命令恢复（一次 Ctrl+Z 全撤）
+        const rows = await listTrashItemsInStorage(caseId);
+        const companions = rows
+          .filter((row) => row.kind === 'edge')
+          .map((row) => row.payload as CaseEdge)
+          .filter((edge) => edge && (edge.source === node.id || edge.target === node.id));
+        const edges: CaseEdge[] = [];
+        for (const companion of companions) {
+          const row = rows.find((item2) => item2.kind === 'edge' && (item2.payload as CaseEdge).id === companion.id);
+          if (!row) continue;
+          const taken = await takeTrashFromStorage(row.id);
+          if (taken) edges.push(taken.payload as CaseEdge);
+        }
+        dispatch(restoreEntities({ nodes: [node], edges }));
+        return '已恢复实体：' + item.label + (edges.length > 0 ? '（含 ' + edges.length + ' 条关系，可一次撤销）' : '');
       }
       if (item.kind === 'edge') {
         const edge = item.payload as CaseEdge;

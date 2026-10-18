@@ -7,6 +7,7 @@ import {
   MarkerType,
   MiniMap,
   ReactFlow,
+  SelectionMode,
   useReactFlow,
   useViewport,
   type Connection,
@@ -23,6 +24,7 @@ import {
   moveImageNode,
   moveImageNodes,
   moveNode,
+  moveNodes,
 } from '../../commands';
 import { worldToScreen } from '../../lib/coords';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
@@ -102,7 +104,7 @@ export function Board() {
   const doc = useDocStore((s) => s.doc);
   const dispatch = useDocStore((s) => s.dispatch);
   const removeWithTrash = useDocStore((s) => s.removeWithTrash);
-  const selectedNodeId = useUiStore((s) => s.selectedNodeId);
+  const selectedNodeIds = useUiStore((s) => s.selectedNodeIds);
   const selectedEdgeId = useUiStore((s) => s.selectedEdgeId);
   const selectedGroupId = useUiStore((s) => s.selectedGroupId);
   const dragPos = useUiStore((s) => s.dragPos);
@@ -118,7 +120,8 @@ export function Board() {
   const consumeAdd = useUiStore((s) => s.consumeAdd);
   const consumeGroup = useUiStore((s) => s.consumeGroup);
   const setMode = useUiStore((s) => s.setMode);
-  const selectNode = useUiStore((s) => s.selectNode);
+  const setNodeSelection = useUiStore((s) => s.setNodeSelection);
+  const applyImageSelection = useUiStore((s) => s.applyImageSelection);
   const selectEdge = useUiStore((s) => s.selectEdge);
   const selectGroup = useUiStore((s) => s.selectGroup);
   const clearSelection = useUiStore((s) => s.clearSelection);
@@ -173,6 +176,7 @@ export function Board() {
       position: dragPos[rectNodeId(group.id)] ?? { x: group.bounds.x, y: group.bounds.y },
       data: { group, memberCount, childCount },
       selected: group.id === selectedGroupId,
+      selectable: false,
       zIndex: -1,
       style: { width: group.bounds.w, height: group.bounds.h },
     }));
@@ -188,6 +192,7 @@ export function Board() {
         },
         data: { superNode },
         selected: superNode.group.id === selectedGroupId,
+        selectable: false,
         style: { width: superNode.node.w },
       };
     });
@@ -200,7 +205,7 @@ export function Board() {
         type: 'base',
         position: own ?? { x: node.x + (offset?.x ?? 0), y: node.y + (offset?.y ?? 0) },
         data: { node, attachTarget: attachTargetId === node.id },
-        selected: node.id === selectedNodeId,
+        selected: selectedNodeIds.includes(node.id),
         style: { width: node.w },
       };
     });
@@ -225,7 +230,7 @@ export function Board() {
   }, [
     model,
     dragPos,
-    selectedNodeId,
+    selectedNodeIds,
     selectedGroupId,
     selectedImageIds,
     attachTargetId,
@@ -253,13 +258,37 @@ export function Board() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange<BoardFlowNode>[]) => {
+      const selectChanges: Array<{ id: string; selected: boolean }> = [];
       for (const change of changes) {
         if (change.type === 'position' && change.position) {
           setDragPos(change.id, change.position);
+        } else if (change.type === 'select') {
+          selectChanges.push({ id: change.id, selected: change.selected });
         }
       }
+      if (selectChanges.length === 0) return;
+      // 框选与 Ctrl 点选都由 React Flow 产生 select 变更，这里统一回写到界面状态
+      const store = useUiStore.getState();
+      const imageIds = new Set(doc.imageNodes.map((item) => item.id));
+      const images: Array<{ id: string; selected: boolean }> = [];
+      let nodeIds = [...store.selectedNodeIds];
+      for (const change of selectChanges) {
+        if (imageIds.has(change.id)) {
+          images.push(change);
+          continue;
+        }
+        if (change.selected) {
+          if (!nodeIds.includes(change.id)) nodeIds.push(change.id);
+        } else {
+          nodeIds = nodeIds.filter((id) => id !== change.id);
+        }
+      }
+      if (nodeIds.length !== store.selectedNodeIds.length || nodeIds.some((id) => !store.selectedNodeIds.includes(id))) {
+        setNodeSelection(nodeIds);
+      }
+      for (const change of images) applyImageSelection(change.id, change.selected);
     },
-    [setDragPos],
+    [applyImageSelection, doc.imageNodes, setDragPos, setNodeSelection],
   );
 
   /** 拖动图片时的其它矩形（卡片 + 未被一起拖动的图片），用于对齐吸附 */
@@ -337,6 +366,18 @@ export function Board() {
         }
         return;
       }
+      if (selectedNodeIds.length > 1 && selectedNodeIds.includes(node.id)) {
+        const positions = selectedNodeIds
+          .map((id) => doc.nodes.find((item) => item.id === id))
+          .filter((item): item is CaseNode => item !== undefined)
+          .map((item) => {
+            const pending = dragPos[item.id];
+            return { id: item.id, x: Math.round(pending ? pending.x : item.x), y: Math.round(pending ? pending.y : item.y) };
+          });
+        dispatch(moveNodes(positions));
+        for (const position of positions) setDragPos(position.id, null);
+        return;
+      }
       dispatch(moveNode(node.id, Math.round(node.position.x), Math.round(node.position.y)));
       setDragPos(node.id, null);
     },
@@ -345,9 +386,11 @@ export function Board() {
       dispatch,
       doc.groups,
       doc.imageNodes,
+      doc.nodes,
       dragPos,
       otherRectsFor,
       selectedImageIds,
+      selectedNodeIds,
       setAttachTarget,
       setDragPos,
       setGuides,
@@ -554,14 +597,10 @@ export function Board() {
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         onNodeDrag={onNodeDrag}
-        onNodeClick={(event, node) => {
-          if (node.type === 'freeImage') {
-            selectImage(node.id, event.shiftKey);
-            return;
-          }
+        onNodeClick={(_event, node) => {
+          // 卡片与图片的选中态由 select 变更驱动（支持框选与 Ctrl 多选），这里只补组
           const group = groupOfBoardNode(node);
           if (group) selectGroup(group.id);
-          else selectNode(node.id);
         }}
         onEdgeClick={(_event, edge) => {
           if (parseBoardNodeId(edge.id).kind === 'agg') return;
@@ -570,6 +609,11 @@ export function Board() {
         onPaneClick={onPaneClick}
         onConnect={onConnect}
         connectionMode={ConnectionMode.Loose}
+        selectionOnDrag
+        selectionMode={SelectionMode.Full}
+        panOnDrag={[1, 2]}
+        panActivationKeyCode="Space"
+        multiSelectionKeyCode={['Meta', 'Control']}
         nodesDraggable={!graphLocked}
         nodesConnectable={!graphLocked}
         nodesFocusable={!graphLocked}

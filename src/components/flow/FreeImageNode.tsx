@@ -156,7 +156,7 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
           ? HANDLES.map((handle) => (
               <span
                 key={handle}
-                className={`cb-img-handle cb-img-handle--${handle}`}
+                className={`cb-img-handle cb-img-handle--${handle} nodrag`}
                 onPointerDown={startResize(handle)}
                 title="拖动缩放（Shift 等比）"
               />
@@ -164,12 +164,12 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
           : null}
 
         {selected ? (
-          <span className="cb-img-rotate" title="拖动旋转（15° 吸附）" onPointerDown={startRotate} />
+          <span className="cb-img-rotate nodrag" title="拖动旋转（15° 吸附）" onPointerDown={startRotate} />
         ) : null}
       </div>
 
       {selected ? (
-        <div className="cb-free-image__bar" onPointerDown={(event) => event.stopPropagation()}>
+        <div className="cb-free-image__bar nodrag nopan" onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" onClick={() => dispatch(setImageLayer(image.id, 'front'))} title="置顶">
             置顶
           </button>

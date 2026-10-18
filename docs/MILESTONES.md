@@ -408,6 +408,22 @@
 | Rust `image` crate 做缩略图/哈希/EXIF | 按 D27 改由前端 Worker 承担，Rust 只做 IO | 已作为偏离记录 |
 | 人工验收 | 真实拖拽手感、`pnpm tauri dev` 热重载、NSIS 安装包在干净机器安装运行 | 需用户在真机执行 |
 
+**M4 人工验收第一轮回执与热修（2026-10-19，第二轮待复验）**
+
+用户回执原文（m02990）：A1 不通过（无法从素材库拖动图片）；A2 不通过（节点可拖动，不能缩放、不能旋转）；A3 通过但希望增加调整贝塞尔曲线的手柄；A4 不通过（无法框选、Ctrl 不能多选）；A5 通过；A6 通过但版本快照数显示 0；A7 通过但恢复后关系丢失、Ctrl+Z 也回不来；A8 不通过（导出面板错位无法操作）。
+
+| # | 根因（读代码确认） | 修法 | 机器证据 |
+|---|---|---|---|
+| A1 | `src-tauri/tauri.conf.json` 的 `app.windows[0].dragDropEnabled = true`：Tauri 在 Windows 上开启它会拦截 webview 的 HTML5 拖放 | 改 `false`；系统文件拖入由 `src/App.tsx` 自己的 `onDrop` 分支接管 | 待真机复验 |
+| A2 | `src/components/flow/FreeImageNode.tsx` 的八个缩放手柄与旋转手柄只有 `onPointerDown`，缺 React Flow 约定的 `nodrag` 类；d3-drag 的原生监听比合成事件更早触发，按下手柄启动的是「拖动节点」 | 手柄 / 旋转手柄 / 标题栏三处 className 加 `nodrag`（标题栏另加 `nopan`） | 待真机复验 |
+| A3 | 边只用 `getBezierPath` 默认曲率，没有可拖控点 | **延期**：需要新增边字段 + 命令 + DSL/导出同步（见 D37 与遗留表） | — |
+| A4 | `Board.tsx` 的 `onNodesChange` 只处理 position，忽略 select 变更；节点 selected 由 `uiStore.selectedNodeId` 单选派生；ReactFlow 未设 `multiSelectionKeyCode`（v12 默认 Meta，Windows 无此键）、未开 `selectionOnDrag` | `uiStore` 新增 `selectedNodeIds` + `setNodeSelection` + `applyImageSelection`；`onNodesChange` 消费 select 变更；新增批量命令 `moveNodes`（一次撤销）；ReactFlow 加 `selectionOnDrag`、`selectionMode=Full`、`panOnDrag={[1,2]}`、`panActivationKeyCode="Space"`、`multiSelectionKeyCode={['Meta','Control']}`；组节点 `selectable:false` | smoke `[29]` 批量移动 3 条 |
+| A6 | `docStore` 从未定时写快照，而面板文案承诺「每 5 分钟自动存一份」，所以永远是 0 | `maybeSnapshot`（保存成功后节流 5 分钟）+ `bootstrapDoc` 无快照时补「启动快照」 | 自检「版本快照」第 1 轮 2 份 / 第 2 轮 3 份 |
+| A7 | 恢复实体只 `dispatch(restoreNode)`，一起进回收站的关系仍留在回收站，Ctrl+Z 撤的是 restoreNode，关系永远回不来 | 新增 `restoreEntities({nodes,edges})` 整批命令（一次撤销）；`HistoryDialog` 恢复实体时先按 `payload.source/target` 捞出同伴关系一起恢复；`repo`/`storage` 新增 `listTrashItems` 读取 payload | smoke `[29]` 6 条（含「撤销一次同时撤回实体与关系」） |
+| A8 | `ExportDialog` 根节点写成 `.cb-modal`（360px 白卡片），而遮罩是 `.cb-modal__mask`，面板被塞进顶栏流式布局跑到视口外 | 根节点改 `.cb-modal__mask` + 内层 `.cb-modal cb-export`；`.cb-export` 加 `max-height:86vh; overflow-y:auto`；补上只有它用到的 `.cb-modal__head`/`__icon` 样式 | 待真机复验 |
+
+热修后的机器验收：`pnpm typecheck` 0 error；`pnpm smoke` **346 条全通过**（新增 `[29]` 批量恢复与多选移动 9 条）；`pnpm ui-smoke` **84 条全通过**；`pnpm build` 470 modules；`pnpm tauri build --no-bundle` 成功；`node scripts/run-selftest.cjs` **phase1 PASS 14 / phase2 PASS 15**（快照项已由红转绿）。
+
 ---
 
 ### M5 · 分析视图（2–3 周）
@@ -644,6 +660,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D31 | 数据目录可被环境变量 `CASEBOARD_DATA_DIR` 覆盖（便携模式 + 自动化验收），数据库连接串改用**绝对路径** `sqlite:<dataDir>/caseboard.db`，建表由 Rust 命令 `ensure_db_file` 直接执行 `V1_SQL`（不再用 `tauri-plugin-sql` 的 migrations） | ① DSH 沙箱把**应用进程**限制在工作区内（工具进程可写 `%APPDATA%`，见 §5），自检必须能把数据放进仓库；② 插件 `path_mapper` 用 `PathBuf::push` 拼相对路径，只有绝对路径能绕开 `app_config_dir`；③ 插件 migrations 以**连接串字符串**为键（`commands.rs` 的 `migrations.remove(&db)`），换绝对路径后永远匹配不上已注册的 `sqlite:caseboard.db`，迁移静默不跑 | `src-tauri/src/lib.rs` 的 `data_dir_of()` / `apply_schema()` / `ensure_db_file()`；`src/services/db/tauri.ts` 先 `ensure_db_file()` 再 `Database.load('sqlite:' + dbPath, { autoCreate: false })`；前端连接串**不能**加 `?mode=rwc`（会被当文件名） |
 | D32 | 多页 PDF 一律 `pdf.save({ useObjectStreams: false })` | 默认把对象压进对象流后，`/Type /Page` 不可见，第三方工具与验收脚本都读不出页结构；证据类 PDF 要能被外部工具解析，体积代价可接受。同时确认 pdf-lib 把**所有字符串**（含 ASCII）写成 UTF-16BE 十六进制串，所以「在字节里 grep 英文标题」永远失败，验收必须走 `PDFDocument.load()` 回读 | `src/serializers/pdfExport.ts` 末尾的 `save({ useObjectStreams: false })`；`src/services/selftest.ts` 的 PDF 项用 `PDFDocument.load(bytes, { updateMetadata: false })` 断言页数/标题/末页尺寸/内容流 |
 | D33 | 删除统一走 `docStore.removeWithTrash(kind, ids)`：先把实体（删节点时连同挂在它身上的关系）快照进回收站表，再 dispatch 删除命令；恢复用 `restoreNode`/`restoreEdge` **按原 id 写回**（同 id 已存在则跳过，关系两端缺失则拒绝），快照恢复走 `replaceDocument` | 撤销栈只有 200 步且只在本次会话有效，删除是最容易「撤销顶掉了才后悔」的操作，需要第二道保险；按原 id 恢复才能让恢复后的关系重新接上原端点，生成新 id 会让关系变成孤儿 | `src/store/docStore.ts` 的 `removeWithTrash` + `src/commands/{node,edge}Commands.ts` 的 `restoreNode`/`restoreEdge` + `src/components/panels/HistoryDialog.tsx`；`src/services/storage.ts` 的 `pushTrashToStorage`/`takeTrashFromStorage`/`purgeTrashInStorage` |
+| D34 | `app.windows[0].dragDropEnabled` 固定为 **false**，系统文件拖入改由前端 `App.tsx` 的 `onDrop` 处理 | Tauri 在 Windows 上开启 `dragDropEnabled` 会**拦截整个 webview 的 HTML5 拖放**，素材库的 `draggable` 拖不到画布（人工验收 A1 的直接原因）；关闭后系统文件拖入仍由 `onDragOver/onDrop` 接住，能力不减 | 任何需要 HTML5 拖放的区域（素材库、类型库、标注编辑器）都可正常工作；新增"原生拖入"需求时必须先确认这个开关 |
+| D35 | 多选与批量移动：**选中态由 React Flow 的 select 变更驱动**，`uiStore.selectedNodeIds` 只是镜像；多个选中节点一起拖动时，用 `dragPos` 计算全部位置后 dispatch 一条 `moveNodes` | v12 单选（Meta 键）在 Windows 上不可用，且忽略 select 变更会让「框选高亮」与内部状态脱节；逐节点落命令会把一次拖动拆成 N 条撤销记录 | `Board.tsx` 的 `onNodesChange` 消费 select、`multiSelectionKeyCode={['Meta','Control']}`、`selectionOnDrag`；组节点 `selectable:false` 以免框选把组带进选中集 |
+| D36 | 版本快照**自动兜底**：每次成功落库后节流 5 分钟写一份「自动快照」，启动时若库里 0 份则补「启动快照」 | 面板承诺「每 5 分钟自动存一份」但代码从未实现，用户打开历史只看到 0 份（A6）；只有手动快照的话，回收站之外没有第二道保险 | `docStore` 的 `AUTO_SNAPSHOT_MS` / `maybeSnapshot` / `bootstrapDoc`；快照上限仍是 `SNAPSHOT_KEEP=50` |
+| D37 | 边曲率的**可拖动手柄延期到 M5**，且届时新增字段按「DSL 未表达字段」处理（参照 `sourceHandle`/`targetHandle`） | 要同时改：`CaseEdge` 字段、`BezierEdge` 路径与手柄、`updateEdge` 命令、DSL 序列化与三方合并白名单、PNG/SVG/PDF 三处导出器；本轮先修「不通过」的六项，避免把热修拖成功能开发 | 在 M5 的「自动布局/路径高亮」一起做，导出器保证「导出与画布一致」时再补 |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -663,4 +683,5 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M3-3 三方合并落地**（M3 第 3 步，⏳ 进行中）：`src/dsl/diff.ts` 字段级 diff + 三方合并（`diffDocs`/`mergeDslEdit`）与 `src/commands/dslCommands.ts` 的整批单次撤销命令；`pnpm smoke` 262 条全绿（新增 21 条 `[22] DSL 三方合并`）；§3 拆步表 M3-3 置 ✅ 并写入验收记录，新增 D22（冲突保留画布值、删除冲突不执行）。 |
 | 2026-10-19 | **M3-2 语法与容错解析落地**（M3 第 2 步，⏳ 进行中）：`grammar/caseboard.grammar`（Lezer）+ `scripts/build-grammar.mjs` 生成解析器，`src/dsl/parse.ts` 实现 AST → Model、六类中文诊断（含行列与修复建议）、`id:` 覆盖行与 quoted id 引用、缺 header 容错；演示文档 `parseDsl → serializeDoc` 逐字节往返一致；`pnpm smoke` 241 条全绿（新增 37 条 `[21] DSL 解析`）；§3 拆步表 M3-2 置 ✅ 并写入验收记录，新增 D21（语法层不设关键字、单 token 箭头）。 |
 | 2026-10-19 | **M3-1 序列化器落地**（M3 第 1 步，⏳ 进行中）：`src/dsl/serialize.ts` 实现 Model → DSL 文本，含 id 名称化双向表（`createNameTable` / `dslNameTable`）、`stableJson`、显式 `at/size`、按（类型序, id）稳定排序；`pnpm smoke` 204 条全绿（新增 31 条 `[20] DSL 序列化`）；§3 写入 M3 拆步表与 M3-1 验收记录，新增 D20（DSL 只表达式语法面、坐标显式、名称化保身份）。 |
+| 2026-10-19 | **M4 人工验收热修（第一轮回执 A1–A8）**：修好 A1 拖入（`dragDropEnabled:false`，D34）、A2 图片缩放/旋转手柄（补 `nodrag`）、A4 框选与 Ctrl 多选 + 批量移动（D35）、A6 自动/启动快照（D36）、A7 回收站恢复连同关系并一次撤销（`restoreEntities`）、A8 导出面板错位（`.cb-modal__mask` + `.cb-modal cb-export`）；A3 曲率手柄延期至 M5（D37）。机器验收：typecheck 0 error、smoke **346 条**、ui-smoke 84 条、build 470 modules、`tauri build --no-bundle` 成功、自检 phase1 14 / phase2 15 全绿。 |
 | 2026-10-19 | **M4 整体验收通过**（✅ 打 tag `ms/M4`）：Tauri 2 外壳 + SQLite/FTS5 + `.caseboard` 单文件 + 整板 PNG/SVG/PDF + 案件图片包 + 脱敏导出 + 自动保存/版本快照/回收站/历史面板落地；`caseboard.exe --selftest` 两轮 **14 + 15 项全绿**（数据跨进程完整、跨目录打开、零外呼、PDF 回读 2 页、脱敏 1024 像素可验证抹平）；§1 总表 M4 置 ✅、§3 写入 M4 拆步表与验收记录（含遗留与延期表），新增 D25–D33（Rust 装进工作区 / 二进制 base64 过 IPC / Rust 只做 IO / 模型驱动出图 / `--selftest` 通道 / 绝对路径存素材 / 数据目录可覆盖 + 建表提前 / PDF 关对象流 / 删除进回收站）；`pnpm smoke` **337 条**、`pnpm ui-smoke` 84 条、`pnpm bench` 75.7ms、`pnpm build` 469 modules。 |

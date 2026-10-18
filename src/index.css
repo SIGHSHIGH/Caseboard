@@ -563,6 +563,36 @@ button {
   font-size: 14px;
 }
 
+.cb-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cb-modal__head h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--cb-text);
+}
+
+.cb-modal__icon {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--cb-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cb-modal__icon:hover {
+  color: var(--cb-accent);
+  border-color: var(--cb-accent);
+}
+
 .cb-modal__sub {
   margin: 0;
   font-size: 12px;
@@ -1825,6 +1855,8 @@ button {
 
 .cb-export {
   width: min(680px, 94vw);
+  max-height: 86vh;
+  overflow-y: auto;
 }
 
 .cb-export__list {

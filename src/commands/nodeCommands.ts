@@ -72,6 +72,25 @@ export function moveNode(id: string, x: number, y: number): Command {
   };
 }
 
+/** 批量移动实体：多选后整体拖动只压一条历史（M4 人工验收 A4 修复）。 */
+export function moveNodes(positions: Array<{ id: string; x: number; y: number }>): Command {
+  return {
+    label: positions.length > 1 ? '移动 ' + positions.length + ' 个实体' : '移动节点',
+    apply(draft) {
+      let changed = false;
+      for (const item of positions) {
+        const node = draft.nodes.find((n) => n.id === item.id);
+        if (!node) continue;
+        if (node.x === item.x && node.y === item.y) continue;
+        node.x = item.x;
+        node.y = item.y;
+        changed = true;
+      }
+      if (changed) draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
 /** 追加一条评论（M2-1）。评论只存文本，不影响状态与置信度。 */
 export function addComment(nodeId: string, text: string, author?: string): Command {
   const trimmed = text.trim();

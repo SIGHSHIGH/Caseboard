@@ -1443,6 +1443,54 @@ async function main() {
   check('端点缺失时拒绝悬空关系', doc().edges.some((edge) => edge.id === danglingEdge.id) === false, danglingEdge.id);
   state().dispatch(replaceDocument(createDemoDoc()));
 
+  console.log('[29] 批量恢复与多选移动（M4 人工验收 A4 / A7 热修）');
+  const { restoreEntities } = require(path.join(out, 'commands', 'restoreCommands.js'));
+  const { moveNodes } = require(path.join(out, 'commands', 'nodeCommands.js'));
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const handNode = JSON.parse(JSON.stringify(doc().nodes.find((node) => node.id === 'zhang')));
+  const handEdges = JSON.parse(JSON.stringify(doc().edges.filter((edge) => edge.source === 'zhang' || edge.target === 'zhang')));
+  state().dispatch(deleteNode('zhang'));
+  const pastBeforeRestore = state().past.length;
+  state().dispatch(restoreEntities({ nodes: [handNode], edges: handEdges }));
+  check(
+    '一次命令恢复实体与 4 条关系',
+    doc().nodes.length === 6 &&
+      doc().edges.length === 6 &&
+      handEdges.every((edge) => doc().edges.some((item) => item.id === edge.id)),
+    [doc().nodes.length, doc().edges.length],
+  );
+  check('整批恢复只压一条撤销记录', state().past.length - pastBeforeRestore === 1, state().past.length - pastBeforeRestore);
+  check('撤销一次同时撤回实体与关系', (state().undo(), doc().nodes.length === 5 && doc().edges.length === 2), [doc().nodes.length, doc().edges.length]);
+  check('重做恢复整批', (state().redo(), doc().nodes.length === 6 && doc().edges.length === 6), [doc().nodes.length, doc().edges.length]);
+  state().dispatch(restoreEntities({ nodes: [handNode], edges: handEdges }));
+  check('重复恢复同 id 不产生副本', doc().nodes.length === 6 && doc().edges.length === 6, [doc().nodes.length, doc().edges.length]);
+  state().dispatch(deleteNode('li'));
+  const liEdge = handEdges.find((edge) => edge.source === 'li' || edge.target === 'li');
+  state().dispatch(restoreEntities({ edges: [liEdge] }));
+  check('批恢复时端点缺失的关系被拒绝', doc().edges.some((edge) => edge.id === liEdge.id) === false, liEdge.id);
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const beforeMove = JSON.parse(JSON.stringify(doc().nodes.filter((node) => node.id === 'zhang' || node.id === 'li')));
+  const pastBeforeMove = state().past.length;
+  state().dispatch(moveNodes([
+    { id: 'zhang', x: 1234, y: 567 },
+    { id: 'li', x: 1300, y: 700 },
+  ]));
+  check(
+    '批量移动一次改多个坐标',
+    doc().nodes.find((node) => node.id === 'zhang').x === 1234 &&
+      doc().nodes.find((node) => node.id === 'zhang').y === 567 &&
+      doc().nodes.find((node) => node.id === 'li').x === 1300,
+    [doc().nodes.find((node) => node.id === 'zhang').x, doc().nodes.find((node) => node.id === 'li').x],
+  );
+  check('批量移动只压一条撤销记录', state().past.length - pastBeforeMove === 1, state().past.length - pastBeforeMove);
+  state().undo();
+  check(
+    '撤销后两个坐标一起回原位',
+    beforeMove.every((node) => doc().nodes.find((item) => item.id === node.id).x === node.x && doc().nodes.find((item) => item.id === node.id).y === node.y),
+    doc().nodes.find((node) => node.id === 'zhang').x,
+  );
+  state().dispatch(replaceDocument(createDemoDoc()));
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

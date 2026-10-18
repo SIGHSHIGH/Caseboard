@@ -10,6 +10,7 @@ import { loadAutosave, saveAutosave } from '../store/persist';
 import {
   listSnapshots,
   listTrash,
+  listTrashItems,
   loadLatestCase,
   loadSnapshot,
   moveToTrash,
@@ -21,6 +22,7 @@ import {
   type SnapshotMeta,
   type SqlDriver,
   type TrashItem,
+  type TrashRow as RepoTrashRow,
 } from './db/repo';
 
 export function isTauri(): boolean {
@@ -108,6 +110,13 @@ export async function listTrashInStorage(caseId: string): Promise<TrashRow[]> {
   const driver = await getDriver();
   if (!driver) return [];
   return listTrash(driver, caseId);
+}
+
+/** 回收站明细（带 payload）：恢复实体时要连带恢复一起删掉的关系。 */
+export async function listTrashItemsInStorage(caseId: string): Promise<RepoTrashRow[]> {
+  const driver = await getDriver();
+  if (!driver) return [];
+  return listTrashItems(driver, caseId);
 }
 
 /** 取出并删除一条回收站记录（恢复前调用，避免重复恢复同一行）。 */

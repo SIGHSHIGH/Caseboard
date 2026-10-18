@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { deleteEdge, deleteNode, type Command } from '../commands';
 import { createDemoDoc } from '../data/demo';
 import { loadAutosave } from './persist';
-import { loadDocFromStorage, pushTrashToStorage, saveDocToStorage } from '../services/storage';
+import { createSnapshot, listSnapshotsInStorage, loadDocFromStorage, pushTrashToStorage, saveDocToStorage } from '../services/storage';
 import type { CaseDoc } from '../types';
 import type { TrashItem } from '../services/db/repo';
 
@@ -16,6 +16,10 @@ interface HistoryEntry {
 const MAX_HISTORY = 200;
 /** 编辑后延迟多久落库：连续拖动/改名只写一次，避免每次按键都开事务。 */
 const SAVE_DEBOUNCE_MS = 400;
+/** 自动版本快照的最小间隔（与 repo.ts 的 SNAPSHOT_INTERVAL_MS 保持一致）。 */
+const AUTO_SNAPSHOT_MS = 5 * 60 * 1000;
+/** 上次写快照的时间戳；启动时为 0，第一次落库就会补一份。 */
+let lastSnapshotAt = 0;
 
 /** 撤销栈基于 immer patches，必须先启用插件（漏掉会在第一次命令时抛错）。 */
 enablePatches();
@@ -71,9 +75,27 @@ async function flushPending(): Promise<void> {
   try {
     const result = await saveDocToStorage(doc);
     useDocStore.setState({ lastSavedAt: result.savedAt });
+    void maybeSnapshot(doc, result.backend);
   } catch (error) {
     // 落库失败不阻断编辑，但留下可诊断的痕迹
     console.error('[caseboard] 保存失败', error);
+  }
+}
+
+/**
+ * 自动版本快照（M4 人工验收 A6 修复）：桌面端每 5 分钟最多一份，
+ * 保证「历史」面板即便用户从没点过「立即快照」也有可恢复的节点。
+ */
+async function maybeSnapshot(doc: CaseDoc, backend: StorageBackend): Promise<void> {
+  if (backend !== 'sqlite') return;
+  const now = Date.now();
+  if (now - lastSnapshotAt < AUTO_SNAPSHOT_MS) return;
+  lastSnapshotAt = now;
+  try {
+    await createSnapshot(doc, '自动快照');
+  } catch (error) {
+    // 快照只是保险，失败不能影响正在进行的编辑
+    console.error('[caseboard] 自动快照失败', error);
   }
 }
 
@@ -176,6 +198,16 @@ export async function bootstrapDoc(): Promise<StorageBackend> {
   if (doc) state.hydrate(doc);
   else useDocStore.setState({ ready: true });
   useDocStore.setState({ backend });
+  if (backend === 'sqlite') {
+    // 首次启动（或历史被清空）时补一份启动快照，历史面板不再显示 0 份
+    try {
+      const caseId = useDocStore.getState().doc.meta.id;
+      const existing = await listSnapshotsInStorage(caseId);
+      if (existing.length === 0) await createSnapshot(useDocStore.getState().doc, '启动快照');
+    } catch (error) {
+      console.error('[caseboard] 启动快照失败', error);
+    }
+  }
   return backend;
 }
 

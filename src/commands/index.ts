@@ -1,9 +1,11 @@
 export type { Command } from './types';
-export { addNode, updateNode, moveNode, deleteNode, restoreNode, addComment, deleteComment } from './nodeCommands';
+export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addComment, deleteComment } from './nodeCommands';
 export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
 export { replaceDocument } from './docCommands';
+export { restoreEntities } from './restoreCommands';
+export type { RestoreEntitiesInput } from './restoreCommands';
 export { applyDslChanges } from './dslCommands';
 export {
   GROUP_COLORS,

@@ -54,6 +54,7 @@ const SQL = {
     (SELECT id FROM snapshots WHERE case_id = ? ORDER BY id DESC LIMIT ?)`,
   insertTrash: 'INSERT INTO trash (case_id, deleted_at, kind, entity_id, label, payload) VALUES (?, ?, ?, ?, ?, ?)',
   listTrash: 'SELECT id, case_id, deleted_at, kind, entity_id, label FROM trash WHERE case_id = ? ORDER BY id DESC',
+  listTrashItems: 'SELECT id, case_id, deleted_at, kind, entity_id, label, payload FROM trash WHERE case_id = ? ORDER BY id DESC',
   getTrash: 'SELECT * FROM trash WHERE id = ?',
   deleteTrash: 'DELETE FROM trash WHERE id = ?',
   purgeTrash: 'DELETE FROM trash WHERE case_id = ?',
@@ -229,6 +230,28 @@ export async function moveToTrash(driver: SqlDriver, caseId: string, items: Tras
 export async function listTrash(driver: SqlDriver, caseId: string): Promise<{ id: number; kind: string; entityId: string; label: string; deletedAt: string }[]> {
   const rows = await driver.select<{ id: number; deleted_at: string; kind: string; entity_id: string; label: string }>(SQL.listTrash, [caseId]);
   return rows.map((row) => ({ id: row.id, kind: row.kind, entityId: row.entity_id, label: row.label, deletedAt: row.deleted_at }));
+}
+
+/** 回收站明细（带 payload）：恢复实体时要把一起删进回收站的关系捞出来一起还回去。 */
+export interface TrashRow extends TrashItem {
+  id: number;
+  deletedAt: string;
+}
+
+export async function listTrashItems(driver: SqlDriver, caseId: string): Promise<TrashRow[]> {
+  const rows = await driver.select<{ id: number; deleted_at: string; kind: string; entity_id: string; label: string; payload: string }>(
+    SQL.listTrashItems,
+    [caseId],
+  );
+  return rows.map((row) => {
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse(row.payload);
+    } catch {
+      payload = null;
+    }
+    return { id: row.id, kind: row.kind as TrashItem['kind'], entityId: row.entity_id, label: row.label, deletedAt: row.deleted_at, payload };
+  });
 }
 
 export async function takeTrashItem(driver: SqlDriver, id: number): Promise<TrashItem | null> {

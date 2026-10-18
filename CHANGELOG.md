@@ -4,6 +4,19 @@
 
 ## [未发布] v0.4.0 · M4 Tauri + SQLite + 项目文件 + 导出
 
+### M4 人工验收热修（2026-10-19，第一轮回执 A1–A8）
+
+用户真机回执有六项不通过，逐条修完（A3 的曲率手柄延期至 M5）：
+
+- **A1 素材库拖不进画布**：根因是 `src-tauri/tauri.conf.json` 的 `dragDropEnabled: true` —— Tauri 在 Windows 上开启它会**拦截整个 webview 的 HTML5 拖放**；改 `false`，系统文件拖入仍由 `App.tsx` 的 `onDrop` 接住（D34）。
+- **A2 图片节点只能拖、不能缩放/旋转**：`FreeImageNode.tsx` 的手柄与旋转手柄缺 React Flow 的 `nodrag` 类，d3-drag 的原生监听比合成事件更早触发；给八个缩放手柄、旋转手柄、标题栏补 `nodrag`（标题栏另加 `nopan`）。
+- **A4 无法框选与 Ctrl 多选**：`Board.tsx` 的 `onNodesChange` 忽略 select 变更、选中态由单选 `selectedNodeId` 派生、React Flow 未设 `multiSelectionKeyCode`（v12 默认 Meta 键，Windows 上没有）。改法：`uiStore` 增 `selectedNodeIds` / `setNodeSelection` / `applyImageSelection`，`onNodesChange` 消费 select，ReactFlow 开 `selectionOnDrag` + `SelectionMode.Full` + `panOnDrag={[1,2]}` + `panActivationKeyCode="Space"` + `multiSelectionKeyCode={['Meta','Control']}`，组节点 `selectable:false`；多选一起拖动走新命令 `moveNodes`（一次撤销，D35）。
+- **A6 版本快照永远显示 0**：`docStore` 从未实现「每 5 分钟自动快照」。新增 `maybeSnapshot`（落库成功后节流 5 分钟）+ 启动时库里无快照则补「启动快照」（D36）。
+- **A7 回收站恢复实体后关系丢失、Ctrl+Z 也补不回**：恢复只 `dispatch(restoreNode)`，同伴关系仍在回收站。新增 `src/commands/restoreCommands.ts` 的 `restoreEntities({nodes,edges})` 整批命令；`HistoryDialog` 恢复实体时按 `payload.source/target` 捞出同伴关系一并恢复，一次 Ctrl+Z 全撤；`repo.ts` / `storage.ts` 增 `listTrashItems` 读 payload。
+- **A8 导出面板错位到视口外**：根节点误用 `.cb-modal`（360px 白卡片）而不是遮罩 `.cb-modal__mask`，面板被塞进顶栏流式布局。改为 mask + `.cb-modal cb-export`，`.cb-export` 加 `max-height:86vh; overflow-y:auto`，并补 `.cb-modal__head` / `__icon` 样式。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **346 条全绿**（新增 `[29]` 批量恢复与多选移动 9 条）、`pnpm ui-smoke` 84 条全绿、`pnpm build` 470 modules、`tauri build --no-bundle` 成功、`node scripts/run-selftest.cjs` **phase1 PASS 14 / phase2 PASS 15**（快照项由红转绿：2 份 → 3 份）。
+- **文档**：`docs/MILESTONES.md` §3 增「M4 人工验收第一轮回执与热修」根因-修法-证据表、§6 增 D34–D37、§7 增一行；`docs/MANUAL-ACCEPTANCE.md` 增第二轮复验清单。
+
 ### M4 整体验收通过（2026-10-19，tag ms/M4）
 
 - **桌面外壳**：Tauri 2（`src-tauri/`）取代浏览器沙箱，`tauri.conf.json` 版本 0.4.0、开启 `assetProtocol`（scope 限 `$APPDATA/$APPLOCALDATA/$APPCONFIG`）、`dragDropEnabled`；`scripts/tauri-cli.cjs` 兜住本机 Electron `argv[0]` 问题（否则报 `unrecognized subcommand`）。Rust 工具链装进仓库内 `.rust\`（用户目录被系统拒写，D25）。

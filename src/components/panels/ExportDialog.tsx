@@ -84,8 +84,16 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
   ];
 
   return (
-    <div className="cb-modal" role="dialog" aria-modal="true" aria-label="导出与项目文件">
-      <div className="cb-modal__panel cb-export">
+    <div
+      className="cb-modal__mask"
+      role="dialog"
+      aria-modal="true"
+      aria-label="导出与项目文件"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="cb-modal cb-export">
         <header className="cb-modal__head">
           <h2>导出与项目文件</h2>
           <button type="button" className="cb-modal__icon" onClick={onClose} title="关闭">

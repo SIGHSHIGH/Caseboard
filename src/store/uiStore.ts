@@ -14,6 +14,8 @@ interface UiStore {
   selectedImageId: string | null;
   /** 多选自由图片：Shift 点选累加，整体拖动/对齐都作用在这组上 */
   selectedImageIds: string[];
+  /** 多选实体卡片（框选 / Ctrl 点选）：selectedNodeId 是其中的主选中项，供右栏显示 */
+  selectedNodeIds: string[];
   /** 拖动图片时命中的对齐参考线（不进 doc，松手即清空） */
   guides: AlignGuide[];
   /** 正在被拖到卡片上的图片所指向的目标节点，用于高亮吸附 */
@@ -40,6 +42,10 @@ interface UiStore {
   consumeGroup: () => void;
   setMode: (mode: CanvasMode) => void;
   selectNode: (id: string | null) => void;
+  /** 框选 / 多选统一入口：一次写入整组实体 id */
+  setNodeSelection: (ids: string[]) => void;
+  /** 框选带来的图片选中变化（不改动实体选中） */
+  applyImageSelection: (id: string, selected: boolean) => void;
   selectEdge: (id: string | null) => void;
   selectGroup: (id: string | null) => void;
   selectAsset: (id: string | null) => void;
@@ -54,6 +60,7 @@ const NO_SELECTION = {
   selectedAssetId: null,
   selectedImageId: null,
   selectedImageIds: [] as string[],
+  selectedNodeIds: [] as string[],
 } as const;
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -75,7 +82,22 @@ export const useUiStore = create<UiStore>((set) => ({
   requestGroup: (kind) => set({ groupRequest: kind }),
   consumeGroup: () => set({ groupRequest: null }),
   setMode: (mode) => set({ mode }),
-  selectNode: (id) => set({ ...NO_SELECTION, selectedNodeId: id }),
+  selectNode: (id) => set({ ...NO_SELECTION, selectedNodeId: id, selectedNodeIds: id ? [id] : [] }),
+  setNodeSelection: (ids) =>
+    set((state) => {
+      const next = ids.filter((id, index) => ids.indexOf(id) === index);
+      const primary = next.length === 0 ? null : next.includes(state.selectedNodeId ?? '') ? state.selectedNodeId : next[next.length - 1];
+      return { ...NO_SELECTION, selectedNodeId: primary, selectedNodeIds: next };
+    }),
+  applyImageSelection: (id, selected) =>
+    set((state) => {
+      const exists = state.selectedImageIds.includes(id);
+      if (selected === exists) return {};
+      const next = selected
+        ? [...state.selectedImageIds, id]
+        : state.selectedImageIds.filter((item) => item !== id);
+      return { selectedImageIds: next, selectedImageId: next.length > 0 ? next[next.length - 1] : null };
+    }),
   selectEdge: (id) => set({ ...NO_SELECTION, selectedEdgeId: id }),
   selectGroup: (id) => set({ ...NO_SELECTION, selectedGroupId: id }),
   selectAsset: (id) => set({ ...NO_SELECTION, selectedAssetId: id }),
