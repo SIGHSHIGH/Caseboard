@@ -4,6 +4,7 @@ export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
 export { replaceDocument } from './docCommands';
+export { applyDslChanges } from './dslCommands';
 export {
   GROUP_COLORS,
   DEFAULT_GROUP_OPACITY,

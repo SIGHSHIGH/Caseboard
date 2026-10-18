@@ -13,6 +13,14 @@
 - **坐标显式化**：每个实体与组都写出 `at(x, y)` 与 `size(w, h)`，避免「省略即自动布局」在文本编辑时漂移（D20）。
 - **DSL 边界**（D20）：只表达实体/关系/组/视图；素材元数据、自由图片节点、评论、`settings` 不进文本，M3-3 合并时未表达字段原样保留。
 - **验收**：`pnpm typecheck` 0 error，`pnpm smoke` **204 条全绿**（新增 31 条 `[20] DSL 序列化（M3-1）`：幂等、排序、三种箭头、id 名称化与重名、字段顺序与转义、时间区间、空文档骨架、纯函数不改模型、stableJson 等）。
+### M3-3 字段级三方合并（2026-10-19）
+
+- **字段级 diff**（`src/dsl/diff.ts`）：`diffDocs(before, after)` 按 id 对齐实体，只比较 DSL 能表达的字段（`DSL_NODE_KEYS` 等白名单，D20），产出 `add` / `update(字段, 前值, 后值)` / `remove`；`sourceHandle` 这类文本表达不了的字段**不参与 diff**，所以往返解析不会被误判成删除。
+- **三方合并**：`mergeDslEdit(base, codeNext, current)` 把文本侧改动叠加到当前画布上，图形侧已改的字段一律礼让——拖节点 + 在代码里改标题两侧都生效；同字段冲突保留画布值并进 `conflicts`；文本删除画布侧改过的对象不执行（D22）。
+- **整批一次撤销**：`src/commands/dslCommands.ts` 的 `applyDslChanges(changes)` 把一批改动落成一条 label「代码编辑」的 Command，一次 undo 全回滚、redo 全恢复；无改动时 `changes` 为空，不污染撤销栈。
+- **失效保护**：实体已被画布删除时残留改动被忽略，不复活对象、不抛异常。
+- **验收**：`pnpm typecheck` 0 error，`pnpm smoke` **262 条全绿**（新增 21 条 `[22] DSL 三方合并（M3-3）`）。
+
 ### M3-2 Lezer grammar + 容错解析（2026-10-19）
 
 - **语法文件**（`grammar/caseboard.grammar`，Lezer）：`case "标题" caseNo "编号" { … }`、`类型 id "显示名" { … }`、`group g "…" color="#C0392B" { nodes: [...] }`、`view timeline|scenario|presentation "…" { … }`、三种线型箭头、`at(x, y)` / `size(w, h)`、`key: value` 字段（字符串/数字/布尔/日期/区间/数组/对象/枚举）、`//` 与 `/* */` 注释；代码生成脚本 `scripts/build-grammar.mjs` 产出 `src/dsl/generated/caseboard.parser.ts`（提交进库，构建不依赖 codegen）。

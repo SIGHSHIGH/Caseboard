@@ -955,6 +955,155 @@ check(
   metaA,
 );
 
+console.log('[22] DSL 三方合并（M3-3）');
+const { DSL_EDGE_KEYS, DSL_NODE_KEYS, diffDocs, mergeDslEdit } = require(path.join(out, 'dsl', 'diff.js'));
+const { applyDslChanges } = require(path.join(out, 'commands', 'dslCommands.js'));
+const { replaceDocument } = require(path.join(out, 'commands', 'docCommands.js'));
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const baseDoc = createDemoDoc();
+const baseParsed = parseDsl(serializeDoc(baseDoc)).doc;
+const baseParsedSnapshot = JSON.stringify(baseParsed);
+check('同文档 diff 为空', diffDocs(baseDoc, baseDoc).length === 0);
+check(
+  'DSL 未表达的字段不算删除（sourceHandle 等）',
+  diffDocs(baseDoc, baseParsed).length === 0,
+  diffDocs(baseDoc, baseParsed),
+);
+const retitled = clone(baseParsed);
+retitled.nodes.find((node) => node.id === 'li').title = '李梅（改）';
+const titleChanges = diffDocs(baseParsed, retitled);
+check(
+  '只改标题时 diff 只有一条 title',
+  titleChanges.length === 1 && titleChanges[0].field === 'title' && titleChanges[0].after === '李梅（改）',
+  titleChanges,
+);
+const movedModel = clone(baseParsed);
+const draggedLi = movedModel.nodes.find((node) => node.id === 'li');
+draggedLi.x = 780;
+draggedLi.y = 890;
+const moveChanges = diffDocs(baseParsed, movedModel);
+check(
+  '拖动只产生 x / y 两条字段改动',
+  moveChanges.length === 2 && moveChanges.every((change) => change.field === 'x' || change.field === 'y'),
+  moveChanges,
+);
+const withExtra = clone(baseParsed);
+withExtra.nodes.push({
+  id: 'wang',
+  type: 'person',
+  title: '王强',
+  x: 1200,
+  y: 700,
+  w: 208,
+  h: 96,
+  fields: {},
+  tags: [],
+  status: 'todo',
+  confidence: 60,
+  attachments: [],
+});
+check('新增实体产生 add 改动', diffDocs(baseParsed, withExtra).some((change) => change.op === 'add' && change.id === 'wang'));
+const deleted = clone(baseParsed);
+deleted.nodes = deleted.nodes.filter((node) => node.id !== 'ktv');
+deleted.edges = deleted.edges.filter((edge) => edge.source !== 'ktv' && edge.target !== 'ktv');
+check('删除实体产生 remove 改动', diffDocs(baseParsed, deleted).some((change) => change.op === 'remove' && change.kind === 'node'));
+
+const mergedNoop = mergeDslEdit(baseParsed, baseParsed, baseParsed);
+check('无改动时 changes 为空（不污染撤销栈）', mergedNoop.changes.length === 0 && mergedNoop.conflicts.length === 0);
+check('无改动时合并不修改当前文档', JSON.stringify(mergedNoop.doc) === JSON.stringify(baseParsed));
+const mergedDrag = mergeDslEdit(baseParsed, retitled, movedModel);
+const mergedDragLi = mergedDrag.doc.nodes.find((node) => node.id === 'li');
+check(
+  '字段级三方合并：拖拽位置与代码改标题互不覆盖',
+  mergedDragLi.x === 780 && mergedDragLi.y === 890 && mergedDragLi.title === '李梅（改）' && mergedDrag.conflicts.length === 0,
+  { li: mergedDragLi, conflicts: mergedDrag.conflicts },
+);
+const conflictModel = clone(baseParsed);
+conflictModel.nodes.find((node) => node.id === 'li').title = '李梅（画布改）';
+const mergedConflict = mergeDslEdit(baseParsed, retitled, conflictModel);
+check(
+  '同字段冲突保留画布值并上报 conflict',
+  mergedConflict.doc.nodes.find((node) => node.id === 'li').title === '李梅（画布改）' &&
+    mergedConflict.conflicts.length === 1 &&
+    mergedConflict.changes.length === 0,
+  mergedConflict.conflicts,
+);
+const mergedAdd = mergeDslEdit(baseParsed, withExtra, baseParsed);
+check(
+  '文本新增实体合并进画布',
+  mergedAdd.changes.some((change) => change.op === 'add' && change.id === 'wang') &&
+    mergedAdd.doc.nodes.some((node) => node.id === 'wang'),
+);
+const canvasExtra = clone(baseParsed);
+canvasExtra.nodes.push({
+  id: 'canvas-only',
+  type: 'note',
+  title: '画布新便签',
+  x: 10,
+  y: 10,
+  w: 200,
+  h: 96,
+  fields: {},
+  tags: [],
+  status: 'todo',
+  confidence: 50,
+  attachments: [],
+});
+const mergedBoth = mergeDslEdit(baseParsed, withExtra, canvasExtra);
+check(
+  '两侧各自新增的实体都保留',
+  mergedBoth.doc.nodes.some((node) => node.id === 'wang') && mergedBoth.doc.nodes.some((node) => node.id === 'canvas-only'),
+  mergedBoth.doc.nodes.map((node) => node.id),
+);
+const mergedRemove = mergeDslEdit(baseParsed, deleted, baseParsed);
+check(
+  '文本删除未被画布改动的实体',
+  !mergedRemove.doc.nodes.some((node) => node.id === 'ktv') &&
+    mergedRemove.changes.some((change) => change.op === 'remove' && change.id === 'ktv'),
+);
+const movedKtv = clone(baseParsed);
+movedKtv.nodes.find((node) => node.id === 'ktv').x += 30;
+const mergedRemoveConflict = mergeDslEdit(baseParsed, deleted, movedKtv);
+check(
+  '画布改过的实体不被文本删除（冲突保留）',
+  mergedRemoveConflict.doc.nodes.some((node) => node.id === 'ktv') &&
+    mergedRemoveConflict.conflicts.some((change) => change.op === 'remove' && change.id === 'ktv'),
+  mergedRemoveConflict.conflicts,
+);
+check('合并是纯函数（不修改入参 base）', JSON.stringify(baseParsed) === baseParsedSnapshot);
+check(
+  '字段白名单覆盖 8 类节点与关系字段',
+  DSL_NODE_KEYS.includes('photo') && DSL_NODE_KEYS.includes('fields') && DSL_EDGE_KEYS.includes('scenario') && DSL_EDGE_KEYS.includes('evidenceIds'),
+);
+
+// 命令层：一批改动 = 一条 Command = 一次撤销
+// changes 是相对「当前文档」的增量，所以先让 store 处于合并时的 current 状态
+state().dispatch(replaceDocument(movedModel));
+const batchBase = clone(doc());
+const batchReport = mergeDslEdit(baseParsed, retitled, movedModel);
+const pastLen = state().past.length;
+state().dispatch(applyDslChanges(batchReport.changes));
+const afterBatch = doc();
+check(
+  '一批改动写入后画布同时包含位置与标题',
+  afterBatch.nodes.find((node) => node.id === 'li').x === 780 && afterBatch.nodes.find((node) => node.id === 'li').title === '李梅（改）',
+  afterBatch.nodes.find((node) => node.id === 'li'),
+);
+check('整批只占一条撤销记录', state().past.length === pastLen + 1, { before: pastLen, after: state().past.length });
+state().undo();
+check('一次撤销回滚整批改动', JSON.stringify(doc()) === JSON.stringify(batchBase), doc().nodes.find((node) => node.id === 'li'));
+state().redo();
+check('重做恢复整批改动', doc().nodes.find((node) => node.id === 'li').title === '李梅（改）');
+const staleChanges = batchReport.changes.filter((change) => change.kind === 'node' && change.id === 'li');
+state().dispatch(deleteNode('li'));
+const beforeStale = doc().nodes.length;
+state().dispatch(applyDslChanges(staleChanges));
+check(
+  '目标实体已删除时改动被忽略且不崩溃',
+  doc().nodes.length === beforeStale && !doc().nodes.some((node) => node.id === 'li'),
+  doc().nodes.length,
+);
+
 console.log('');
 if (failures > 0) {
   console.log('结果：' + failures + ' 项失败');

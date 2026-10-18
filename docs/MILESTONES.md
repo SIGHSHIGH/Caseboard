@@ -261,7 +261,7 @@
 |---|---|---|
 | M3-1 | `src/dsl/serialize.ts`：Model → DSL 文本，幂等（含 id 名称化、双向名表、稳定 JSON） | ✅ 2026-10-19 |
 | M3-2 | `grammar/caseboard.grammar` + `src/dsl/parse.ts`：AST、行列错误、修复建议 | ✅ 2026-10-19 |
-| M3-3 | `src/dsl/diff.ts`：AST ↔ Model 最小 Command 批次、字段级三方合并、整批一次撤销 | ⬜ |
+| M3-3 | `src/dsl/diff.ts`：AST ↔ Model 最小 Command 批次、字段级三方合并、整批一次撤销 | ✅ 2026-10-19 |
 | M3-4 | 分屏 + CodeMirror 6（高亮/折叠/补全/悬停/波浪线/格式化）+ 同步状态机 + 光标滚动保护 | ⬜ |
 | M3-5 | 验收加固：错误用例全覆盖、50 次连续操作、1000 节点基准脚本 | ⬜ |
 
@@ -279,6 +279,21 @@
 | id 名称化 | 非 ASCII / 含 `-` 的 id 转成合法标识符（保留中文），与原 id 不同时补 `id: "原 id"`；重名自动加 `_2`；连线引用同步改名 | ✅ |
 | 纯函数 | 序列化不修改 Model（快照比较）、不读时间/随机数；空文档输出合法骨架且无 `undefined` | ✅ |
 | 边界 | 行尾无空格/制表符、无连续空行结尾；`stableJson` 递归排序键 | ✅ |
+
+**M3-3 验收记录（2026-10-19，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `pnpm typecheck` → 0 error | ✅ |
+| 逻辑层 | `pnpm smoke` 262 条全通过（新增 21 条 `[22] DSL 三方合并（M3-3）`） | ✅ |
+| 字段级 diff | `diffDocs(base, next)` 只比较 DSL 可见字段（`DSL_NODE_KEYS` / `DSL_EDGE_KEYS` / `DSL_GROUP_KEYS` / `DSL_VIEW_KEYS`）：拖节点只出 `x`/`y` 两条；改标题只出 `title` 一条；新增/删除产出 `add`/`remove`；**DSL 未表达的字段（`sourceHandle`/`targetHandle` 等）不算删除** | ✅ |
+| 三方合并（验收 3） | `mergeDslEdit(base, codeNext, current)`：拖拽位置 + 代码改标题 **互不覆盖**（`x=780, y=890, title=李梅（改）`，conflicts 0）；两侧各自新增的实体都保留 | ✅ |
+| 冲突策略（D22） | 同字段两侧都改 → 保留画布值，代码改动进 `conflicts`（不静默丢）；画布改过的实体不被文本删除，删除改动进 `conflicts` | ✅ |
+| 整批一次撤销（验收 4） | `applyDslChanges(changes)` 产生**一条** Command（label「代码编辑」）：一批位置+标题改动只占 1 条撤销记录，1 次 undo 全回滚、redo 全恢复 | ✅ |
+| 幂等 / 纯函数 | 无改动时 `changes.length === 0`（不污染撤销栈）、合并结果与 current 逐字节相同；`mergeDslEdit` 不修改任何入参 | ✅ |
+| 目标失效 | 实体已被画布删除时，残留改动被忽略（不崩溃、不复活对象） | ✅ |
+
+> `changes` 是相对 `current` 的增量（不是相对 `base`）：UI 侧必须先取 store 里的当前文档作为 `current` 再合并、随即 dispatch，中间不能插入别的写操作（M3-4 的同步状态机负责保证这一点）。
 
 **M3-2 验收记录（2026-10-19，✅ 通过）**
 
@@ -480,6 +495,7 @@
 | D19 | **pdf.js 走动态 import 懒加载**（`await import('../../services/pdf')`），只在用户点「选择 PDF 文件」时才拉解析器与 worker | 静态引入会让主包从 464 kB 涨到 948 kB（gzip 296 kB），首屏白等；抽页是低频操作，单独分块更合适 | 构建产物出现独立块 `pdf-*.js`（483 kB）与 `pdf.worker.min-*.mjs`（1264 kB）；`ExtractDialog` 只用 `import type { PdfJob }`，类型不拉运行时 |
 | D20 | DSL **只表达实体 / 关系 / 组 / 视图**（规格 §4 的语法面）；素材元数据、自由图片节点、评论、`settings` 不进文本视图。坐标与尺寸一律显式写出（`at(x, y)` / `size(w, h)`），不依赖「省略即自动布局」。排序固定：节点按（类型顺序, id）、边按（source, target, id）、组与视图按 id。id 名称化：保留 ASCII 与中文，其余字符 → `_`，数字开头补 `n_`，重名追加 `_2`；名字与原 id 不同时补一行 `id: "原 id"`。解析方向（M3-3）按 id 名称反查 + `id:` 行对齐，未在文本中表达的字段原样保留，绝不整份覆盖模型 | 理由：素材二进制与图片节点是 DSL 无法承载的，硬塞进去会让文本视图变成不可读的 base64 墙；显式坐标让「在文本里改位置」可靠；固定排序 + 名称化把「同一模型 → 同一字节序列」变成可自动测试的不变量（M3 验收 1），也是字段级 diff 的对齐基础 | M3-2 解析需支持 `id:` 覆盖行与 `at/size`；M4 的 `.caseboard` 里 DSL 只是可读副本，权威数据仍是 SQLite |
 | D21 | 语法层**不把实体类型/枚举做成关键字**，统一 `Declaration { Ident Ident QuotedString Attr* Block }`，语义在 `parse.ts` 里按第一个 Ident 文本判定；数字/日期/时间统一 `Scalar` token，`true/false` 当 `Ident` 文本判；整段箭头做成单个 `Arrow` token（`-->` / `-.->` / `..>` 与 `---->` 共用一个 token），线型与标签在 parse 层切分；顶层允许只有 `{ … }` 块 | Lezer 会报 `overlapping tokens used in same context`（`Ident` vs `"true"`、`Number` vs 日期、标签 vs `WS`），拆成多个 token 过不了生成器；把类型做成关键字还会让 id 叫 `place`、`transfer` 的正常案件被误判为语法错误。单 token 箭头让「标签里含 `-`/`.`/`>`」不再需要转义规则 | `grammar/caseboard.grammar` + `scripts/build-grammar.mjs` 生成 `src/dsl/generated/caseboard.parser.ts`（提交进库）；解析器对外只暴露 `parseDsl` / `parseArrow` / `hasErrors`，`parseDsl` 永不抛异常 |
+| D22 | 代码 ↔ 画布的冲突策略：`mergeDslEdit(base, codeNext, current)` **只应用图形侧未改过的字段**；同字段两侧都改时保留画布值、代码改动进 `conflicts` 上报；文本侧删除画布侧改过的对象不执行（删除破坏性大，要求显式重试）；`changes` 是相对 `current` 的增量，由 `applyDslChanges` 一次落成**一条** Command | 拖拽节点与编辑代码可以同时发生（M3 验收 3），简单「后写入者覆盖整份文档」会让拖拽结果或文本结果凭空消失；保留画布值符合「用户眼前看到的不跳」，且删除类操作必须在画布上显式确认。增量而非全量替换则保证撤销栈只记真正改动的字段 | `src/dsl/diff.ts`（`diffDocs` / `mergeDslEdit` / `DSL_*_KEYS`）+ `src/commands/dslCommands.ts`（`applyDslChanges`）；M3-4 用 `conflicts` 显示「图形有更新，点击合并」状态 |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -494,5 +510,6 @@
 | 2026-10-19 | **M2-3 验收通过**（✅）：图片四路导入 + 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库两分区落地；§3 拆步表 M2-3 置 ✅ 并写入验收记录，新增 D13（导入预处理全部在 Worker 内完成）、D14（目录监视 M2 用 File System Access 轮询，M4 换 notify）。 |
 | 2026-10-19 | **M2-4 验收通过**（✅）：自由图片节点（移动/8 向缩放/旋转吸附/层级/对齐参考线与网格/多选整体移动/吸附头像与附件/三种边框/素材库拖入）落地；`CaseDoc` 新增 `imageNodes` 并补齐迁移与级联删除；§3 拆步表 M2-4 置 ✅ 并写入验收记录，新增 D15（交互过程只留本地预览，松手才落命令）、D16（吸附与「关联实体」共用一套规则）。 |
 | 2026-10-19 | **M2 整体验收通过**（✅）：M2-5 标注层六图形 + PDF 抽页 / 视频抽帧落地，标注可关联实体并随素材导出；§1 总表 M2 置 ✅，§3 拆步表 M2-5 置 ✅ 并写入验收记录，新增 D17（标注几何归一化）、D18（视频抽帧用原生 video+canvas）、D19（pdf.js 懒加载）；§5 补充「构建时 TMP/TEMP 指到工作区」的工具链结论。 |
+| 2026-10-19 | **M3-3 三方合并落地**（M3 第 3 步，⏳ 进行中）：`src/dsl/diff.ts` 字段级 diff + 三方合并（`diffDocs`/`mergeDslEdit`）与 `src/commands/dslCommands.ts` 的整批单次撤销命令；`pnpm smoke` 262 条全绿（新增 21 条 `[22] DSL 三方合并`）；§3 拆步表 M3-3 置 ✅ 并写入验收记录，新增 D22（冲突保留画布值、删除冲突不执行）。 |
 | 2026-10-19 | **M3-2 语法与容错解析落地**（M3 第 2 步，⏳ 进行中）：`grammar/caseboard.grammar`（Lezer）+ `scripts/build-grammar.mjs` 生成解析器，`src/dsl/parse.ts` 实现 AST → Model、六类中文诊断（含行列与修复建议）、`id:` 覆盖行与 quoted id 引用、缺 header 容错；演示文档 `parseDsl → serializeDoc` 逐字节往返一致；`pnpm smoke` 241 条全绿（新增 37 条 `[21] DSL 解析`）；§3 拆步表 M3-2 置 ✅ 并写入验收记录，新增 D21（语法层不设关键字、单 token 箭头）。 |
 | 2026-10-19 | **M3-1 序列化器落地**（M3 第 1 步，⏳ 进行中）：`src/dsl/serialize.ts` 实现 Model → DSL 文本，含 id 名称化双向表（`createNameTable` / `dslNameTable`）、`stableJson`、显式 `at/size`、按（类型序, id）稳定排序；`pnpm smoke` 204 条全绿（新增 31 条 `[20] DSL 序列化`）；§3 写入 M3 拆步表与 M3-1 验收记录，新增 D20（DSL 只表达式语法面、坐标显式、名称化保身份）。 |
