@@ -7,7 +7,7 @@ import { LeftPanel } from './components/panels/LeftPanel';
 import { RightPanel } from './components/panels/RightPanel';
 import { TopBar } from './components/panels/TopBar';
 import { useCodeStore } from './store/codeStore';
-import { useDocStore } from './store/docStore';
+import { useDocStore, useReady } from './store/docStore';
 import { useImportStore } from './store/importStore';
 import { useUiStore } from './store/uiStore';
 
@@ -24,6 +24,7 @@ export default function App() {
   const redo = useDocStore((s) => s.redo);
   const startImport = useImportStore((s) => s.startImport);
   const codeOpen = useCodeStore((s) => s.open);
+  const ready = useReady();
   const [splitPct, setSplitPct] = useState(44);
   const workRef = useRef<HTMLDivElement>(null);
   useCodeSyncBridge();
@@ -75,6 +76,14 @@ export default function App() {
 
   return (
     <div className="cb-app">
+      {ready ? null : (
+        <div className="cb-boot">
+          <div className="cb-boot__card">
+            <strong>案情板 CaseBoard</strong>
+            <span>正在载入本机案件…</span>
+          </div>
+        </div>
+      )}
       <TopBar />
       <div
         className="cb-main"

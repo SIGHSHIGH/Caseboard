@@ -233,6 +233,7 @@ export function createDemoDoc(withImage = false): CaseDoc {
             annotations: [
               {
                 id: 'an-demo-1',
+            redact: true,
                 shape: 'rect',
                 geom: { x: 0.34, y: 0.28, w: 0.22, h: 0.18 },
                 color: '#C0392B',

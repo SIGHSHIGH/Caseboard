@@ -114,6 +114,8 @@ export interface Annotation {
   /** 描边色，缺省取证据红 #C0392B */
   color?: string;
   linkedNodeId?: string;
+  /** 勾选后导出脱敏图时对该区域马赛克（人脸 / 证件号 / 手机号 / 银行卡号） */
+  redact?: boolean;
 }
 
 export interface AiMeta {

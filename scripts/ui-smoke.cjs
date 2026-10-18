@@ -177,6 +177,45 @@ function check(name, condition, detail) {
   if (firstNode) firstNode.click();
   await new Promise((resolve) => setTimeout(resolve, 400));
   check('画布选中后代码侧高亮对应声明', doc.querySelectorAll('.cb-code-target').length >= 1, doc.querySelectorAll('.cb-code-target').length);
+
+  console.log('[UI] M4 导出面板与保存状态');
+  check('顶栏有保存项目按钮', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').includes('保存项目')));
+  check('顶栏有导出按钮', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').includes('导出')));
+  const saveBar = doc.querySelector('.cb-topbar__save');
+  check('顶栏显示保存后端与时间', !!saveBar && (saveBar.textContent || '').includes('本机存储'), saveBar?.textContent);
+  check('可打开导出面板', await clickByText('.cb-topbar__io .cb-btn', '导出'));
+  check('导出面板渲染 7 个导出项', doc.querySelectorAll('.cb-export__item').length === 7, doc.querySelectorAll('.cb-export__item').length);
+  check('导出项含整板 PNG 与 SVG', (doc.querySelector('.cb-export__list')?.textContent || '').includes('整板 PNG') && (doc.querySelector('.cb-export__list')?.textContent || '').includes('整板 SVG'));
+  check('导出项含多页 PDF', (doc.querySelector('.cb-export__list')?.textContent || '').includes('多页 PDF'));
+  check('导出项含案件图片包', (doc.querySelector('.cb-export__list')?.textContent || '').includes('案件图片包'));
+  check('导出面板含脱敏分区', (doc.querySelector('.cb-export__redact')?.textContent || '').includes('脱敏'));
+  const redactText = (doc.querySelector('.cb-export__redact')?.textContent || '');
+  check('脱敏区说明来自标注开关', redactText.includes('导出时打码') || doc.querySelectorAll('.cb-export__redactlist li').length >= 1, redactText.slice(0, 60));
+  check('导出面板声明不联网', (doc.querySelector('.cb-export')?.textContent || '').includes('不联网'));
+  const closeExport = doc.querySelector('.cb-export .cb-modal__icon');
+  if (closeExport) closeExport.click();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  check('关闭后导出面板移除', doc.querySelector('.cb-export') === null);
+
+  console.log('[UI] M4 历史与回收站面板');
+  check('顶栏有历史按钮', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').includes('历史')));
+  check('可打开历史面板', await clickByText('.cb-topbar__io .cb-btn', '历史'));
+  check('历史面板已渲染', doc.querySelector('.cb-history') !== null);
+  const historyTabs = doc.querySelector('.cb-history__tabs');
+  check('两个标签页文案', (historyTabs?.textContent || '').includes('版本快照') && (historyTabs?.textContent || '').includes('回收站'));
+  check('立即快照按钮存在', [...doc.querySelectorAll('.cb-history__tabs .cb-btn')].some((b) => (b.textContent || '').includes('立即快照')));
+  check('浏览器环境提示只在桌面端可用', (doc.querySelector('.cb-history .cb-panel__note')?.textContent || '').includes('只在桌面端 SQLite 可用'), doc.querySelector('.cb-history .cb-panel__note')?.textContent);
+  check('快照空态文案', (doc.querySelector('.cb-history__empty')?.textContent || '').includes('还没有快照'), doc.querySelector('.cb-history__empty')?.textContent);
+  const trashTab = [...doc.querySelectorAll('.cb-history__tabs .cb-btn')].find((b) => (b.textContent || '').includes('回收站'));
+  if (trashTab) trashTab.click();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  check('切到回收站标签后显示空态', (doc.querySelector('.cb-history__empty')?.textContent || '').includes('回收站是空的'), doc.querySelector('.cb-history__empty')?.textContent);
+  check('回收站页脚含清空按钮', [...doc.querySelectorAll('.cb-history__foot .cb-btn')].some((b) => (b.textContent || '').includes('清空回收站')));
+  const closeHistory = [...doc.querySelectorAll('.cb-history__head .cb-btn')].find((b) => (b.textContent || '').includes('关闭'));
+  if (closeHistory) closeHistory.click();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  check('关闭后历史面板移除', doc.querySelector('.cb-history') === null);
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

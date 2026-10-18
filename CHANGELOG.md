@@ -2,6 +2,22 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.4.0 · M4 Tauri + SQLite + 项目文件 + 导出
+
+### M4 整体验收通过（2026-10-19，tag ms/M4）
+
+- **桌面外壳**：Tauri 2（`src-tauri/`）取代浏览器沙箱，`tauri.conf.json` 版本 0.4.0、开启 `assetProtocol`（scope 限 `$APPDATA/$APPLOCALDATA/$APPCONFIG`）、`dragDropEnabled`；`scripts/tauri-cli.cjs` 兜住本机 Electron `argv[0]` 问题（否则报 `unrecognized subcommand`）。Rust 工具链装进仓库内 `.rust\`（用户目录被系统拒写，D25）。
+- **持久化**（`src/services/db/{mapping,repo,tauri}.ts` + `src-tauri/src/migrations.rs`）：9 张表 + FTS5 检索；`saveCase` 重写实体行并重建检索索引；数据目录可用 `CASEBOARD_DATA_DIR` 覆盖（便携与自动化），连接串走绝对路径，建表由 Rust `ensure_db_file` 执行（D31）。`docStore` 启动异步水合 + 400ms 防抖保存，保存失败不阻断编辑；50 份滚动版本快照。
+- **桌面素材库**（`src/services/platform.ts` + `imageStore.ts` 双实现）：原件落 `<dataDir>/assets/<id>.<ext>`、缩略图落 `assets/thumbs/<id>-<size>`，`<img>` 走 `convertFileSrc`；二进制跨 IPC 一律 base64（`invoke` 走 JSON，`Uint8Array` 会被序列化成按数字下标的对象，D26）。网页端仍用 IndexedDB，同一套接口。
+- **`.caseboard` 单文件**（`src/serializers/caseboard.ts`）：zip 容器 = `manifest.json` + `case.json`（无损） + `case.cbd`（DSL 文本） + `assets/<id>.<ext>` + `thumbnail.png`；`readCaseboard` 对损坏包、缺 manifest、format 不符、缺 case.json 给中文错误；跨目录拷机打开已有自检证据。
+- **整板导出**（`src/serializers/{png,svg,pdfExport}.ts`）：与 SVG 共用一套模型驱动排版（不截屏，只有一份排版真相，D28）——PNG 2× 高清、SVG 矢量（贝塞尔线、组、三线型图例、dasharray）、多页 PDF（A4 横向切片 + 末页检索索引页，`useObjectStreams:false` 保证外部工具可读，D32）。
+- **案件图片包**：`images/` + `manifest.csv`（编号 / 类型 / 来源 / 拍摄时间 / 关联实体 / OCR 文本 + 表头），可直接作为移交清单。
+- **脱敏导出**（`src/lib/redact.ts`）：把标注里的矩形按归一化坐标换算成像素区域，分列抽样填平 + 噪声扰动，`applyRedactions` 返回 `{regions, pixels}`；自检在解码后复核区域已抹平（1024 像素中 1021 点与原始不同）。
+- **历史面板**（`HistoryDialog.tsx`）：版本快照 tab（恢复走 `replaceDocument`，可 Ctrl+Z）+ 回收站 tab（恢复按原 id，端点缺失拒绝悬空关系；清空需确认）；删除统一走 `docStore.removeWithTrash`（D33）。
+- **桌面自检通道**（`--selftest`，D29）：隐藏窗口跑 14 / 15 项检查（应用信息、素材落盘、DB 保存重开、FTS、快照、回收站、项目包打包与跨目录打开、PNG/SVG/PDF、图片包、脱敏、零外呼），报告写 `<dataDir>/selftest.json` 后自退出；`scripts/run-selftest.cjs` 连跑两轮验证跨进程持久化（7.7s / 8.7s 出报告）。
+- **工具链结论**（§5 + AGENTS.md）：Rust 必须装进工作区并每次显式设 `CARGO_HOME`/`RUSTUP_HOME`；`link.exe` 与 esbuild 同源需把 `TMP/TEMP` 指到工作区；`Start-Process`+`Wait-Process` 在本机会挂死，改用 `node` 的 `spawn` + 文件描述符 stdio；自检需 `WEBVIEW2_USER_DATA_FOLDER`（目录不可复用时换新目录）。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **337 条全绿**（新增 31 条：脱敏 8 / .caseboard 8 / 整板 SVG 8 / 回收站 7）、`pnpm ui-smoke` **84 条全绿**（新增 10 条历史与回收站面板）、`pnpm bench` 1000 节点 75.7ms、`pnpm build` 469 modules、`caseboard.exe --selftest` 两轮 PASS、NSIS 安装包 3.35 MiB。
+
 ## [未发布] v0.3.0 · M3 DSL + 双向同步
 
 ### M3-4 分屏代码视图（2026-10-19）

@@ -1261,9 +1261,192 @@ for (let i = 0; i < opUndos; i += 1) useDocStore.getState().redo();
 check('连续撤销 50 次再重做后完全一致', JSON.stringify(useDocStore.getState().doc) === opSnap, opUndos);
 codeMod.closeCodeView();
 
-console.log('');
-if (failures > 0) {
-  console.log('结果：' + failures + ' 项失败');
-  process.exit(1);
+// ------ M4：脱敏像素层 / .caseboard 容器 / 整板 SVG / 回收站恢复 ------
+void main();
+
+async function main() {
+  const { restoreNode } = require(path.join(out, 'commands', 'nodeCommands.js'));
+  const { restoreEdge } = require(path.join(out, 'commands', 'edgeCommands.js'));
+  const { produce } = require('immer');
+  const {
+    applyRedactions,
+    isRegionFlattened,
+    mosaicRegion,
+    redactRegionsFromAnnotations,
+    regionToPixels,
+  } = require(path.join(out, 'lib', 'redact.js'));
+  const { boardToSvg, boardLayout } = require(path.join(out, 'serializers', 'svg.js'));
+  const {
+    CASEBOARD_FORMAT,
+    CASEBOARD_VERSION,
+    CaseboardError,
+    buildCaseboard,
+    readCaseboard,
+  } = require(path.join(out, 'serializers', 'caseboard.js'));
+
+  /** 确定性噪声图（避免 Math.random 让断言随机失败） */
+  function makeNoiseImage(size) {
+    const data = new Uint8ClampedArray(size * size * 4);
+    let seed = 20261019;
+    for (let i = 0; i < data.length; i += 4) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      data[i] = seed & 0xff;
+      data[i + 1] = (seed >> 8) & 0xff;
+      data[i + 2] = (seed >> 16) & 0xff;
+      data[i + 3] = 255;
+    }
+    return { width: size, height: size, data };
+  }
+
+  console.log('[25] 脱敏马赛克（验收 6 的纯像素层，M4）');
+  const redactRegion = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 };
+  const noise = makeNoiseImage(64);
+  const pixelRect = regionToPixels(noise, redactRegion);
+  check(
+    '归一化区域换算成像素矩形',
+    pixelRect.left === 16 && pixelRect.top === 16 && pixelRect.right === 48 && pixelRect.bottom === 48,
+    pixelRect,
+  );
+  check('未脱敏前区域不是均色', isRegionFlattened(noise, redactRegion) === false);
+  const outsideBefore = noise.data.slice();
+  const touched = mosaicRegion(noise, redactRegion);
+  check('马赛克改写的像素数等于区域面积', touched === pixelRect.width * pixelRect.height, touched);
+  check('脱敏后同一格完全均色（不可逆）', isRegionFlattened(noise, redactRegion) === true);
+  let outsideChanged = 0;
+  for (let y = 0; y < noise.height; y += 1) {
+    for (let x = 0; x < noise.width; x += 1) {
+      if (x >= pixelRect.left && x < pixelRect.right && y >= pixelRect.top && y < pixelRect.bottom) continue;
+      const index = (y * noise.width + x) * 4;
+      if (noise.data[index] !== outsideBefore[index] || noise.data[index + 1] !== outsideBefore[index + 1] || noise.data[index + 2] !== outsideBefore[index + 2]) {
+        outsideChanged += 1;
+      }
+    }
+  }
+  check('区域外像素未被动过', outsideChanged === 0, outsideChanged);
+  const edgeRect = regionToPixels(noise, { x: 0.9, y: 0.9, w: 0.5, h: 0.5 });
+  check('越界区域被夹到图像内', edgeRect.right === 64 && edgeRect.bottom === 64 && edgeRect.width === 6 && edgeRect.height === 6, edgeRect);
+  const batch = applyRedactions(makeNoiseImage(64), [
+    { x: 0, y: 0, w: 0.25, h: 0.25 },
+    { x: 0.5, y: 0.5, w: 0.25, h: 0.25 },
+  ]);
+  check('批量脱敏统计区域数与像素数', batch.regions === 2 && batch.pixels === 512, batch);
+  const demoAnnotations = createDemoDoc(true).assets[0].annotations;
+  const redactRegions = redactRegionsFromAnnotations(demoAnnotations);
+  check(
+    '只有显式勾选脱敏的矩形进入区域列表',
+    redactRegions.length === 1 && redactRegions[0].x === 0.34 && redactRegions[0].w === 0.22,
+    redactRegions,
+  );
+
+  console.log('[26] .caseboard 单文件容器（验收 2）');
+  const cbDoc = createDemoDoc(true);
+  const fakeAsset = new Uint8Array(2048);
+  for (let i = 0; i < fakeAsset.length; i += 1) fakeAsset[i] = (i * 37) & 0xff;
+  const pkg = await buildCaseboard(cbDoc, {
+    savedAt: '2026-10-19T10:00:00.000Z',
+    app: '0.4.0',
+    readAsset: () => fakeAsset,
+  });
+  check('容器是 zip 单文件', pkg.length > 1024 && pkg[0] === 0x50 && pkg[1] === 0x4b, pkg.length);
+  const contents = readCaseboard(pkg);
+  check(
+    'manifest 格式与版本正确',
+    contents.manifest.format === CASEBOARD_FORMAT && contents.manifest.version === CASEBOARD_VERSION && contents.manifest.app === '0.4.0',
+    { format: contents.manifest.format, version: contents.manifest.version },
+  );
+  check(
+    '案件数据无损还原',
+    contents.doc.meta.title === cbDoc.meta.title && contents.doc.nodes.length === cbDoc.nodes.length && contents.doc.edges.length === cbDoc.edges.length && contents.doc.groups.length === cbDoc.groups.length,
+    [contents.doc.nodes.length, contents.doc.edges.length],
+  );
+  const packedAsset = contents.assetFiles.get('a-demo-photo');
+  check(
+    '素材原件随包携带',
+    contents.manifest.withAssets === true && packedAsset !== undefined && packedAsset.length === fakeAsset.length && packedAsset[100] === fakeAsset[100],
+    packedAsset ? packedAsset.length : null,
+  );
+  check(
+    'DSL 文本一并写入',
+    contents.dsl.length > 200 && contents.dsl.includes('张建国') && contents.manifest.files.includes('case.cbd'),
+    contents.dsl.length,
+  );
+  check(
+    '清单计数与文档一致',
+    contents.manifest.counts.nodes === cbDoc.nodes.length &&
+      contents.manifest.counts.edges === cbDoc.edges.length &&
+      contents.manifest.counts.assets === cbDoc.assets.length &&
+      contents.manifest.counts.views === cbDoc.views.length,
+    contents.manifest.counts,
+  );
+  check('读取无兼容性告警', contents.warnings.length === 0, contents.warnings);
+  let brokenMessage = '';
+  try {
+    readCaseboard(new Uint8Array([1, 2, 3, 4, 5]));
+  } catch (error) {
+    brokenMessage = error instanceof CaseboardError ? error.message : '类型不对：' + String(error);
+  }
+  check('损坏文件给出中文错误', brokenMessage.startsWith('无法解压'), brokenMessage);
+
+  console.log('[27] 整板 SVG 导出（验收 4）');
+  const svgDoc = createDemoDoc();
+  const svgOut = boardToSvg(svgDoc);
+  const svgLayout = boardLayout(svgDoc);
+  check(
+    '尺寸 = 包围盒 + 外边距',
+    svgOut.width === Math.round(svgLayout.width) && svgOut.height === Math.round(svgLayout.height) && Math.abs(svgOut.width - (svgOut.bounds.w + 128)) <= 1,
+    { width: svgOut.width, height: svgOut.height, bounds: svgOut.bounds },
+  );
+  check('含 svg 根元素与 viewBox', svgOut.svg.startsWith('<?xml') && svgOut.svg.includes('<svg xmlns="http://www.w3.org/2000/svg"') && svgOut.svg.includes('viewBox="0 0 ' + svgLayout.width + ' ' + svgLayout.height + '"'));
+  check(
+    '六个节点标题都在图上',
+    ['张建国', '李梅', '恒信财务', '夜色KTV', '首次接触', '银行流水'].every((title) => svgOut.svg.includes(title)),
+  );
+  const bezierCount = (svgOut.svg.match(/<path d="M /g) || []).length;
+  check('关系线是贝塞尔 path ≥ 6 条', bezierCount >= 6, bezierCount);
+  check('分组标题在图上', svgOut.svg.includes('诈骗团伙'));
+  check(
+    '三种线型图例齐全',
+    ['已证实', '推测', '待核实'].every((label) => svgOut.svg.includes(label)) &&
+      svgOut.svg.includes('stroke-dasharray="9 6"') &&
+      svgOut.svg.includes('stroke-dasharray="2 5"'),
+  );
+  const escapedDoc = produce(svgDoc, (draft) => {
+    const target = draft.nodes.find((node) => node.id === 'zhang');
+    if (target) target.title = '张<建>国&"x"';
+  });
+  const escapedSvg = boardToSvg(escapedDoc).svg;
+  check(
+    '标题做 XML 转义',
+    escapedSvg.includes('张&lt;建&gt;国&amp;&quot;x&quot;') && !escapedSvg.includes('张<建>国&"x"'),
+  );
+  const emptyDoc = Object.assign({}, svgDoc, { nodes: [], edges: [], groups: [], imageNodes: [] });
+  const emptySvg = boardToSvg(emptyDoc);
+  check('空案件不崩且仍保留图例', emptySvg.svg.includes('<svg') && emptySvg.svg.includes('已证实') && emptySvg.width > 0, [emptySvg.width, emptySvg.height]);
+
+  console.log('[28] 回收站恢复命令（M4）');
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const restorableNode = JSON.parse(JSON.stringify(doc().nodes.find((node) => node.id === 'zhang')));
+  const restorableEdges = JSON.parse(JSON.stringify(doc().edges.filter((edge) => edge.source === 'zhang' || edge.target === 'zhang')));
+  check('准备：zhang 关联 4 条关系', restorableEdges.length === 4, restorableEdges.map((edge) => edge.id));
+  state().dispatch(deleteNode('zhang'));
+  check('删除节点连带删除 4 条关系', doc().nodes.length === 5 && doc().edges.length === 2, [doc().nodes.length, doc().edges.length]);
+  state().dispatch(restoreNode(restorableNode));
+  check('恢复节点按原 id 放回', doc().nodes.length === 6 && doc().nodes.some((node) => node.id === 'zhang' && node.title === '张建国'));
+  check('恢复节点不影响其他数据', doc().edges.length === 2 && doc().nodes.find((node) => node.id === 'li').title === '李梅');
+  state().dispatch(restoreNode(restorableNode));
+  check('重复恢复节点不产生副本', doc().nodes.length === 6);
+  for (const edge of restorableEdges) state().dispatch(restoreEdge(edge));
+  check('恢复关系回到原 id', doc().edges.length === 6 && restorableEdges.every((edge) => doc().edges.some((item) => item.id === edge.id)), doc().edges.length);
+  state().dispatch(deleteNode('li'));
+  const danglingEdge = restorableEdges.find((edge) => edge.source === 'li' || edge.target === 'li');
+  state().dispatch(restoreEdge(danglingEdge));
+  check('端点缺失时拒绝悬空关系', doc().edges.some((edge) => edge.id === danglingEdge.id) === false, danglingEdge.id);
+  state().dispatch(replaceDocument(createDemoDoc()));
+
+  console.log('');
+  if (failures > 0) {
+    console.log('结果：' + failures + ' 项失败');
+    process.exit(1);
+  }
+  console.log('结果：全部通过');
 }
-console.log('结果：全部通过');

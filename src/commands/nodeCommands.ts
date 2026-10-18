@@ -106,6 +106,22 @@ export function deleteComment(nodeId: string, commentId: string): Command {
   };
 }
 
+/**
+ * 从回收站恢复节点：按**原 id** 放回，否则引用它的边、附件与标注锚点全部断裂。
+ * 已存在同 id 节点时不做任何改动（重复恢复安全）。
+ */
+export function restoreNode(node: CaseNode): Command {
+  const copy = JSON.parse(JSON.stringify(node)) as CaseNode;
+  return {
+    label: `恢复节点：${copy.title}`,
+    apply(draft) {
+      if (draft.nodes.some((n) => n.id === copy.id)) return;
+      draft.nodes.push(copy);
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
 /** 删除节点，同时清理挂在它身上的边与组成员引用。 */
 export function deleteNode(id: string): Command {
   return {

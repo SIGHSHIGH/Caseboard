@@ -33,7 +33,7 @@
 | M1 | 画布 MVP | 1–2 周 | React Flow 画布 + Command 体系 + JSON 持久化 | `pnpm build` 零错误；刷新不丢；撤销/重做可用；三种线型 | ✅ 2026-10-18 |
 | M2 | 领域模型 + 组 + 图片工作台 | 2–3 周 | 8 类节点模板、状态流、组（嵌套/折叠）、图片四路导入、自由图片节点、标注层 | 500 张图导入不崩；哈希去重命中；图片可旋转/层级/吸附 | ✅ 2026-10-19 |
 | M3 | DSL + 双向同步 | 2–3 周 | Lezer grammar、CodeMirror 6、serialize/parse/diff、同步状态机 | 序列化幂等；1000 节点解析+渲染 < 300ms；解析失败不清空 Model | ✅ 2026-10-19 |
-| M4 | Tauri + SQLite + 项目文件 + 导出 | 3–4 周 | Tauri 2 外壳、SQLite、`.caseboard` 单文件、图片/整板导出、脱敏导出 | `.caseboard` 可拷机打开；离线可用；PDF 报告可交付 | ⬜ |
+| M4 | Tauri + SQLite + 项目文件 + 导出 | 3–4 周 | Tauri 2 外壳、SQLite、`.caseboard` 单文件、图片/整板导出、脱敏导出 | `.caseboard` 可拷机打开；离线可用；PDF 报告可交付 | ✅ 2026-10-19 |
 | M5 | 分析视图 | 2–3 周 | 过滤、聚焦、路径/中心度、自动布局、时间线回放、演示模式 | 路径高亮可复现；时间游标可播放；一键整理保留锁定节点 | ⬜ |
 | M6 | AI 文本能力 | 2–3 周 | 抽取建图（P4）、自然语言编辑（P6）、矛盾检测/证据链（P5）、报告（P7）、本地模型 | 采纳率 ≥ 70%；AI 永不直接改 Model，只进待确认队列 | ⬜ |
 | M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ⬜ |
@@ -369,6 +369,45 @@
 5. 案件图片包 zip 解压后 `manifest.csv` 字段齐全、路径正确。
 6. 脱敏导出后马赛克区域不可逆（像素级检查）。
 
+**M4 拆步（实际执行）**
+
+| 步骤 | 内容 | 状态 |
+|---|---|---|
+| M4-1 | Tauri 2 工程骨架：`src-tauri/`（`Cargo.toml`、`tauri.conf.json`、`migrations.rs`、capabilities、整套图标）、`scripts/tauri-cli.cjs` 规避 Electron `argv[0]`、Rust 工具链装进仓库内 `.rust\`（D25） | ✅ 2026-10-19 |
+| M4-2 | 持久化：`V1_SQL` 建 9 表 + FTS5、`ensure_db_file`（D31）、`src/services/db/{mapping,repo,tauri}.ts`、`storage.ts` 双后端、`docStore` 启动水合 + 400ms 防抖保存 + 50 份滚动快照 | ✅ |
+| M4-3 | 桌面素材库：`platform.ts`（二进制 base64 过 IPC，D26）、`imageStore.ts` 双实现（网页 IndexedDB / 桌面 `assets/` + `thumbs/`）、`assetProtocol` + `convertFileSrc` | ✅ |
+| M4-4 | 项目文件与导出：`.caseboard`（`manifest.json` + `case.json` + `case.cbd` + `assets/` + 缩略图）、模型驱动的 PNG/SVG/多页 PDF（D28）、案件图片包、脱敏马赛克、`ExportDialog` 统一入口 | ✅ |
+| M4-5 | 自动保存 + 版本快照 + 回收站 + 历史面板（`HistoryDialog`，删除统一走 `removeWithTrash`，D33） | ✅ |
+| M4-6 | 桌面自检通道 `--selftest`：隐藏窗口跑 14 / 15 项检查，Rust 写 `selftest.json` 后自行退出（D29）；`scripts/run-selftest.cjs` 连续两轮验证跨进程持久化 | ✅ |
+| M4-7 | 构建打包与文档：NSIS 安装包、§5 环境与写权限实测、决策 D25–D33、CHANGELOG、tag `ms/M4` | ✅ |
+
+**M4 验收记录（2026-10-19，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `pnpm typecheck` → 0 error | ✅ |
+| 逻辑层 | `pnpm smoke` **337 条全通过**（M4 新增 31 条：`[25]` 脱敏 8、`[26]` .caseboard 8、`[27]` 整板 SVG 8、`[28]` 回收站恢复 7） | ✅ |
+| 打包层 | `pnpm build` 469 modules（主包 440.06 kB / 代码视图 345.79 kB / pdf 483.44 kB / selftest 13.11 kB）；`pnpm ui-smoke` **84 条全通过**（新增 10 条「历史与回收站面板」）；`pnpm bench` 1000 节点 **75.7 ms < 300 ms** | ✅ |
+| 验收 1 桌面产物 | `node scripts/tauri-cli.cjs build --bundles nsis` → `src-tauri/target/release/caseboard.exe`（`Finished release profile` 1m52s / 2m10s 增量）与 `bundle/nsis/CaseBoard_0.4.0_x64-setup.exe`（3.35 MiB）；`package.json` / `Cargo.toml` / `tauri.conf.json` 三处版本一致 0.4.0 | ✅ |
+| 验收 2 数据完整 | 自检「DB 保存并重开」6 节点 / 6 关系 / 2 图片节点；第 2 轮「重启后数据完整（跨进程）」后端 sqlite · 原件 18111 字节；`.caseboard` 23 KB（DSL 2409 字符）→ 拷到 `selftest-copy2/y.caseboard` → 打开 6 节点 | ✅ |
+| 验收 3 断网可用 | 自检报告 `externalRequests: []`：14 / 15 项检查全程零非本机请求；应用无任何云端依赖 | ✅ |
+| 验收 4 整板导出 | PNG 1436×992 · 163 KB（取样像素 251,250,247 = 卡片底色）；SVG 106 KB · 1436×966（贝塞尔线、组块、三线型图例 `9 6`/`2 5`）；多页 PDF 2 页 · 88 KB（`PDFDocument.load` 回读页数、标题、末页 842×595、内容流） | ✅ |
+| 验收 5 图片包 | zip 内 `images/` + `manifest.csv`：1 张原件 / 2 行清单 / 18 KB；字段含编号·类型·来源·拍摄时间·关联实体·OCR 文本 | ✅ |
+| 验收 6 脱敏不可逆 | 1 区域 / 1024 像素，解码复核已抹平（`isRegionFlattened` 为真），与原始像素差异 1021 点（1024 点中仅 1 点偶然相同）；区域外像素差异 0 | ✅ |
+| 版本快照 | 第 1 轮 1 份、第 2 轮 2 份，最新 5 KB；`snapshots(nodes, edges)` 补列后不再报 `(code: 1299) NOT NULL constraint failed` | ✅ |
+| 回收站 | 删除 2 条 → 取回「转账 50 万」→ 清空（330 ms）；恢复按原 id，端点缺失时拒绝悬空关系 | ✅ |
+| 门禁口径 | 桌面能力全部由 `caseboard.exe --selftest` 机器验证（D29）；真实拖拽手感、`tauri dev` 热重载、安装包在干净 Win10/11 安装属**人工验收项**（见下表） | ✅ |
+
+**M4 遗留与延期（如实记录，不假装完成）**
+
+| 项 | 现状 | 去处 |
+|---|---|---|
+| Tauri 应用菜单 / 托盘 | 未实现（无菜单、无 `TrayIcon`） | M8 打磨（与自动更新、安装器一起） |
+| 原图导出 / 区域裁剪 / 复制到剪贴板 / 批量导出 | 未实现；`ExportDialog` 现有 png / svg / pdf / zip / caseboard / json / open + 脱敏 + 标注图 | M5 分析视图后补 |
+| 启动密码 / Windows Hello 接入位 | 未实现 | M8（与 SQLCipher 一起） |
+| Rust `image` crate 做缩略图/哈希/EXIF | 按 D27 改由前端 Worker 承担，Rust 只做 IO | 已作为偏离记录 |
+| 人工验收 | 真实拖拽手感、`pnpm tauri dev` 热重载、NSIS 安装包在干净机器安装运行 | 需用户在真机执行 |
+
 ---
 
 ### M5 · 分析视图（2–3 周）
@@ -479,7 +518,7 @@
 | npm | **不在 PATH**，`C:\Program Files\nodejs\npm.cmd` 不存在 | 规格里的 `npm install` 需改为 pnpm（D1） |
 | pnpm | `pnpm` 命令在沙箱内 `spawn EPERM`（runner 走管道 stdio） | 改用直连：`node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs"`（实测 10.34.5 可用） |
 | npm registry | `https://registry.npmjs.org/-/ping` → 200 | 依赖可安装 |
-| Rust / Cargo | **未安装**（`rustc`/`cargo` 均不存在） | **M4 前置阻塞**：先装 rustup + MSVC Build Tools |
+| Rust / Cargo | **`rustc 1.99.1` / `cargo 1.99.1`**（2026-10-19 装入工作区 `.rust\`，见下方「Rust 工具链实测」） | M4 起可用；每次调用必须显式设 `CARGO_HOME`/`RUSTUP_HOME` |
 | git | `2.56.0.windows.2` | 可用，里程碑打 tag |
 | 工作目录 | `F:\DSH PROJECT\masaike board` | 项目根 |
 
@@ -501,6 +540,59 @@
   node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs" build
   ```
   `.tmp-esbuild/` 已在 `.gitignore` 中。
+
+**Rust 工具链实测（2026-10-19，M4 期间解锁）**
+
+| 项 | 实测结果 | 影响 |
+|---|---|---|
+| MSVC | `F:\VS\VS2022\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\link.exe` 存在 | 编译器链已具备，只缺 rustup |
+| Windows SDK | `F:\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel32.Lib`；注册表 `HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots` → `F:\Windows Kits\10\` | 链接所需 lib 齐全 |
+| WebView2 | `C:\Program Files (x86)\Microsoft\EdgeWebView\Application` | Tauri 窗口可用 |
+| rustup 下载 | `static.rust-lang.org` / `win.rustup.rs` / `index.crates.io` / `static.crates.io` 均 200；`crates.io/api/v1` 403（不影响 cargo） | 依赖可拉取 |
+| 安装位置 | **必须装进工作区**：`%USERPROFILE%\.cargo` 被系统拒绝写（`error: could not create bin directory: 'C:\Users\<user>\.cargo\bin': 拒绝访问。 (os error 5)`），即 danger-full-access 也不放行 | `CARGO_HOME=<ws>\.rust\cargo`、`RUSTUP_HOME=<ws>\.rust\rustup`，`.rust/` 进 `.gitignore` |
+| 版本 | `rustc 1.99.1 (58cf8f9c3 2026-10-13)` / `cargo 1.99.1`，`stable-x86_64-pc-windows-msvc` minimal profile | — |
+| link.exe 临时目录 | 与 esbuild 同源：`LINK : fatal error LNK1104: 无法打开文件"C:\Users\<user>\AppData\Local\Temp\lnk{...}.tmp"` | `$env:TMP/$env:TEMP` 同样指到 `.tmp-esbuild` |
+| cargo/rustc 调用 | 不设 `RUSTUP_HOME` 会报 `could not create home directory: 'C:\Users\<user>\.rustup': 拒绝访问 (os error 5)` | 所有构建脚本都必须带这两个环境变量 |
+| 磁盘余量 | `Get-PSDrive` 在沙箱里全返回 0，必须用 node `fs.statfsSync`：F: 818 GB / G: 2200 GB | target 目录（数 GB）留在 F: |
+
+```powershell
+$env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP
+$env:CARGO_HOME = "$PWD\.rust\cargo"; $env:RUSTUP_HOME = "$PWD\.rust\rustup"
+$env:PATH = "$PWD\.rust\cargo\bin;" + $env:PATH
+node scripts\tauri-cli.cjs build --bundles nsis   # 需 sandbox_permissions: danger-full-access
+```
+
+**应用进程写权限实测（2026-10-19，M4 验收期间）**
+
+| 项 | 实测结果 | 影响 |
+|---|---|---|
+| 工具进程（node / pwsh） | `danger-full-access` 下可自由写 `%APPDATA%` / `%LOCALAPPDATA%\Temp` | 构建、脚本正常 |
+| 派生的应用进程（`caseboard.exe`） | **只被放行工作区**：页面内 `write_file_base64` 写 `F:\DSH PROJECT\masaike board\.tmp-esbuild\app-write-test.txt` 成功（5 字节）；写 `%APPDATA%\app.caseboard.desktop\`、`%LOCALAPPDATA%\Temp`、`%USERPROFILE%` 全部 `拒绝访问。 (os error 5)` | 真机双击运行不受影响；自动化验收必须把数据目录指到工作区 |
+| SQLite | 数据目录不可写时连库失败：`error returned from database: (code: 14) unable to open database file` | 同上一行 |
+| WebView2 用户数据目录 | 默认位置不可写：`thread 'main' panicked at tauri-2.12.4/src/app.rs:1444: Failed to setup app: 拒绝访问。 (os error 5)` | 必须设 `WEBVIEW2_USER_DATA_FOLDER` |
+| 进程启动方式 | `Start-Process -PassThru` + `Wait-Process -Timeout` 在本环境**挂死**（命令被 kill） | 改用 `scripts/run-selftest.cjs`（`node` `spawn` + `stdio` 指向文件描述符 + 轮询报告文件） |
+
+验收用环境变量（真机不需要）：
+
+```powershell
+$env:CASEBOARD_DATA_DIR = "$PWD\.tmp-esbuild\appdata\app.caseboard.desktop"
+$env:WEBVIEW2_USER_DATA_FOLDER = "$PWD\.tmp-esbuild\webview2-$(Get-Date -Format yyyyMMddHHmmss)"
+node scripts\run-selftest.cjs   # 连跑第 1、2 轮，验证「建数据 → 关闭 → 重开数据还在」
+```
+
+`WEBVIEW2_USER_DATA_FOLDER` **每次都要换新目录**：复用旧目录会因上次残留进程占用报 `WebView2 error: WindowsError(Error { code: HRESULT(0x800700AA), message: "请求的资源在使用中。" })`。
+
+**CDP 现场探测通道**（应用跑起来后想查页面内状态时用）：设 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`，页面地址是 `http://tauri.localhost/`，可用 `http://127.0.0.1:9333/json/list` 取 target 后经 WebSocket 执行 `Runtime.evaluate`（或直接调 `window.__TAURI_INTERNALS__.invoke`）。探不过去时它比日志有效：`debug.log` 写不进盘的时候，CDP 里仍能看到 `ipc.localhost/debug_log` 的调用。
+
+**tauri CLI 的 `argv[0]` 坑**：本机 `node` 是 Electron shim（`process.argv[0]` 为 `E:\DSH\DSH Desktop\DSH Desktop.exe`），`@tauri-apps/cli` 的 `tauri.js` 会把它当子命令塞进参数，报 `error: unrecognized subcommand 'E:\...DSH Desktop.exe'`。解法是固定入口 `scripts\tauri-cli.cjs`：
+
+```js
+process.argv[0] = 'node';
+delete process.env.npm_execpath;
+require('../node_modules/@tauri-apps/cli/tauri.js');
+```
+
+另注：`@tauri-apps/cli-win32-x64-msvc` 内**没有可执行 exe**，只有 `cli.win32-x64-msvc.node` 原生插件，不要试图直接运行。应用图标由 `node scripts\tauri-cli.cjs icon src-tauri/app-icon.png` 从 512×512 PNG 生成整套 `src-tauri/icons/*`。
 
 ---
 
@@ -531,6 +623,15 @@
 | D22 | 代码 ↔ 画布的冲突策略：`mergeDslEdit(base, codeNext, current)` **只应用图形侧未改过的字段**；同字段两侧都改时保留画布值、代码改动进 `conflicts` 上报；文本侧删除画布侧改过的对象不执行（删除破坏性大，要求显式重试）；`changes` 是相对 `current` 的增量，由 `applyDslChanges` 一次落成**一条** Command | 拖拽节点与编辑代码可以同时发生（M3 验收 3），简单「后写入者覆盖整份文档」会让拖拽结果或文本结果凭空消失；保留画布值符合「用户眼前看到的不跳」，且删除类操作必须在画布上显式确认。增量而非全量替换则保证撤销栈只记真正改动的字段 | `src/dsl/diff.ts`（`diffDocs` / `mergeDslEdit` / `DSL_*_KEYS`）+ `src/commands/dslCommands.ts`（`applyDslChanges`）；M3-4 用 `conflicts` 显示「图形有更新，点击合并」状态 |
 | D23 | 代码视图用 **CodeMirror 6 + 生成的 Lezer 解析器**（`caseboardLanguage = LRLanguage.define({ parser: parser.configure({ props: [styleTags(...), foldNodeProp, indentNodeProp] }) })`）；外部写入一律走 `replacePreservingView`：只 `view.dispatch({ changes })` 写最小差异、前后保存并还原 `scrollTop`/`scrollLeft`，**不重建 `EditorState`**；图形→代码 200ms 防抖 + `isApplyingCode()` 单向闸门；代码语法错误时模型保持不变、画布只读；`CodePanel` 用 `React.lazy` 单独分包 | 重建 EditorState 会丢光标、丢滚动位置（M3 验收要求「编辑代码时图形更新不抢光标」）；只 dispatch 差异让 CodeMirror 用事务映射自动搬移选区与折叠区间，比手算坐标可靠。错误时只读而不是回滚文本，是因为用户正在输入，模型必须稳定在最后一个合法版本。CodeMirror 静态进主包会让首屏从 464 kB 涨到 892 kB，而代码视图是可选视图，按需加载更符合「画布优先」| `src/store/codeStore.ts`（`CodeSyncState` / `syncCodeText` / `noteGraphChange` / `mergeGraphChanges` / `formatCode`）+ `src/components/code/{CodeEditor,CodePanel,useCodeSyncBridge}.tsx|ts` + `src/dsl/{language,highlight,locate}.ts`；`App.tsx` 里 `const CodePanel = lazy(() => import(...))` |
 | D24 | **「1000 节点解析 + 渲染 < 300ms」的验收口径**：硬门禁取纯逻辑链 `serializeDoc + parseDsl + locateDeclarations + diffDocs`（本机实测 88.5ms，脚本 `scripts/bench-dsl.cjs`）；DOM 渲染另用 `scripts/bench-board.cjs` 做「300 节点能全部渲染、数量对得上」的回归，真实首屏渲染并入人工验收项 | 本机无法可信测量 DOM 渲染：无头 Chrome/Edge 被宿主拦截（D9），jsdom 没有布局与合成器，1000 节点在伪布局下要跑分钟级（`bench-board` 300 节点稳定耗时 8.3s 全由 ResizeObserver 伪回调与连线重算驱动），用它当门禁只会误判；把可自动化的部分卡死、把需要真实 GPU 的部分显式交给人工，比留一个假装通过的指标更诚实 | `scripts/bench-dsl.cjs`（阈值 300ms，失败 exit 1）、`scripts/bench-board.cjs`（`CB_BENCH_NODES` 可调）、`scripts/fixtures.cjs`（1000 节点文档生成）；人工项记入 M3 验收记录 |
+| D25 | Rust 工具链装在**仓库内** `.rust\`（`CARGO_HOME`/`RUSTUP_HOME` 指向它） | 用户目录 `%USERPROFILE%\.cargo` 被系统拒绝写（`could not create bin directory … os error 5`），`danger-full-access` 也不放行；装进仓库可隔离、可复现 | 所有 cargo/rustc 调用必须先设两个环境变量；`.rust/` 进 `.gitignore`；`scripts\tauri-cli.cjs` 固定 `argv[0]` 绕过 Electron-as-node |
+| D26 | 前后端二进制一律 **base64 过 IPC**（Rust 自写 `b64_encode`/`b64_decode`），不用 `Vec<u8>` / `Uint8Array` | `invoke` 走 JSON，`Uint8Array` 会被序列化成 `{"0":137,…}`，serde 读不成 `Vec<u8>`；base64 还能让读写命令接受任意绝对路径（原件路径、用户选的导出目标），不受 fs 插件 scope 限制 | Rust 命令 `save_asset_base64`/`read_asset_base64`/`read_thumb_base64`/`save_thumb_base64`/`read_file_base64`/`write_file_base64` 全是这一形状；前端入口只有 `src/services/platform.ts` 的 `bytesToBase64`/`base64ToBytes` |
+| D27 | Rust 侧**只做 IO**（读写文件、`sha2` 哈希、自检报告、退出），缩略图与 EXIF 仍在前端 Worker 做——与 D3「M4 换 image crate」的预期**不同** | 前端已有 D13 的双级缩略图 + SHA-256 流水线与三 Worker 池，再实现一份会产生两套哈希/缩略图真相，而 `.caseboard` 打包要的正是同一份字节 | 新增 Rust 能力都是通用文件命令；将来换实现只影响 `src/services/imageStore.ts` / `platform.ts` |
+| D28 | 整板 PNG / 多页 PDF 用**模型驱动的 canvas 绘制**（`src/serializers/png.ts`、`pdfExport.ts`），与 SVG 共用同一套坐标系与排版常量，不做 DOM 截屏 | 无头浏览器被宿主拦截（D9）时 DOM 截屏无法自动验收；模型驱动还能保证导出与 DPI、画布视口无关 | 三处排版常量（`PAD 64`、网格 28、标题块 22/12、图例偏移）必须同步；PDF 按 A4 横向页高切片而非矢量重建，保证「所见即所得」只有一份真相 |
+| D29 | 桌面端验收走 **`--selftest` 自检通道**：exe 带该参数启动时隐藏主窗口，前端跑 12 项闭环检查，Rust 把结果写到 `<dataDir>/selftest.json` 后 `app.exit(0)` | 本机无法自动化真实浏览器（D9），而 M4 六条验收里有 4 条只发生在桌面端（SQLite、项目包、图片包、脱敏像素） | `LaunchFlags{selftest}` 由 Rust `.manage()` 注入 `AppInfo.selftest`；`src/services/selftest.ts` 懒加载独立成块（9.75 kB），正常启动不付体积 |
+| D30 | 素材原件存**绝对路径**（`Asset.path = <app_data_dir>/assets/<id>.<ext>`），`<img src>` 直接 `convertFileSrc(path)` 走 assetProtocol | 每次显示都读字节过 IPC 会拖死主线程；assetProtocol 只读本应用目录（`tauri.conf.json` 的 scope 已限定 `$APPDATA`/`$APPLOCALDATA`/`$APPCONFIG`） | 缩略图仍走 `imageStore`（blob URL 缓存 + `releaseThumbUrl`）；换机后路径失效由 `.caseboard` 内嵌 assets 兜底（`readCaseboard` → 素材落盘 + `rebuildThumbs`） |
+| D31 | 数据目录可被环境变量 `CASEBOARD_DATA_DIR` 覆盖（便携模式 + 自动化验收），数据库连接串改用**绝对路径** `sqlite:<dataDir>/caseboard.db`，建表由 Rust 命令 `ensure_db_file` 直接执行 `V1_SQL`（不再用 `tauri-plugin-sql` 的 migrations） | ① DSH 沙箱把**应用进程**限制在工作区内（工具进程可写 `%APPDATA%`，见 §5），自检必须能把数据放进仓库；② 插件 `path_mapper` 用 `PathBuf::push` 拼相对路径，只有绝对路径能绕开 `app_config_dir`；③ 插件 migrations 以**连接串字符串**为键（`commands.rs` 的 `migrations.remove(&db)`），换绝对路径后永远匹配不上已注册的 `sqlite:caseboard.db`，迁移静默不跑 | `src-tauri/src/lib.rs` 的 `data_dir_of()` / `apply_schema()` / `ensure_db_file()`；`src/services/db/tauri.ts` 先 `ensure_db_file()` 再 `Database.load('sqlite:' + dbPath, { autoCreate: false })`；前端连接串**不能**加 `?mode=rwc`（会被当文件名） |
+| D32 | 多页 PDF 一律 `pdf.save({ useObjectStreams: false })` | 默认把对象压进对象流后，`/Type /Page` 不可见，第三方工具与验收脚本都读不出页结构；证据类 PDF 要能被外部工具解析，体积代价可接受。同时确认 pdf-lib 把**所有字符串**（含 ASCII）写成 UTF-16BE 十六进制串，所以「在字节里 grep 英文标题」永远失败，验收必须走 `PDFDocument.load()` 回读 | `src/serializers/pdfExport.ts` 末尾的 `save({ useObjectStreams: false })`；`src/services/selftest.ts` 的 PDF 项用 `PDFDocument.load(bytes, { updateMetadata: false })` 断言页数/标题/末页尺寸/内容流 |
+| D33 | 删除统一走 `docStore.removeWithTrash(kind, ids)`：先把实体（删节点时连同挂在它身上的关系）快照进回收站表，再 dispatch 删除命令；恢复用 `restoreNode`/`restoreEdge` **按原 id 写回**（同 id 已存在则跳过，关系两端缺失则拒绝），快照恢复走 `replaceDocument` | 撤销栈只有 200 步且只在本次会话有效，删除是最容易「撤销顶掉了才后悔」的操作，需要第二道保险；按原 id 恢复才能让恢复后的关系重新接上原端点，生成新 id 会让关系变成孤儿 | `src/store/docStore.ts` 的 `removeWithTrash` + `src/commands/{node,edge}Commands.ts` 的 `restoreNode`/`restoreEdge` + `src/components/panels/HistoryDialog.tsx`；`src/services/storage.ts` 的 `pushTrashToStorage`/`takeTrashFromStorage`/`purgeTrashInStorage` |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -550,3 +651,4 @@
 | 2026-10-19 | **M3-3 三方合并落地**（M3 第 3 步，⏳ 进行中）：`src/dsl/diff.ts` 字段级 diff + 三方合并（`diffDocs`/`mergeDslEdit`）与 `src/commands/dslCommands.ts` 的整批单次撤销命令；`pnpm smoke` 262 条全绿（新增 21 条 `[22] DSL 三方合并`）；§3 拆步表 M3-3 置 ✅ 并写入验收记录，新增 D22（冲突保留画布值、删除冲突不执行）。 |
 | 2026-10-19 | **M3-2 语法与容错解析落地**（M3 第 2 步，⏳ 进行中）：`grammar/caseboard.grammar`（Lezer）+ `scripts/build-grammar.mjs` 生成解析器，`src/dsl/parse.ts` 实现 AST → Model、六类中文诊断（含行列与修复建议）、`id:` 覆盖行与 quoted id 引用、缺 header 容错；演示文档 `parseDsl → serializeDoc` 逐字节往返一致；`pnpm smoke` 241 条全绿（新增 37 条 `[21] DSL 解析`）；§3 拆步表 M3-2 置 ✅ 并写入验收记录，新增 D21（语法层不设关键字、单 token 箭头）。 |
 | 2026-10-19 | **M3-1 序列化器落地**（M3 第 1 步，⏳ 进行中）：`src/dsl/serialize.ts` 实现 Model → DSL 文本，含 id 名称化双向表（`createNameTable` / `dslNameTable`）、`stableJson`、显式 `at/size`、按（类型序, id）稳定排序；`pnpm smoke` 204 条全绿（新增 31 条 `[20] DSL 序列化`）；§3 写入 M3 拆步表与 M3-1 验收记录，新增 D20（DSL 只表达式语法面、坐标显式、名称化保身份）。 |
+| 2026-10-19 | **M4 整体验收通过**（✅ 打 tag `ms/M4`）：Tauri 2 外壳 + SQLite/FTS5 + `.caseboard` 单文件 + 整板 PNG/SVG/PDF + 案件图片包 + 脱敏导出 + 自动保存/版本快照/回收站/历史面板落地；`caseboard.exe --selftest` 两轮 **14 + 15 项全绿**（数据跨进程完整、跨目录打开、零外呼、PDF 回读 2 页、脱敏 1024 像素可验证抹平）；§1 总表 M4 置 ✅、§3 写入 M4 拆步表与验收记录（含遗留与延期表），新增 D25–D33（Rust 装进工作区 / 二进制 base64 过 IPC / Rust 只做 IO / 模型驱动出图 / `--selftest` 通道 / 绝对路径存素材 / 数据目录可覆盖 + 建表提前 / PDF 关对象流 / 删除进回收站）；`pnpm smoke` **337 条**、`pnpm ui-smoke` 84 条、`pnpm bench` 75.7ms、`pnpm build` 469 modules。 |

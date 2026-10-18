@@ -188,12 +188,12 @@ export const imageService = {
     const assets: Asset[] = [];
     for (const item of prepared) {
       const id = newId('a');
-      await imageStore.putOriginal(id, item.file);
+      const storedPath = await imageStore.putOriginal(id, item.file);
       await imageStore.putThumb(id, THUMB_SMALL, item.small);
       await imageStore.putThumb(id, THUMB_LARGE, item.large);
       const asset: Asset = {
         id,
-        path: `assets/${id}`,
+        path: storedPath,
         kind: 'image',
         hash: item.hash,
         thumbnails: [`${id}:${THUMB_SMALL}`, `${id}:${THUMB_LARGE}`],

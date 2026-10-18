@@ -22,3 +22,5 @@ src-tauri/target/
 # 本地数据
 *.caseboard
 *.cbd.bak
+.rust/
+src-tauri/gen/

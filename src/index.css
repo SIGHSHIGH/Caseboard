@@ -1803,3 +1803,243 @@ button {
   border-color: var(--cb-accent);
   color: #fff;
 }
+
+/* ------------------------------------------------- M4：导出面板 / 启动态 / 脱敏开关 */
+
+.cb-topbar__save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 10px;
+  border-left: 1px solid var(--cb-border);
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--cb-muted);
+  white-space: nowrap;
+}
+
+.cb-topbar__save strong {
+  font-weight: 600;
+  color: var(--cb-text);
+}
+
+.cb-export {
+  width: min(680px, 94vw);
+}
+
+.cb-export__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.cb-export__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.cb-export__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.cb-export__text strong {
+  display: block;
+  font-size: 13px;
+}
+
+.cb-export__text span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+
+.cb-export__redact {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--cb-border);
+}
+
+.cb-export__redact h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.cb-export__empty {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--cb-muted);
+  line-height: 1.6;
+}
+
+.cb-export__redactlist {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.cb-export__redactlist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--cb-border);
+  border-radius: 999px;
+  font-size: 12px;
+  background: #fff;
+}
+
+.cb-export__status {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f3efe7;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+/* 启动水合遮罩：SQLite 读盘期间盖住画布，避免闪一下演示数据 */
+.cb-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cb-bg);
+}
+
+.cb-boot__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 34px;
+  border: 1px solid var(--cb-border);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 13px;
+  color: var(--cb-muted);
+}
+
+.cb-boot__card strong {
+  font-size: 15px;
+  color: var(--cb-text);
+}
+
+.cb-field--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cb-field--check input {
+  width: 14px;
+  height: 14px;
+}
+
+.cb-field--check span {
+  font-size: 12px;
+  color: var(--cb-text);
+}
+
+/* ---------- 历史与回收站（M4） ---------- */
+.cb-history {
+  width: min(760px, 94vw);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cb-history__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cb-history__tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cb-border);
+}
+
+.cb-history__tabs .cb-btn.is-active {
+  border-color: var(--cb-accent);
+  color: var(--cb-accent);
+  background: #fbf1ef;
+}
+
+.cb-history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cb-history__empty {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--cb-muted);
+  font-size: 13px;
+}
+
+.cb-history__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  background: var(--cb-panel);
+}
+
+.cb-history__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cb-history__title {
+  font-size: 13px;
+  color: var(--cb-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cb-history__time {
+  font-size: 12px;
+  color: var(--cb-muted);
+}
+
+.cb-history__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+

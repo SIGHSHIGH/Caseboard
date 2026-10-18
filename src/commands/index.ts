@@ -1,7 +1,7 @@
 export type { Command } from './types';
-export { addNode, updateNode, moveNode, deleteNode, addComment, deleteComment } from './nodeCommands';
+export { addNode, updateNode, moveNode, deleteNode, restoreNode, addComment, deleteComment } from './nodeCommands';
 export type { AddNodeInput } from './nodeCommands';
-export { addEdge, updateEdge, deleteEdge } from './edgeCommands';
+export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
 export { replaceDocument } from './docCommands';
 export { applyDslChanges } from './dslCommands';

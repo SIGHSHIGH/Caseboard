@@ -12,6 +12,7 @@ export interface AnnotationPatch {
   text?: string | null;
   color?: string;
   linkedNodeId?: string | null;
+  redact?: boolean;
 }
 
 function assetOf(draft: Draft<CaseDoc>, assetId: string): Draft<Annotation>[] | null {
@@ -37,6 +38,7 @@ export function addAnnotation(assetId: string, annotation: Annotation): Command 
         color: annotation.color,
         ...(annotation.text ? { text: annotation.text } : {}),
         ...(annotation.linkedNodeId ? { linkedNodeId: annotation.linkedNodeId } : {}),
+        ...(annotation.redact ? { redact: true } : {}),
       });
     },
   };
@@ -59,6 +61,10 @@ export function updateAnnotation(assetId: string, annotationId: string, patch: A
       if (patch.linkedNodeId !== undefined) {
         if (patch.linkedNodeId) annotation.linkedNodeId = patch.linkedNodeId;
         else delete annotation.linkedNodeId;
+      }
+      if (patch.redact !== undefined) {
+        if (patch.redact) annotation.redact = true;
+        else delete annotation.redact;
       }
     },
   };

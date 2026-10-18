@@ -396,6 +396,16 @@ export function AnnotationEditor({ assetId, onClose }: AnnotationEditorProps) {
                     />
                   </label>
                 ) : null}
+                {selected.shape !== 'anchor' ? (
+                  <label className="cb-field cb-field--check" title="导出脱敏图时把该区域打码（马赛克），原图不变">
+                    <input
+                      type="checkbox"
+                      checked={!!selected.redact}
+                      onChange={(event) => dispatch(updateAnnotation(asset.id, selected.id, { redact: event.target.checked }))}
+                    />
+                    <span>导出时打码（脱敏）</span>
+                  </label>
+                ) : null}
                 <button type="button" className="cb-btn cb-btn--danger" onClick={onDeleteSelected}>
                   删除该标注
                 </button>

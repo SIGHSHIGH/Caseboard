@@ -1,0 +1,31 @@
+[package]
+name = "caseboard"
+version = "0.4.0"
+description = "案情板 CaseBoard · 数字刑侦白板"
+authors = ["CaseBoard"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "caseboard_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# 建表用：与 tauri-plugin-sql 共用同一个 sqlx（只补 sqlite 驱动与 tokio 运行时特性）
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

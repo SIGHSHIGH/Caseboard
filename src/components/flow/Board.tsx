@@ -17,10 +17,8 @@ import {
   addImageNode,
   addNode,
   attachImageNode,
-  deleteEdge,
   deleteGroup,
   deleteImageNode,
-  deleteNode,
   moveGroup,
   moveImageNode,
   moveImageNodes,
@@ -103,6 +101,7 @@ function GuideOverlay({ guides }: { guides: AlignGuide[] }) {
 export function Board() {
   const doc = useDocStore((s) => s.doc);
   const dispatch = useDocStore((s) => s.dispatch);
+  const removeWithTrash = useDocStore((s) => s.removeWithTrash);
   const selectedNodeId = useUiStore((s) => s.selectedNodeId);
   const selectedEdgeId = useUiStore((s) => s.selectedEdgeId);
   const selectedGroupId = useUiStore((s) => s.selectedGroupId);
@@ -364,20 +363,20 @@ export function Board() {
         }
         const group = groupOfBoardNode(node);
         if (group) dispatch(deleteGroup(group.id));
-        else dispatch(deleteNode(node.id));
+        else removeWithTrash('node', [node.id]);
       }
     },
-    [dispatch],
+    [dispatch, removeWithTrash],
   );
 
   const onEdgesDelete = useCallback(
     (deleted: CaseFlowEdge[]) => {
       for (const edge of deleted) {
         if (parseBoardNodeId(edge.id).kind === 'agg') continue;
-        dispatch(deleteEdge(edge.id));
+        removeWithTrash('edge', [edge.id]);
       }
     },
-    [dispatch],
+    [dispatch, removeWithTrash],
   );
 
   const onPaneClick = useCallback(

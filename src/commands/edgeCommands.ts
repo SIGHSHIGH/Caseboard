@@ -59,6 +59,22 @@ export function updateEdge(id: string, patch: Partial<Omit<CaseEdge, 'id'>>): Co
   };
 }
 
+/** 从回收站恢复关系：按原 id 放回，两端节点缺失时不恢复（避免悬空边）。 */
+export function restoreEdge(edge: CaseEdge): Command {
+  const copy = JSON.parse(JSON.stringify(edge)) as CaseEdge;
+  return {
+    label: `恢复关系：${copy.label ?? copy.relType}`,
+    apply(draft) {
+      if (draft.edges.some((e) => e.id === copy.id)) return;
+      const hasSource = draft.nodes.some((n) => n.id === copy.source);
+      const hasTarget = draft.nodes.some((n) => n.id === copy.target);
+      if (!hasSource || !hasTarget) return;
+      draft.edges.push(copy);
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
 export function deleteEdge(id: string): Command {
   return {
     label: '删除关系',
