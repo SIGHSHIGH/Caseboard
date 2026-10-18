@@ -376,6 +376,24 @@ function check(name, condition, detail) {
   check('点击图片后右栏切换为图片属性', (doc.querySelector('.cb-panel--right')?.textContent || '').includes('图片属性'));
   check('图片属性含层级与边框设置', (doc.querySelector('.cb-panel--right')?.textContent || '').includes('层级') && doc.querySelectorAll('.cb-panel--right .cb-btn').length >= 5);
 
+  console.log('[UI] M2-5 标注层与 PDF/视频抽图');
+  check('可回到素材标签', await clickByText('.cb-tabs .cb-tab', '素材'));
+  check('PDF / 视频抽图按钮存在', [...doc.querySelectorAll('.cb-assets__actions .cb-btn')].some((b) => (b.textContent || '').includes('PDF / 视频抽图')));
+  const tile = doc.querySelector('.cb-asset');
+  if (tile) tile.click();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const rightText = () => doc.querySelector('.cb-panel--right')?.textContent || '';
+  check('点击素材后右栏切换为素材属性', rightText().includes('素材编号') && rightText().includes('SHA-256'));
+  check('素材属性显示标注入口与数量', rightText().includes('标注（2）'), rightText().slice(0, 60));
+  check('可打开标注编辑器', await clickByText('.cb-panel--right .cb-btn', '标注（'));
+  check('标注编辑器已渲染', doc.querySelector('.cb-annot') !== null);
+  check('六种图形 + 选择工具共 7 个按钮', doc.querySelectorAll('.cb-annot__toolbar .cb-btn').length === 7, doc.querySelectorAll('.cb-annot__toolbar .cb-btn').length);
+  check('标注色板 6 色', doc.querySelectorAll('.cb-annot__colors .cb-color-dot').length === 6, doc.querySelectorAll('.cb-annot__colors .cb-color-dot').length);
+  check('已存标注列表显示 2 条', doc.querySelectorAll('.cb-annot__item').length === 2, doc.querySelectorAll('.cb-annot__item').length);
+  check('标注列表显示图形名与关联', (doc.querySelector('.cb-annot__list')?.textContent || '').includes('矩形框') && (doc.querySelector('.cb-annot__list')?.textContent || '').includes('区域锚点'));
+  check('原件缺失时标注画布给出说明', (doc.querySelector('.cb-annot__missing')?.textContent || '').includes('原件不在本机'), doc.querySelector('.cb-annot__missing')?.textContent);
+  check('导出标注图按钮存在', [...doc.querySelectorAll('.cb-annot .cb-btn')].some((b) => (b.textContent || '').includes('导出标注图')));
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

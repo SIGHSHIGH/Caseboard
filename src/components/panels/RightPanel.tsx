@@ -23,6 +23,7 @@ import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { formatBytes } from '../../lib/assetMeta';
 import { imageStore, thumbUrl } from '../../services/imageStore';
+import { AnnotationEditor } from './AnnotationEditor';
 import type { Asset, CaseEdge, CaseNode, Group, ImageNode, LineStyle, NodeType, Status } from '../../types';
 
 const BORDER_LABELS: Array<{ value: NonNullable<ImageNode['borderStyle']>; label: string }> = [
@@ -604,6 +605,7 @@ function AssetForm({ asset }: { asset: Asset }) {
   const [no, setNo] = useState(asset.no ?? '');
   const [label, setLabel] = useState(asset.sourceLabel ?? '');
   const [thumb, setThumb] = useState<string | null>(null);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -692,6 +694,15 @@ function AssetForm({ asset }: { asset: Asset }) {
       </dl>
 
       <div className="cb-form__section">
+        <button type="button" className="cb-btn cb-btn--primary" onClick={() => setAnnotateOpen(true)}>
+          标注（{asset.annotations.length}）
+        </button>
+        <p className="cb-form__subtle" style={{ marginTop: 6 }}>
+          矩形框 / 箭头 / 手绘 / 文字 / 区域锚点 / 马赛克，标注随素材保存，可导出带标注的图片。
+        </p>
+      </div>
+
+      <div className="cb-form__section">
         <h3 className="cb-form__subtitle">关联对象（{related.length}）</h3>
         {related.length === 0 ? (
           <p className="cb-form__subtle">导入向导里选择「关联实体」，或在节点属性中手动挂接。</p>
@@ -725,6 +736,8 @@ function AssetForm({ asset }: { asset: Asset }) {
       </div>
 
       <p className="cb-form__meta">ID：{asset.id}</p>
+
+      {annotateOpen ? <AnnotationEditor assetId={asset.id} onClose={() => setAnnotateOpen(false)} /> : null}
     </div>
   );
 }

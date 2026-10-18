@@ -230,7 +230,22 @@ export function createDemoDoc(withImage = false): CaseDoc {
             capturedAt: '2026-09-03T20:12:00',
             camera: 'DemoCam A1',
             addedAt: now,
-            annotations: [],
+            annotations: [
+              {
+                id: 'an-demo-1',
+                shape: 'rect',
+                geom: { x: 0.34, y: 0.28, w: 0.22, h: 0.18 },
+                color: '#C0392B',
+                text: '可疑交接位置',
+              },
+              {
+                id: 'an-demo-2',
+                shape: 'anchor',
+                geom: { x: 0.62, y: 0.55, w: 0.18, h: 0.16 },
+                color: '#2E6DA4',
+                linkedNodeId: 'zhang',
+              },
+            ],
           },
         ]
       : [],

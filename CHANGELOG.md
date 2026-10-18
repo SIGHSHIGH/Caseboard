@@ -33,6 +33,19 @@
 - **素材库与详情**：左栏改三标签（对象 / 素材 / 分组），素材库分「证据素材 · N」「AI 生成 · N」并在 AI 分区空态里写明 M7 强制角标规则；右栏 `AssetForm` 可改编号与来源说明、只读展示哈希/EXIF/关联对象，删除素材同时摘掉节点引用。
 - **验收**：`pnpm smoke` 93 条（新增 22 条）、`pnpm ui-smoke` 31 条全绿。
 
+### M2-5 标注层 + PDF 抽页 / 视频抽帧（2026-10-19，tag `ms/M2`）
+
+- **标注模型**：`Annotation` 改为类型化 —— `shape` 六选一（矩形框/箭头/手绘/文字/区域锚点/马赛克）+ `geom` 归一化几何 + 可选 `color`/`text`/`linkedNodeId`；坐标统一为 **0–1 相对素材宽高**（D17），迁移时越界自动夹紧、空几何与非法图形丢弃。
+- **纯函数层**（`src/lib/annotation.ts`）：`normalizeGeom / rectFromPoints / createAnnotation / annotationBBox / hitAnnotation / mosaicCells / arrowHeadPoints / toPixelRect / toPixelPoints / describeAnnotation`，全部无 DOM、smoke 直接测。
+- **命令层**：`addAnnotation / updateAnnotation / deleteAnnotation / linkAnnotation / clearAnnotations`，标注挂在 `Asset.annotations` 上，一次操作一条命令一次撤销。
+- **绘制唯一入口**（`src/services/annotate.ts`）：编辑画布、缩略图与导出全部走 `drawAnnotations`；马赛克按区域分列抽样后 `imageSmoothingEnabled=false` 放大，箭头两翼在像素空间算，文字带深底块避免压不住亮背景。
+- **标注编辑器**（`AnnotationEditor`）：选择 + 六种图形 + 6 色；矩形/箭头/马赛克拖拽成型，手绘按点累积，文字就地输入；侧栏可改区域锚点关联实体、改文字、删除；「导出标注图」以长边 2048 重绘原图并叠标注出 PNG。
+- **PDF 抽页**：pdf.js v6（`pdfjs-dist ^6.4.299`）**动态 import 懒加载**（D19），页码范围支持 `1-3,5`（含全角分隔符、倒序纠正、越界裁剪），逐页渲染 PNG 后交给既有导入流水线（来源默认「书证翻拍」）。
+- **视频抽帧**：`<video> + <canvas>` 原生解码（D18），`planFrameTimes` 取每段中点（数量 1–24），产物同走导入流水线（来源默认「监控截图」）；编码不受支持时给中文原因。
+- **入口与样式**：素材库新增「PDF / 视频抽图」按钮与 `ExtractDialog`（双模式标签）；素材属性新增「标注（N）」按钮与标注说明；新增 `.cb-annot*` / `.cb-extract*` / `.cb-color-dot` 约 190 行样式。
+- **验收**：`pnpm smoke` 173 条（新增 42 条：标注几何 16、标注命令 11、抽页/抽帧规划 15）、`pnpm ui-smoke` 51 条（新增 12 条）全绿；构建 243 modules，主包 464.72 kB（gzip 150.81），pdf 解析器拆成独立懒加载块。
+- **工具链结论**：esbuild 处理大输出时会在系统临时目录留不下文件（`remove ...: Access is denied`），构建前把 `TMP/TEMP` 指到工作区 `.tmp-esbuild` 即可（MILESTONES §5）。
+
 ### M2-4 自由图片节点（2026-10-19）
 
 - **自由图片节点**：`CaseDoc` 新增 `imageNodes`（`ImageNode`：`assetId/x/y/w/h/rotation/zIndex/borderStyle/linkedNodeId/pinned`），画布自定义节点 `freeImage` 与卡片共用 zIndex 空间；迁移层丢弃素材不存在的图片节点、旧文档自动补空数组。

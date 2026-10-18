@@ -11,6 +11,7 @@ src-tauri/target/
 # 日志与临时文件
 *.log
 .probe-*.txt
+.tmp-esbuild/
 .DS  Store
 .DS_Store
 

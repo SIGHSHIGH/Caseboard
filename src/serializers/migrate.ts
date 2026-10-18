@@ -1,5 +1,6 @@
 import type {
   Annotation,
+  AnnotationGeom,
   Asset,
   CaseDoc,
   CaseEdge,
@@ -15,6 +16,7 @@ import type {
   TimeRange,
   View,
 } from '../types';
+import { ANNOTATION_SHAPES, DEFAULT_ANNOTATION_COLOR, normalizeGeom } from '../lib/annotation';
 import { NODE_TYPE_ORDER } from '../lib/nodeTemplates';
 
 /**
@@ -176,12 +178,15 @@ function normalizeEdge(raw: unknown, index: number): CaseEdge | null {
 function annotationOf(raw: unknown, index: number): Annotation | null {
   if (!isRecord(raw)) return null;
   const shape = str(raw.shape);
-  const allowed: Annotation['shape'][] = ['rect', 'arrow', 'pen', 'text', 'anchor', 'mosaic'];
-  if (!allowed.includes(shape as Annotation['shape'])) return null;
+  if (!ANNOTATION_SHAPES.includes(shape as Annotation['shape'])) return null;
+  const geom = normalizeGeom(isRecord(raw.geom) ? (raw.geom as Partial<AnnotationGeom>) : null);
+  /** 空几何（宽高都为 0）的标注没有意义，直接丢弃，避免画布上出现不可见幽灵对象 */
+  if (geom.w <= 0 && geom.h <= 0 && (geom.points?.length ?? 0) === 0) return null;
   const annotation: Annotation = {
-    id: str(raw.id, 'a-' + index),
+    id: str(raw.id, 'an-' + index),
     shape: shape as Annotation['shape'],
-    geom: isRecord(raw.geom) ? raw.geom : {},
+    geom,
+    color: str(raw.color) || DEFAULT_ANNOTATION_COLOR,
   };
   const text = str(raw.text);
   if (text.length > 0) annotation.text = text;

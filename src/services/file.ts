@@ -9,6 +9,8 @@ export interface PickedFile {
 
 export interface FileService {
   downloadText(fileName: string, text: string, mime?: string): void;
+  /** 下载二进制（导出带标注的图片、抽页面等） */
+  downloadBlob(fileName: string, blob: Blob): void;
   pickTextFile(accept: string): Promise<PickedFile | null>;
   /** 批量选择文件（图片导入向导的入口之一） */
   pickFiles(accept: string, multiple?: boolean): Promise<File[]>;
@@ -17,6 +19,15 @@ export interface FileService {
 export const fileService: FileService = {
   downloadText(fileName, text, mime = 'application/json;charset=utf-8') {
     const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  },
+
+  downloadBlob(fileName, blob) {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;

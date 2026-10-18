@@ -35,3 +35,11 @@ export {
   applyImageLayout,
 } from './imageNodeCommands';
 export type { AddImageNodeInput, ImageNodePatch } from './imageNodeCommands';
+export {
+  addAnnotation,
+  updateAnnotation,
+  deleteAnnotation,
+  linkAnnotation,
+  clearAnnotations,
+} from './annotationCommands';
+export type { AnnotationPatch } from './annotationCommands';

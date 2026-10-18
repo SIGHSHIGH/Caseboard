@@ -31,7 +31,7 @@
 | # | 主题 | 预估工时 | 关键产出 | 验收门禁（摘要） | 状态 |
 |---|---|---|---|---|---|
 | M1 | 画布 MVP | 1–2 周 | React Flow 画布 + Command 体系 + JSON 持久化 | `pnpm build` 零错误；刷新不丢；撤销/重做可用；三种线型 | ✅ 2026-10-18 |
-| M2 | 领域模型 + 组 + 图片工作台 | 2–3 周 | 8 类节点模板、状态流、组（嵌套/折叠）、图片四路导入、自由图片节点、标注层 | 500 张图导入不崩；哈希去重命中；图片可旋转/层级/吸附 | ⬜ |
+| M2 | 领域模型 + 组 + 图片工作台 | 2–3 周 | 8 类节点模板、状态流、组（嵌套/折叠）、图片四路导入、自由图片节点、标注层 | 500 张图导入不崩；哈希去重命中；图片可旋转/层级/吸附 | ✅ 2026-10-19 |
 | M3 | DSL + 双向同步 | 2–3 周 | Lezer grammar、CodeMirror 6、serialize/parse/diff、同步状态机 | 序列化幂等；1000 节点解析+渲染 < 300ms；解析失败不清空 Model | ⬜ |
 | M4 | Tauri + SQLite + 项目文件 + 导出 | 3–4 周 | Tauri 2 外壳、SQLite、`.caseboard` 单文件、图片/整板导出、脱敏导出 | `.caseboard` 可拷机打开；离线可用；PDF 报告可交付 | ⬜ |
 | M5 | 分析视图 | 2–3 周 | 过滤、聚焦、路径/中心度、自动布局、时间线回放、演示模式 | 路径高亮可复现；时间游标可播放；一键整理保留锁定节点 | ⬜ |
@@ -141,7 +141,7 @@
 | M2-2 | 组：矩形组与自由圈选、标题栏拖拽、嵌套 `parentId`、折叠为超级节点、组级连线聚合 | ✅ 2026-10-19 |
 | M2-3 | 图片四路导入（拖入/粘贴/批选/目录监视）+ 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库分区 | ✅ 2026-10-19 |
 | M2-4 | 自由图片节点：移动/缩放/旋转吸附/层级/对齐参考线/网格/多选/吸附为头像 | ✅ 2026-10-19 |
-| M2-5 | 标注层六图形（rect/arrow/pen/text/anchor/mosaic）+ PDF 抽页 / 视频抽帧链路 | ⬜ |
+| M2-5 | 标注层六图形（rect/arrow/pen/text/anchor/mosaic）+ PDF 抽页 / 视频抽帧链路 | ✅ 2026-10-19 |
 
 **M2-1 验收记录（2026-10-18，✅ 通过）**
 
@@ -204,6 +204,23 @@
 | 素材库拖入 | 缩略图 `draggable` + `ASSET_DND_TYPE` 载荷，画布 onDrop 按落点居中生成图片节点并选中 | ✅ |
 | 边框样式 | `photo`（白边）/ `plain`（无边框）/ `polaroid`（拍立得留白）三种，右栏切换即写入 model | ✅ |
 | 旧存档兼容 | `CaseDoc.imageNodes` 为新增字段：缺该字段的旧文档自动补空数组；素材不存在的图片节点与悬空边同原则丢弃；`deleteAsset` 级联删掉引用它的图片 | ✅ |
+
+**M2-5 验收记录（2026-10-19，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `pnpm typecheck` → 0 error（过程中修掉 pdfjs v6 的 `PDFDocumentProxy.destroy()` 已不存在） | ✅ |
+| 构建 | 243 modules，主包 JS 464.72 kB（gzip 150.81）、CSS 38.26 kB（gzip 7.03），懒加载块 `pdf-*.js` 483.44 kB、`pdf.worker.min-*.mjs` 1264.34 kB、`imageWorker-*.js` 3.73 kB | ✅ |
+| 逻辑层 | `pnpm smoke` 173 条全通过（新增 42 条：标注几何 16、标注命令 11、抽页/抽帧规划 15） | ✅ |
+| 打包产物 | `pnpm ui-smoke` 51 条全通过（新增 12 条：PDF/视频抽图入口、素材属性、标注入口与数量、编辑器渲染、7 个工具与 6 色、标注列表 2 条、原件缺失提示、导出按钮） | ✅ |
+| 六种标注图形 | 矩形框 / 箭头 / 手绘 / 文字 / 区域锚点 / 马赛克；几何统一归一化到素材宽高（D17），编辑画布、缩略图与导出共用 `drawAnnotations` | ✅ |
+| 标注随素材 | 标注挂在 `Asset.annotations`，走 `addAnnotation`/`updateAnnotation`/`deleteAnnotation`/`linkAnnotation`/`clearAnnotations`，一条命令一次撤销 | ✅ |
+| 区域锚点 | `anchor` 可关联实体（`linkedNodeId`），列表与画布标签显示「区域锚点 · 已关联」 | ✅ |
+| 马赛克 | 按区域分列抽样后用 `imageSmoothingEnabled=false` 放大绘制（`mosaicCells` 纯函数可测） | ✅ |
+| 标注导出 | `renderAnnotatedBlob` 以长边 2048 重绘原图 + 叠加标注，导出 PNG（`asset.no` + 「-标注.png」） | ✅ |
+| PDF 抽页 | pdf.js v6 懒加载（D19），页码范围 `1-3,5` 解析、逐页渲染 PNG 后交给既有导入流水线（来源默认「书证翻拍」） | ✅ |
+| 视频抽帧 | `<video> + <canvas>` 等距取段中点（D18），数量 1–24，产物同走导入流水线（来源默认「监控截图」） | ✅ |
+| 旧存档兼容 | 标注几何越界自动夹到 0–1、缺色补证据红、空几何与非法图形丢弃；迁移与 JSON 往返均覆盖 | ✅ |
 
 ---
 
@@ -378,6 +395,12 @@
 - **必须 `node-linker=hoisted`**（见 `.npmrc`）：本机 node 是 Electron-as-node，pnpm 的隔离虚拟 store 用 junction 链接，node 会把 junction 当普通目录，导致 `Cannot find package 'rollup' imported from .../vite/dist/node/index.js`；hoisted 布局下 vite/rollup/esbuild 解析正常。
 - **vite 全系 CLI 都需要 esbuild 子进程**（连 `vite preview` 也要先 bundle `vite.config.ts`），在 DSH 沙箱内必须用 `sandbox_permissions: danger-full-access` 才能 `dev/build/preview`；`tsc --noEmit` 与 `node scripts/*.cjs` 不需要提权。
 - 无头浏览器不可用：`chrome --headless=new --dump-dom` 与 Edge 同样被宿主拦截（无输出即退出），真实渲染验收改用 jsdom（D9）。
+- **构建时把 TMP/TEMP 指到工作区**（2026-10-19 实测，M2-5 引入 1MB 级产物后暴露）：esbuild 对**大输出**会把结果落到系统临时文件再读回，随后删除时被系统拒绝，报 `[vite:esbuild-transpile] remove C:\Users\...\Temp\esbuild-<hash>: Access is denied`（同一进程内 node 自己写删临时文件是正常的，小输出也不触发）。解决办法是让 esbuild 用工作区目录当临时目录：
+  ```powershell
+  $env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP
+  node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs" build
+  ```
+  `.tmp-esbuild/` 已在 `.gitignore` 中。
 
 ---
 
@@ -400,6 +423,9 @@
 | D14 | M2 的「目录监视」用 **File System Access API 轮询**（`showDirectoryPicker` + `handle.values()`，最短 1.5s），不支持时按钮禁用并写明原因；M4 改用 Rust `notify` 事件推送 | 浏览器端没有目录变更事件；轮询可离线工作且零依赖，代价是延迟与需用户授权目录 | `src/services/watch.ts` 的 `supportsDirectoryWatch()` / `startDirectoryWatch()`；去重键 `name:size:lastModified` |
 | D15 | 自由图片的拖动/缩放/旋转过程中**只改组件本地预览**，松手才 dispatch 一条命令；对齐参考线与吸附高亮（`guides` / `attachTargetId`）放 `uiStore`，不写进 `CaseDoc` | 逐帧改 model 会让 Ctrl+Z 变成逐像素回放，撤销栈迅速被撑爆；参考线是纯视觉临时态，进存档只会污染 JSON | `src/components/flow/Board.tsx` 的 `onNodeDrag`/`onNodeDragStop` 与 `FreeImageNode` 内部 preview state；几何算法集中在 `src/lib/imageNode.ts`，smoke 直接测 |
 | D16 | 图片吸附规则与 M2-3「关联实体」保持同一条：目标是 `person` 时写 `node.photo = assetId`，其余类型把 `assetId` 并入 `node.attachments` | 两套语义（头像字段 vs 附件数组）会让同一份关联在右栏出现两遍或互相看不见；统一规则后 `AssetForm` 的「关联对象」与节点卡片的头像指向同一份数据 | `src/commands/imageNodeCommands.ts` 的 `attachImageNode()`；`deleteAsset` 同时清 `photo` 与 `attachments` 引用 |
+| D17 | 标注几何一律用**归一化坐标 0–1（相对素材宽高）**存进 `Annotation.geom`，编辑画布、缩略图、导出图共用同一个 `drawAnnotations` 绘制入口 | 素材会被渲染成不同尺寸（256 缩略图 / 1024 预览 / 2048 导出），存像素坐标会让每个尺寸都要换算式；一并解决「标注随素材导出」时的一致性 | `src/lib/annotation.ts` 的 `normalizeGeom/toPixelRect/toPixelPoints` 与 `src/services/annotate.ts`；迁移时越界自动夹到 0–1 |
+| D18 | 视频抽帧用 **`<video>` + `<canvas>`**（`currentTime` 跳转 + `drawImage`），不引入 ffmpeg.wasm；M4 换 Rust `ffmpeg-sidecar` | ffmpeg.wasm 需 30MB+ 的 wasm 与 SharedArrayBuffer（要 COOP/COEP 头），对本机离线单机应用是纯负担；浏览器原生解码已能覆盖监控截图抽帧 | `src/services/video.ts` 的 `probeVideo/grabFrame`，等距时间点由 `src/lib/mediaPlan.ts` 的 `planFrameTimes` 纯函数给出（smoke 可测）；抽帧失败（如编码不受支持）时给出中文原因 |
+| D19 | **pdf.js 走动态 import 懒加载**（`await import('../../services/pdf')`），只在用户点「选择 PDF 文件」时才拉解析器与 worker | 静态引入会让主包从 464 kB 涨到 948 kB（gzip 296 kB），首屏白等；抽页是低频操作，单独分块更合适 | 构建产物出现独立块 `pdf-*.js`（483 kB）与 `pdf.worker.min-*.mjs`（1264 kB）；`ExtractDialog` 只用 `import type { PdfJob }`，类型不拉运行时 |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -413,3 +439,4 @@
 | 2026-10-19 | **M2-2 验收通过**（✅）：组系统（矩形/圈选、嵌套、折叠超级节点、组级连线聚合）落地；§3 拆步表 M2-2 置 ✅ 并写入验收记录，新增 D12（组走节点层而非覆盖层）。 |
 | 2026-10-19 | **M2-3 验收通过**（✅）：图片四路导入 + 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库两分区落地；§3 拆步表 M2-3 置 ✅ 并写入验收记录，新增 D13（导入预处理全部在 Worker 内完成）、D14（目录监视 M2 用 File System Access 轮询，M4 换 notify）。 |
 | 2026-10-19 | **M2-4 验收通过**（✅）：自由图片节点（移动/8 向缩放/旋转吸附/层级/对齐参考线与网格/多选整体移动/吸附头像与附件/三种边框/素材库拖入）落地；`CaseDoc` 新增 `imageNodes` 并补齐迁移与级联删除；§3 拆步表 M2-4 置 ✅ 并写入验收记录，新增 D15（交互过程只留本地预览，松手才落命令）、D16（吸附与「关联实体」共用一套规则）。 |
+| 2026-10-19 | **M2 整体验收通过**（✅）：M2-5 标注层六图形 + PDF 抽页 / 视频抽帧落地，标注可关联实体并随素材导出；§1 总表 M2 置 ✅，§3 拆步表 M2-5 置 ✅ 并写入验收记录，新增 D17（标注几何归一化）、D18（视频抽帧用原生 video+canvas）、D19（pdf.js 懒加载）；§5 补充「构建时 TMP/TEMP 指到工作区」的工具链结论。 |

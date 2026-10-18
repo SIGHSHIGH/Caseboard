@@ -12,6 +12,13 @@ if (!fs.existsSync(out)) {
 fs.writeFileSync(path.join(out, 'package.json'), JSON.stringify({ type: 'commonjs' }), 'utf8');
 
 const { useDocStore } = require(path.join(out, 'store', 'docStore.js'));
+const {
+  addAnnotation,
+  clearAnnotations,
+  deleteAnnotation,
+  linkAnnotation,
+  updateAnnotation,
+} = require(path.join(out, 'commands', 'annotationCommands.js'));
 const { addNode, deleteNode, moveNode, updateNode } = require(path.join(out, 'commands', 'nodeCommands.js'));
 const { addEdge, deleteEdge, updateEdge } = require(path.join(out, 'commands', 'edgeCommands.js'));
 const { toJson, fromJson } = require(path.join(out, 'serializers', 'json.js'));
@@ -28,6 +35,7 @@ const {
   toggleGroupCollapsed,
   updateGroup,
 } = require(path.join(out, 'commands', 'groupCommands.js'));
+const { extractedName, formatDuration, parsePageRange, planFrameTimes } = require(path.join(out, 'lib', 'mediaPlan.js'));
 const {
   buildRenderModel,
   descendantGroupIds,
@@ -527,6 +535,109 @@ const noImages = normalizeDoc({ meta: { id: 'legacy-noimg', title: '旧存档2',
 check('旧文档自动补空 imageNodes', Array.isArray(noImages.imageNodes) && noImages.imageNodes.length === 0);
 const roundTrip = fromJson(toJson(doc()));
 check('JSON 往返保留图片节点', roundTrip.imageNodes.length === doc().imageNodes.length, roundTrip.imageNodes.length);
+
+console.log('[17] 标注几何（归一化 / 命中 / 马赛克 / 像素换算）');
+const {
+  annotationBBox,
+  arrowHeadPoints,
+  clamp01,
+  createAnnotation,
+  describeAnnotation,
+  hitAnnotation,
+  mosaicCells,
+  normalizeGeom,
+  rectFromPoints,
+  toPixelPoints,
+  toPixelRect,
+} = require(path.join(out, 'lib', 'annotation.js'));
+check('clamp01 夹紧越界与 NaN', clamp01(1.4) === 1 && clamp01(-2) === 0 && clamp01(Number.NaN) === 0);
+const clipped = normalizeGeom({ x: -0.2, y: 0.9, w: 0.5, h: 0.5 });
+check('归一化夹到 0–1 并收窄宽高', clipped.x === 0 && clipped.y === 0.9 && clipped.w === 0.5 && Math.abs(clipped.h - 0.1) < 1e-9, clipped);
+const dragRect = rectFromPoints({ x: 0.6, y: 0.2 }, { x: 0.2, y: 0.7 });
+check('拖动两点生成左上角矩形', dragRect.x === 0.2 && dragRect.y === 0.2 && Math.abs(dragRect.w - 0.4) < 1e-9 && Math.abs(dragRect.h - 0.5) < 1e-9, dragRect);
+const rectAnn = createAnnotation('rect', { x: 0.1, y: 0.1, w: 0.2, h: 0.2 }, { text: '  黄框  ', color: '#2E7D64', id: 'an-smoke' });
+check('标注默认带色并 trim 文本', rectAnn.text === '黄框' && rectAnn.color === '#2E7D64' && rectAnn.id === 'an-smoke', rectAnn);
+const penAnn = createAnnotation('pen', { x: 0, y: 0, w: 0, h: 0, points: [{ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.6 }] });
+check('默认色是证据红', penAnn.color === '#C0392B', penAnn.color);
+const penBox = annotationBBox(penAnn);
+check('折线外接框由点集推出', penBox.x === 0.1 && penBox.y === 0.2 && Math.abs(penBox.w - 0.4) < 1e-9 && Math.abs(penBox.h - 0.4) < 1e-9, penBox);
+check('命中判定落在框内', hitAnnotation(rectAnn, { x: 0.2, y: 0.2 }));
+check('容差内视为命中', hitAnnotation(rectAnn, { x: 0.31, y: 0.2 }, 0.02) && !hitAnnotation(rectAnn, { x: 0.4, y: 0.2 }, 0.02));
+const cells = mosaicCells({ x: 0.2, y: 0.2, w: 0.4, h: 0.2 }, 8);
+check('马赛克按 8 列切格并落在区域内', cells.length === 32 && cells.every((c) => c.x >= 0.2 - 1e-9 && c.y >= 0.2 - 1e-9 && c.x + c.w <= 0.6 + 1e-9 && c.y + c.h <= 0.4 + 1e-9), cells.length);
+const heads = arrowHeadPoints({ x: 0, y: 0.5 }, { x: 1, y: 0.5 }, 0.05);
+check('箭头两翼分居轴线两侧并朝向箭尾', heads[0].x < 1 && heads[1].x < 1 && (heads[0].y - 0.5) * (heads[1].y - 0.5) < 0, heads);
+check('归一化矩形换算像素', JSON.stringify(toPixelRect({ x: 0.5, y: 0.25, w: 0.25, h: 0.5 }, 800, 400)) === JSON.stringify({ x: 400, y: 100, w: 200, h: 200 }));
+const pxPoints = toPixelPoints([{ x: 0.5, y: 0.5 }], 200, 100);
+check('归一化点换算像素', pxPoints[0].x === 100 && pxPoints[0].y === 50, pxPoints[0]);
+check('标注摘要文案', describeAnnotation({ ...rectAnn, text: undefined }) === '矩形框' && describeAnnotation({ ...rectAnn, shape: 'text' }) === '文字：黄框', describeAnnotation(rectAnn));
+const annMigrated = normalizeDoc({
+  meta: { id: 'legacy-ann', title: '旧标注存档', createdAt: 'now', updatedAt: 'now' },
+  nodes: [],
+  edges: [],
+  assets: [
+    {
+      id: 'a-ann',
+      path: 'assets/a-ann',
+      kind: 'image',
+      hash: 'h',
+      annotations: [
+        { id: 'an-ok', shape: 'rect', geom: { x: 1.4, y: -0.5, w: 0.3, h: 0.3 } },
+        { id: 'an-empty', shape: 'rect', geom: {} },
+        { id: 'an-bad', shape: 'star', geom: { x: 0, y: 0, w: 0.1, h: 0.1 } },
+      ],
+    },
+  ],
+});
+const migratedAnn = annMigrated.assets[0].annotations;
+check('迁移夹紧越界坐标并补默认色', migratedAnn.length === 1 && migratedAnn[0].id === 'an-ok' && migratedAnn[0].geom.x === 1 && migratedAnn[0].geom.y === 0 && migratedAnn[0].color === '#C0392B', migratedAnn);
+check('迁移丢弃空几何与非法图形', !migratedAnn.some((a) => a.id === 'an-empty' || a.id === 'an-bad'));
+check('导出 JSON 保留标注', fromJson(toJson(annMigrated)).assets[0].annotations.length === 1);
+
+console.log('[18] 标注命令（增改删 / 区域锚点 / 撤销）');
+const annAsset = () => doc().assets.find((a) => a.id === 'a-smoke');
+state().dispatch(addAnnotation('a-smoke', createAnnotation('rect', { x: 0.1, y: 0.2, w: 0.3, h: 0.4 }, { id: 'an-1' })));
+check('新增标注写入素材', annAsset().annotations.length === 1 && annAsset().annotations[0].id === 'an-1', annAsset().annotations.length);
+state().dispatch(addAnnotation('a-smoke', createAnnotation('anchor', { x: 0.4, y: 0.4, w: 0.2, h: 0.2 }, { id: 'an-2' })));
+check('区域锚点可新增', annAsset().annotations.length === 2);
+state().dispatch(linkAnnotation('a-smoke', 'an-2', 'zhang'));
+check('区域锚点关联节点', annAsset().annotations.find((a) => a.id === 'an-2').linkedNodeId === 'zhang');
+state().dispatch(linkAnnotation('a-smoke', 'an-2', null));
+check('取消区域锚点关联', annAsset().annotations.find((a) => a.id === 'an-2').linkedNodeId === undefined);
+state().dispatch(updateAnnotation('a-smoke', 'an-1', { geom: { x: 0.5, y: 0.5, w: 0.2, h: 0.2 }, text: '重点区域' }));
+const updatedAnn = annAsset().annotations.find((a) => a.id === 'an-1');
+check('修改标注几何与文字', updatedAnn.geom.x === 0.5 && updatedAnn.text === '重点区域', updatedAnn);
+state().undo();
+check('撤销修改恢复原始几何', annAsset().annotations.find((a) => a.id === 'an-1').geom.x === 0.1);
+state().dispatch(deleteAnnotation('a-smoke', 'an-1'));
+check('删除标注', annAsset().annotations.length === 1 && annAsset().annotations[0].id === 'an-2');
+state().undo();
+check('撤销删除恢复标注', annAsset().annotations.length === 2);
+state().dispatch(clearAnnotations('a-smoke'));
+check('清空标注', annAsset().annotations.length === 0);
+state().undo();
+check('撤销清空恢复标注', annAsset().annotations.length === 2);
+state().dispatch(deleteAnnotation('a-smoke', 'an-2'));
+state().dispatch(deleteAnnotation('a-smoke', 'an-1'));
+check('标注清空后素材仍可导出 JSON', fromJson(toJson(doc())).assets.find((a) => a.id === 'a-smoke').annotations.length === 0);
+
+console.log('[19] PDF 抽页 / 视频抽帧规划（M2-5）');
+check('页码范围解析多段并升序去重', JSON.stringify(parsePageRange('3,1-2,2', 9)) === JSON.stringify([1, 2, 3]), parsePageRange('3,1-2,2', 9));
+check('页码范围夹到文档末页', JSON.stringify(parsePageRange('1-9', 4)) === JSON.stringify([1, 2, 3, 4]));
+check('页码范围支持全角逗号与顿号', JSON.stringify(parsePageRange('2，4、5', 9)) === JSON.stringify([2, 4, 5]));
+check('页码范围倒序区间自动纠正', JSON.stringify(parsePageRange('3-1', 5)) === JSON.stringify([1, 2, 3]));
+check('页码范围越界单页被丢弃', JSON.stringify(parsePageRange('2,7', 5)) === JSON.stringify([2]));
+check('空页码范围与零页文档返回空', parsePageRange('', 10).length === 0 && parsePageRange('1-3', 0).length === 0);
+const frames = planFrameTimes(60, 4);
+check('抽帧取每段中点', JSON.stringify(frames) === JSON.stringify([7.5, 22.5, 37.5, 52.5]), frames);
+check('抽帧数量夹到 1', JSON.stringify(planFrameTimes(10, 0)) === JSON.stringify([5]));
+check('抽帧数量夹到 24', planFrameTimes(120, 99).length === 24);
+check('非法时长不抽帧', planFrameTimes(0, 5).length === 0 && planFrameTimes(Number.NaN, 5).length === 0);
+check('时长格式化 1:23', formatDuration(83) === '1:23');
+check('时长格式化 1:02:03', formatDuration(3723) === '1:02:03');
+check('时长格式化补零与异常值', formatDuration(9) === '0:09' && formatDuration(-5) === '0:00');
+check('抽页文件名去扩展名', extractedName('办案记录.pdf', '第1页') === '办案记录-第1页.png');
+check('抽帧文件名无扩展名兜底', extractedName('无扩展名', 'y') === '无扩展名-y.png' && extractedName('.hidden', 'x') === '.hidden-x.png');
 
 console.log('');
 if (failures > 0) {

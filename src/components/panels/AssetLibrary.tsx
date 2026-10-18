@@ -7,6 +7,7 @@ import { thumbUrl } from '../../services/imageStore';
 import { startDirectoryWatch, supportsDirectoryWatch, type WatchHandle } from '../../services/watch';
 import { formatBytes } from '../../lib/assetMeta';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
+import { ExtractDialog } from './ExtractDialog';
 import type { Asset } from '../../types';
 
 type Zone = Asset['zone'];
@@ -63,6 +64,7 @@ export function AssetLibrary() {
   const importError = useImportStore((s) => s.error);
 
   const [zone, setZone] = useState<Zone>('evidence');
+  const [extractOpen, setExtractOpen] = useState(false);
   const [watching, setWatching] = useState<string | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
   const watchRef = useRef<WatchHandle | null>(null);
@@ -135,6 +137,9 @@ export function AssetLibrary() {
         >
           {watching ? `停止监视：${watching}` : '监视文件夹'}
         </button>
+        <button type="button" className="cb-btn" onClick={() => setExtractOpen(true)} title="PDF 逐页渲染 / 视频等距抽帧，产物进导入向导">
+          PDF / 视频抽图
+        </button>
       </div>
 
       {busy ? (
@@ -170,6 +175,8 @@ export function AssetLibrary() {
           原件与缩略图存在本机 IndexedDB（{list.length} 张当前分区）；SHA-256 用于秒级去重。
         </p>
       ) : null}
+
+      {extractOpen ? <ExtractDialog onClose={() => setExtractOpen(false)} /> : null}
     </div>
   );
 }

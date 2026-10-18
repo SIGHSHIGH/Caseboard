@@ -90,11 +90,29 @@ export interface Group {
   opacity?: number;
 }
 
+/** 标注图形（M2-5）：矩形框 / 箭头 / 手绘 / 文字 / 区域锚点 / 马赛克 */
+export type AnnotationShape = 'rect' | 'arrow' | 'pen' | 'text' | 'anchor' | 'mosaic';
+
+/**
+ * 标注几何：**归一化坐标**（0–1，相对素材宽高）。
+ * 这样同一份标注在 256 缩略图、1024 预览与导出原图上都对齐，换尺寸不用重算（D17）。
+ */
+export interface AnnotationGeom {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** pen / arrow 的折线顶点（归一化）；矩形类图形不需要 */
+  points?: XY[];
+}
+
 export interface Annotation {
   id: string;
-  shape: 'rect' | 'arrow' | 'pen' | 'text' | 'anchor' | 'mosaic';
-  geom: Record<string, unknown>;
+  shape: AnnotationShape;
+  geom: AnnotationGeom;
   text?: string;
+  /** 描边色，缺省取证据红 #C0392B */
+  color?: string;
   linkedNodeId?: string;
 }
 

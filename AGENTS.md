@@ -35,6 +35,15 @@ scripts\pnpm.cmd build        # 等价 tsc --noEmit && vite build
 node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs" install
 ```
 
+**构建必须把临时目录指到工作区**（否则 esbuild 处理大产物时会在系统 Temp 删除失败，报 `[vite:esbuild-transpile] remove ...: Access is denied`）：
+
+```powershell
+$env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP   # 目录已在 .gitignore
+node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs" build
+```
+
+验收三件套：`pnpm typecheck`、`pnpm smoke`（逻辑，node CJS）、`pnpm ui-smoke`（打包产物 + jsdom 伪布局）；`build` 与 `dev/preview` 在沙箱内需 `sandbox_permissions: danger-full-access`（esbuild 子进程）。
+
 Tauri 阶段（M4 起）另需 Rust 工具链，当前本机**未安装**。
 
 ## 目录约定（M1 起生效）
