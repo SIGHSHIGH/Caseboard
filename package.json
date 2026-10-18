@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "smoke": "tsc -p tsconfig.smoke.json && node scripts/smoke.cjs",
     "ui-smoke": "node scripts/ui-smoke.cjs",
+    "bench": "tsc -p tsconfig.smoke.json && node scripts/bench-dsl.cjs",
+    "bench:board": "node scripts/bench-board.cjs",
     "verify": "tsc --noEmit && vite build && tsc -p tsconfig.smoke.json && node scripts/smoke.cjs && node scripts/ui-smoke.cjs"
   },
   "dependencies": {

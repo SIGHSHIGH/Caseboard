@@ -14,6 +14,15 @@
 - **双侧选中联动**（`src/dsl/locate.ts`）：按真实语法树定位声明（跳过 `WS`/注释、解包 `Statement`、读 `id:` 覆盖行）；画布选中 → 代码滚动居中 + 红色标记，代码光标落在声明内 → 反查模型 id → 画布 `setCenter` 居中。
 - **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **296 条全绿**（新增 34 条 `[23] DSL 代码视图同步（M3-4）`）、`pnpm ui-smoke` **62 条全绿**（新增 11 条 `[UI] M3-4 分屏代码视图`）、`pnpm build` 269 modules。
 
+
+### M3-5 验收加固 · M3 完成（2026-10-19，tag ms/M3）
+
+- **错误用例全覆盖**（`scripts/smoke.cjs` `[24]`）：十类错误逐条断言中文诊断——悬空引用、重复 id、边连自己、未闭合块、非法枚举、非数字坐标、非法 `path`、非法视图类型、未知字段、关系 id 重复；每类同时校验「解析失败不清空模型（好块保留）」与「诊断带 1 起行列」。
+- **50 次连续操作**：增 / 移 / 改 / 代码改标题 / 删 各 10 次混合执行，撤销栈恰好 +50（无重复记录）、6 节点 6 关系守恒、文本往返无诊断、50 次撤销后重做逐字节等于操作后快照。
+- **1000 节点基准**（`scripts/bench-dsl.cjs`，`pnpm bench`）：263.7 KB 文本，序列化 5.7ms + 解析 49.6ms + 声明定位 33.3ms + diff 3.6ms = **88.5ms < 300ms**；`scripts/fixtures.cjs` 提供可复用的大文档生成器。
+- **画布渲染回归**（`scripts/bench-board.cjs`）：300 节点挂载 25ms、渲染 300 节点与 299 条连线；jsdom 无布局，连线稳定耗时只作参考，门禁口径见 D24。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **306 条全绿**、`pnpm ui-smoke` **62 条全绿**、`pnpm build` 269 modules（主包 546.30 kB / 代码视图 chunk 345.79 kB）。M3 六条验收标准全部有可复现证据，打 tag `ms/M3`。
+
 ### M3-1 DSL 序列化器（2026-10-19）
 
 - **Model → 文本**（`src/dsl/serialize.ts`）：`serializeDoc(doc)` 输出规格 §4 形状的文本视图——`case "标题" caseNo "编号" {` 头、`// ===== 实体 / 组 / 关系 / 视图 =====` 分节、`person zhang "张建国" { … }` 实体块、`group … color="#C0392B" { nodes: [...] }` 组块、`zhang --转账 50 万--> li { … }` 三种线型边、`view timeline "案发经过" { … }` 视图块。

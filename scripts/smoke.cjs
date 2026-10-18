@@ -10,6 +10,7 @@ if (!fs.existsSync(out)) {
   process.exit(1);
 }
 fs.writeFileSync(path.join(out, 'package.json'), JSON.stringify({ type: 'commonjs' }), 'utf8');
+const { buildDoc } = require(path.join(__dirname, 'fixtures.cjs'));
 
 const { useDocStore } = require(path.join(out, 'store', 'docStore.js'));
 const {
@@ -1189,6 +1190,76 @@ codeState().setFocused(false);
 check('失焦后自动刷新代码', codeState().state === 'idle' && codeState().text.includes('at(321, 654)'));
 codeMod.closeCodeView();
 check('关闭代码视图复位', codeState().open === false && codeState().focused === false);
+
+console.log('[24] 验收加固：错误矩阵 / 连续操作 / 1000 节点基准（M3-5）');
+const errCases = [
+  { name: '悬空引用', text: 'case "x" {\n  person a "A" { }\n  b --> a { rel: call }\n}', nodes: 1, edges: 0, views: 0, msg: '引用「b」没有对应声明', hint: '先声明实体' },
+  { name: '重复 id', text: 'case "x" {\n  person a "A" { }\n  org a "B" { }\n}', nodes: 1, edges: 0, views: 0, msg: 'id「a」重复声明' },
+  { name: '边连自己', text: 'case "x" {\n  person a "A" { }\n  a --> a { rel: call }\n}', nodes: 1, edges: 0, views: 0, msg: '关系不能连到自己' },
+  { name: '未闭合块', text: 'case "x" {\n  person a "A" { }\n  org b "B" {\n', nodes: 2, edges: 0, views: 0, msg: '此处缺少内容或标点不正确', hint: '花括号' },
+  { name: '非法枚举', text: 'case "x" {\n  person a "A" {\n    status: suspect\n  }\n}', nodes: 1, edges: 0, views: 0, msg: 'status 只能是 todo / checking / confirmed / ruledout' },
+  { name: '非数字坐标', text: 'case "x" {\n  person a "A" {\n    at(x, y)\n  }\n}', nodes: 1, edges: 0, views: 0, msg: 'x 必须是数字，收到「x」', hint: 'at(x, y)' },
+  { name: '非法 path', text: 'case "x" {\n  person a "A" { }\n  person b "B" { }\n  a --> b { rel: call path: curve }\n}', nodes: 2, edges: 1, views: 0, msg: 'path 只能是 bezier / straight / step' },
+  { name: '非法视图类型', text: 'case "x" {\n  view chart "图" { }\n}', nodes: 0, edges: 0, views: 1, msg: '视图类型只能是 board / timeline / map / chain / presentation / scenario' },
+  { name: '未知字段', text: 'case "x" {\n  person a "A" {\n    foo: 1\n  }\n}', nodes: 1, edges: 0, views: 0, msg: '未知字段「foo」，已忽略', hint: 'fields: {' },
+  { name: '关系 id 重复', text: 'case "x" {\n  person a "A" { }\n  person b "B" { }\n  a --> b { id: "e1" }\n  b --> a { id: "e1" }\n}', nodes: 2, edges: 1, views: 0, msg: '关系 id「e1」重复' },
+];
+let errMsgHits = 0;
+let errModelKept = 0;
+let errPosOk = 0;
+let errHintHits = 0;
+for (const item of errCases) {
+  const res = parseDsl(item.text);
+  if (res.doc.nodes.length === item.nodes && res.doc.edges.length === item.edges && res.doc.views.length === item.views) errModelKept += 1;
+  const hit = res.diagnostics.some((d) => d.message.includes(item.msg));
+  if (hit) errMsgHits += 1;
+  if (item.hint && res.diagnostics.some((d) => (d.hint || '').includes(item.hint))) errHintHits += 1;
+  if (res.diagnostics.length > 0 && res.diagnostics.every((d) => d.line >= 1 && d.column >= 1 && d.from >= 0 && d.to >= d.from)) errPosOk += 1;
+}
+check('十类错误全部给出中文诊断', errMsgHits === errCases.length, errMsgHits + '/' + errCases.length);
+check('解析失败时模型不被清空（好块保留）', errModelKept === errCases.length, errModelKept + '/' + errCases.length);
+check('诊断带可定位的行列与范围', errPosOk === errCases.length, errPosOk + '/' + errCases.length);
+check('诊断带修复建议 hint', errHintHits >= 4, errHintHits);
+const t1000 = (() => { const started = Date.now(); const big = serializeDoc(buildDoc(1000)); const parsed = parseDsl(big); return { ms: Date.now() - started, big, parsed }; })();
+check('1000 节点文档可解析并保全形状', t1000.parsed.doc.nodes.length === 1000 && t1000.parsed.doc.edges.length === 999 && t1000.parsed.diagnostics.length === 0, t1000.parsed.doc.nodes.length + '/' + t1000.parsed.doc.edges.length);
+check('1000 节点解析 < 300ms', t1000.ms < 300, t1000.ms + 'ms');
+const opApi = useDocStore.getState();
+opApi.dispatch(replaceDocument(createDemoDoc()));
+codeMod.openCodeView();
+const opPastStart = useDocStore.getState().past.length;
+const opAdded = [];
+for (let i = 0; i < 50; i += 1) {
+  const store = useDocStore.getState();
+  const current = store.doc;
+  const kind = i % 5;
+  if (kind === 0) {
+    const newId = 'n_op' + i;
+    opAdded.push(newId);
+    store.dispatch(addNode({ id: newId, type: 'note', title: '连续操作' + i, x: i, y: i }));
+  } else if (kind === 1) {
+    const target = current.nodes[0];
+    store.dispatch(moveNode(target.id, target.x + 3, target.y + 2));
+  } else if (kind === 2) {
+    const target = current.nodes[1] || current.nodes[0];
+    store.dispatch(updateNode(target.id, { title: '改名' + i }));
+  } else if (kind === 3) {
+    codeMod.flushGraphToCode();
+    codeMod.syncCodeText(serializeDoc(useDocStore.getState().doc).replace('张建国', '张建国' + i));
+  } else {
+    const removed = opAdded.pop();
+    if (removed) store.dispatch(deleteNode(removed));
+  }
+}
+const opAfter = useDocStore.getState();
+check('50 次增删改各压一条撤销记录', opAfter.past.length - opPastStart === 50, opAfter.past.length - opPastStart);
+check('50 次操作后数据守恒（6 节点 6 关系）', opAfter.doc.nodes.length === 6 && opAfter.doc.edges.length === 6, opAfter.doc.nodes.length + '/' + opAfter.doc.edges.length);
+check('50 次操作后文本往返仍无诊断', parseDsl(serializeDoc(opAfter.doc)).diagnostics.length === 0);
+const opSnap = JSON.stringify(opAfter.doc);
+let opUndos = 0;
+while (useDocStore.getState().past.length > 0) { useDocStore.getState().undo(); opUndos += 1; }
+for (let i = 0; i < opUndos; i += 1) useDocStore.getState().redo();
+check('连续撤销 50 次再重做后完全一致', JSON.stringify(useDocStore.getState().doc) === opSnap, opUndos);
+codeMod.closeCodeView();
 
 console.log('');
 if (failures > 0) {

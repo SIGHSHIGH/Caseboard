@@ -42,7 +42,7 @@ $env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP   # 目录已在 .gitignore
 node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs" build
 ```
 
-验收三件套：`pnpm typecheck`、`pnpm smoke`（逻辑，node CJS）、`pnpm ui-smoke`（打包产物 + jsdom 伪布局）；`build` 与 `dev/preview` 在沙箱内需 `sandbox_permissions: danger-full-access`（esbuild 子进程）。
+验收四件套：`pnpm typecheck`、`pnpm smoke`（逻辑，node CJS）、`pnpm ui-smoke`（打包产物 + jsdom 伪布局）、`pnpm bench`（1000 节点 DSL 解析链 < 300ms）；`build` 与 `dev/preview` 在沙箱内需 `sandbox_permissions: danger-full-access`（esbuild 子进程）。
 
 Tauri 阶段（M4 起）另需 Rust 工具链，当前本机**未安装**。
 
