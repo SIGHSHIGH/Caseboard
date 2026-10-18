@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react';
-import { addComment, deleteComment, updateEdge, updateNode } from '../../commands';
+import {
+  GROUP_COLORS,
+  DEFAULT_GROUP_OPACITY,
+  addComment,
+  assignNodesToGroup,
+  canParentGroup,
+  deleteComment,
+  deleteGroup,
+  toggleGroupCollapsed,
+  updateEdge,
+  updateGroup,
+  updateNode,
+} from '../../commands';
 import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } from '../../lib/theme';
 import { NODE_TYPE_ORDER, NODE_TEMPLATES, templateOf, type NodeFieldDef } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
-import type { CaseEdge, CaseNode, LineStyle, NodeType, Status } from '../../types';
+import type { CaseEdge, CaseNode, Group, LineStyle, NodeType, Status } from '../../types';
 
 const STATUSES: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
 const STYLES: LineStyle[] = ['solid', 'dashed', 'dotted'];
@@ -89,6 +101,7 @@ function TemplateField({
 
 function NodeForm({ node }: { node: CaseNode }) {
   const dispatch = useDocStore((s) => s.dispatch);
+  const groups = useDocStore((s) => s.doc.groups);
   const [title, setTitle] = useState(node.title);
   const [aliases, setAliases] = useState((node.aliases ?? []).join('、'));
   const [tags, setTags] = useState(node.tags.join('、'));
@@ -197,6 +210,22 @@ function NodeForm({ node }: { node: CaseNode }) {
           {STATUSES.map((status) => (
             <option key={status} value={status}>
               {STATUS_META[status].label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="cb-field">
+        <span>所属分组</span>
+        <select
+          value={node.groupId ?? ''}
+          onChange={(event) => dispatch(assignNodesToGroup([node.id], event.target.value || null))}
+        >
+          <option value="">未分组</option>
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.title}
+              {group.collapsed ? '（已折叠）' : ''}
             </option>
           ))}
         </select>
@@ -428,13 +457,142 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
   );
 }
 
+/** 分组属性：标题 / 配色 / 底色透明度 / 上级组 / 折叠 / 成员与删除 */
+function GroupForm({ group }: { group: Group }) {
+  const doc = useDocStore((s) => s.doc);
+  const dispatch = useDocStore((s) => s.dispatch);
+  const [title, setTitle] = useState(group.title);
+  const [opacity, setOpacity] = useState(group.opacity ?? DEFAULT_GROUP_OPACITY);
+
+  useEffect(() => setTitle(group.title), [group.id, group.title]);
+  useEffect(() => setOpacity(group.opacity ?? DEFAULT_GROUP_OPACITY), [group.id, group.opacity]);
+
+  const members = doc.nodes.filter((node) => node.groupId === group.id);
+  const childGroups = doc.groups.filter((item) => item.parentId === group.id);
+  const parentOptions = doc.groups.filter((item) => canParentGroup(doc, group.id, item.id));
+
+  const commitTitle = () => {
+    const next = title.trim();
+    if (next.length > 0 && next !== group.title) dispatch(updateGroup(group.id, { title: next }));
+    else setTitle(group.title);
+  };
+
+  return (
+    <div className="cb-form">
+      <label className="cb-field">
+        <span>分组名称</span>
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onBlur={commitTitle}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+      </label>
+
+      <div className="cb-field">
+        <span>标识色</span>
+        <div className="cb-colors">
+          {GROUP_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              className={`cb-color${group.color === color ? ' is-active' : ''}`}
+              style={{ background: color }}
+              title={color}
+              onClick={() => dispatch(updateGroup(group.id, { color }))}
+            />
+          ))}
+        </div>
+      </div>
+
+      <label className="cb-field">
+        <span>底色不透明度：{opacity.toFixed(2)}</span>
+        <input
+          type="range"
+          min={0.02}
+          max={0.6}
+          step={0.02}
+          value={opacity}
+          onChange={(event) => setOpacity(Number(event.target.value))}
+          onPointerUp={() => dispatch(updateGroup(group.id, { opacity }))}
+          onBlur={() => dispatch(updateGroup(group.id, { opacity }))}
+        />
+      </label>
+
+      <label className="cb-field">
+        <span>上级分组（支持嵌套）</span>
+        <select
+          value={group.parentId ?? ''}
+          onChange={(event) => dispatch(updateGroup(group.id, { parentId: event.target.value || null }))}
+        >
+          <option value="">顶层</option>
+          {parentOptions.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.title}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="cb-field cb-field--inline">
+        <input
+          type="checkbox"
+          checked={group.collapsed}
+          onChange={() => dispatch(toggleGroupCollapsed(group.id))}
+        />
+        <span>折叠为超级节点（组内连线隐藏，组外关系聚合）</span>
+      </label>
+
+      <div className="cb-form__section">
+        <h3 className="cb-form__subtitle">组内对象（{members.length}）</h3>
+        {members.length === 0 ? (
+          <p className="cb-form__subtle">空分组：可直接拖入节点，或在节点属性里选择「所属分组」。</p>
+        ) : (
+          <ul className="cb-members">
+            {members.map((node) => (
+              <li key={node.id} className="cb-members__item">
+                <span className="cb-members__dot" style={{ background: NODE_TYPE_META[node.type].color }} />
+                <span className="cb-members__title">{node.title}</span>
+                <button
+                  type="button"
+                  className="cb-link-btn"
+                  onClick={() => dispatch(assignNodesToGroup([node.id], null))}
+                >
+                  移出
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {childGroups.length > 0 ? (
+          <p className="cb-form__subtle">
+            含子组：{childGroups.map((item) => item.title).join('、')}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="cb-form__section">
+        <button type="button" className="cb-btn cb-btn--danger" onClick={() => dispatch(deleteGroup(group.id))}>
+          删除分组（保留组内对象）
+        </button>
+      </div>
+
+      <p className="cb-form__meta">ID：{group.id}</p>
+    </div>
+  );
+}
+
 export function RightPanel() {
   const doc = useDocStore((s) => s.doc);
   const selectedNodeId = useUiStore((s) => s.selectedNodeId);
   const selectedEdgeId = useUiStore((s) => s.selectedEdgeId);
+  const selectedGroupId = useUiStore((s) => s.selectedGroupId);
 
   const node = doc.nodes.find((item) => item.id === selectedNodeId) ?? null;
   const edge = doc.edges.find((item) => item.id === selectedEdgeId) ?? null;
+  const group = doc.groups.find((item) => item.id === selectedGroupId) ?? null;
 
   const titleOf = (id: string) => doc.nodes.find((item) => item.id === id)?.title ?? id;
 
@@ -459,6 +617,16 @@ export function RightPanel() {
             </span>
           </h2>
           <EdgeForm key={edge.id} edge={edge} sourceTitle={titleOf(edge.source)} targetTitle={titleOf(edge.target)} />
+        </>
+      ) : group ? (
+        <>
+          <h2 className="cb-panel__title">
+            分组属性
+            <span className="cb-panel__badge" style={{ background: group.color }}>
+              {group.collapsed ? '已折叠' : '展开'}
+            </span>
+          </h2>
+          <GroupForm key={group.id} group={group} />
         </>
       ) : (
         <>

@@ -1,7 +1,7 @@
 import type { CaseDoc } from '../types';
 
 /**
- * 预置演示案件（M1 验收项）：6 个节点、6 条边，三种线型齐全，含一个分组占位。
+ * 预置演示案件（M1/M2 验收项）：6 个节点、6 条边，三种线型齐全，含一个分组（张建国 + 恒信财务）。
  * 首次打开自动加载；用户改动后由 localStorage 自动保存接管。
  */
 export function createDemoDoc(): CaseDoc {
@@ -24,6 +24,7 @@ export function createDemoDoc(): CaseDoc {
         w: 208,
         h: 96,
         fields: { 性别: '男', 年龄: 42, 籍贯: '常州', 职业: '无业', 前科记录: '2019 年诈骗罪，缓刑' },
+        groupId: 'g-suspect',
         aliases: ['三哥', '张老三'],
         tags: ['主犯', '有前科'],
         status: 'confirmed',
@@ -55,6 +56,7 @@ export function createDemoDoc(): CaseDoc {
         y: 420,
         w: 208,
         h: 96,
+        groupId: 'g-suspect',
         fields: { 性质: '空壳公司', 注册地: '常州' },
         tags: ['涉案组织'],
         status: 'checking',
@@ -200,9 +202,10 @@ export function createDemoDoc(): CaseDoc {
     groups: [
       {
         id: 'g-suspect',
-        title: '诈骗团伙（分组占位）',
-        bounds: { x: 60, y: 90, w: 420, h: 480 },
+        title: '诈骗团伙',
+        bounds: { x: 80, y: 100, w: 320, h: 450 },
         color: '#C0392B',
+        opacity: 0.1,
         collapsed: false,
       },
     ],

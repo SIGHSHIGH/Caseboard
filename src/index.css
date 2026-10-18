@@ -728,3 +728,198 @@ button {
 .cb-link-btn:hover {
   text-decoration: underline;
 }
+/* ===== M2-2 分组 ===== */
+.cb-group-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.cb-panel__note {
+  margin: 0 0 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--cb-muted);
+}
+
+.cb-btn--active {
+  border-color: var(--cb-accent);
+  color: var(--cb-accent);
+  background: var(--cb-accent-soft);
+}
+
+.cb-btn--danger {
+  color: var(--cb-accent);
+  border-color: rgba(192, 57, 43, 0.45);
+}
+
+.cb-btn--danger:hover:not(:disabled) {
+  background: rgba(192, 57, 43, 0.1);
+}
+
+/* 展开态分组框：整体不吃指针事件，只有标题栏与右下角把手可交互 */
+.cb-group {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px dashed rgba(43, 43, 43, 0.28);
+  border-radius: 8px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.cb-group.is-selected {
+  border-style: solid;
+  border-width: 2px;
+  border-color: var(--cb-accent);
+  box-shadow: 0 0 0 3px var(--cb-accent-soft);
+}
+
+.cb-group__header {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px 6px 0 0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: grab;
+  user-select: none;
+}
+
+.cb-group__header:active {
+  cursor: grabbing;
+}
+
+.cb-group__title {
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cb-group__count {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.cb-group__fold {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.cb-group__fold:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.cb-group__resize {
+  pointer-events: auto;
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 3px;
+  background: #fff;
+  cursor: nwse-resize;
+}
+
+/* 折叠后的超级节点 */
+.cb-node--super {
+  border-style: dashed;
+}
+
+.cb-node--super .cb-node__super {
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+
+/* 圈选覆盖层 */
+.cb-lasso {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  cursor: crosshair;
+}
+
+.cb-lasso__hint {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(43, 43, 43, 0.86);
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.cb-lasso__box {
+  position: absolute;
+  border: 1.5px dashed var(--cb-accent);
+  background: rgba(192, 57, 43, 0.1);
+  pointer-events: none;
+}
+
+/* 分组色板与成员列表 */
+.cb-colors {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cb-color {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.cb-color.is-active {
+  border-color: var(--cb-text);
+  box-shadow: inset 0 0 0 2px #fff;
+}
+
+.cb-members {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cb-members__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.cb-members__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cb-members__title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

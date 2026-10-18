@@ -15,6 +15,16 @@ export const COLORS = {
   selected: '#C0392B',
 };
 
+/** #RRGGBB → rgba()：分组底色与标题栏整块用同一主色，只调透明度 */
+export function hexToRgba(hex: string, alpha: number): string {
+  const value = hex.replace('#', '');
+  if (value.length !== 6) return `rgba(110, 104, 98, ${alpha})`;
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export const NODE_TYPE_META: Record<NodeType, { label: string; color: string; icon: string }> = {
   person: { label: '人物', color: '#C0392B', icon: '👤' },
   org: { label: '组织', color: '#7B5B3A', icon: '🏛' },

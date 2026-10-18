@@ -18,6 +18,25 @@ const { toJson, fromJson } = require(path.join(out, 'serializers', 'json.js'));
 const { normalizeDoc } = require(path.join(out, 'serializers', 'migrate.js'));
 const { NODE_TEMPLATES, NODE_TYPE_ORDER, fieldEntriesOf } = require(path.join(out, 'lib', 'nodeTemplates.js'));
 const { addComment, deleteComment } = require(path.join(out, 'commands', 'nodeCommands.js'));
+const {
+  addGroup,
+  assignNodesToGroup,
+  canParentGroup,
+  deleteGroup,
+  moveGroup,
+  resizeGroup,
+  toggleGroupCollapsed,
+  updateGroup,
+} = require(path.join(out, 'commands', 'groupCommands.js'));
+const {
+  buildRenderModel,
+  descendantGroupIds,
+  isAggEdgeId,
+  nodeIdsInRect,
+  parseBoardNodeId,
+  superNodeId,
+  weakestStyle,
+} = require(path.join(out, 'lib', 'groups.js'));
 
 let failures = 0;
 function check(name, condition, detail) {
@@ -171,6 +190,75 @@ state().dispatch(updateNode(commentNodeId, { collapsed: true }));
 check('折叠详情可写入', doc().nodes.find((n) => n.id === commentNodeId).collapsed === true);
 state().dispatch(updateNode(commentNodeId, { collapsed: undefined }));
 check('折叠详情可取消', doc().nodes.find((n) => n.id === commentNodeId).collapsed === undefined);
+
+console.log('[11] M2-2 组系统');
+check('演示数据含分组且成员已绑定', (() => {
+  const g = doc().groups.find((item) => item.id === 'g-suspect');
+  return doc().groups.length === 1 && g.title === '诈骗团伙' && doc().nodes.find((n) => n.id === 'zhang').groupId === 'g-suspect';
+})());
+let rm = buildRenderModel(doc());
+check('展开态渲染：分组 1 / 超级节点 0 / 节点 6', rm.groups.length === 1 && rm.superNodes.length === 0 && rm.nodes.length === 6, {
+  groups: rm.groups.length,
+  supers: rm.superNodes.length,
+  nodes: rm.nodes.length,
+});
+const groupsBefore = doc().groups.length;
+state().dispatch(addGroup({ id: 'g-test', title: '测试组', x: 1200, y: 900, w: 240, h: 160 }));
+check('可新建分组', doc().groups.length === groupsBefore + 1 && doc().groups.find((g) => g.id === 'g-test').title === '测试组');
+state().undo();
+check('撤销新建分组', doc().groups.length === groupsBefore);
+state().redo();
+check('重做新建分组', doc().groups.length === groupsBefore + 1);
+state().dispatch(addGroup({ id: 'g-nested', title: '子组', x: 120, y: 140, w: 200, h: 140, parentId: 'g-suspect' }));
+check('支持嵌套分组', doc().groups.find((g) => g.id === 'g-nested').parentId === 'g-suspect');
+check('后代组可枚举', descendantGroupIds(doc(), 'g-suspect').includes('g-nested'));
+check('禁止把上级设成自己的后代', canParentGroup(doc(), 'g-suspect', 'g-nested') === false);
+state().dispatch(updateGroup('g-suspect', { parentId: 'g-nested' }));
+check('成环的分组父级被拒绝', doc().groups.find((g) => g.id === 'g-suspect').parentId === undefined);
+state().dispatch(updateGroup('g-suspect', { opacity: 5 }));
+check('分组透明度被夹到 0.6', doc().groups.find((g) => g.id === 'g-suspect').opacity === 0.6);
+state().dispatch(assignNodesToGroup(['li'], 'g-nested'));
+check('节点可归入子组', doc().nodes.find((n) => n.id === 'li').groupId === 'g-nested');
+rm = buildRenderModel(doc());
+check('子组出现在渲染模型', rm.groups.some((item) => item.group.id === 'g-nested'));
+const inRect = nodeIdsInRect(doc().nodes, { x: 100, y: 100, w: 300, h: 200 });
+check('矩形圈选按节点中心命中', inRect.includes('zhang') && !inRect.includes('ktv'), inRect);
+state().dispatch(toggleGroupCollapsed('g-suspect'));
+rm = buildRenderModel(doc());
+check('折叠后成员节点全部隐藏', !rm.nodes.some((n) => ['zhang', 'gang', 'li'].includes(n.id)), rm.nodes.map((n) => n.id));
+check('折叠后出现超级节点', rm.superNodes.length === 1 && rm.superNodes[0].group.id === 'g-suspect');
+check('折叠后组内子组一并隐藏', !rm.groups.some((item) => item.group.id === 'g-nested'));
+const aggEdges = rm.edges.filter((e) => isAggEdgeId(e.id));
+check('指向组内的关系聚合为合成边', aggEdges.length >= 1 && aggEdges.every((e) => e.target === superNodeId('g-suspect')), aggEdges.map((e) => e.id));
+check('被折叠节点不再作为端点出现', !rm.edges.some((e) => ['zhang', 'gang', 'li'].includes(e.source) || ['zhang', 'gang', 'li'].includes(e.target)));
+check('聚合线型取最弱', weakestStyle(['solid', 'solid', 'dotted']) === 'dotted' && weakestStyle(['solid', 'dashed']) === 'dashed');
+state().dispatch(toggleGroupCollapsed('g-suspect'));
+check('再次折叠可展开', buildRenderModel(doc()).nodes.length >= 6);
+const zx = doc().nodes.find((n) => n.id === 'zhang').x;
+const gy = doc().groups.find((g) => g.id === 'g-suspect').bounds.y;
+state().dispatch(moveGroup('g-suspect', 10, 20));
+check('移动分组带动组内节点', doc().nodes.find((n) => n.id === 'zhang').x === zx + 10 && doc().groups.find((g) => g.id === 'g-suspect').bounds.y === gy + 20);
+state().undo();
+check('撤销分组移动', doc().nodes.find((n) => n.id === 'zhang').x === zx);
+state().dispatch(resizeGroup('g-test', { x: 0, y: 0, w: 10, h: 10 }));
+const clamped = doc().groups.find((g) => g.id === 'g-test').bounds;
+check('分组尺寸有下限 120×80', clamped.w >= 120 && clamped.h >= 80, clamped);
+const liBefore = doc().nodes.find((n) => n.id === 'li').groupId;
+state().dispatch(deleteGroup('g-nested'));
+check('删除分组保留节点并提升归属', !doc().groups.some((g) => g.id === 'g-nested') && doc().nodes.find((n) => n.id === 'li').groupId === 'g-suspect', { before: liBefore });
+check('合成 id 可解析', parseBoardNodeId(superNodeId('g-suspect')).kind === 'super'
+  && parseBoardNodeId('__agg:a->b').kind === 'agg'
+  && parseBoardNodeId('zhang').kind === 'node');
+check('迁移会夹紧分组透明度', (() => {
+  const migrated = normalizeDoc({
+    meta: { id: 'm', title: 't' },
+    nodes: [],
+    edges: [],
+    groups: [{ id: 'g1', title: 'g', bounds: { x: 0, y: 0, w: 200, h: 100 }, opacity: 9, collapsed: 'yes' }],
+  });
+  const g = migrated.groups[0];
+  return g.opacity === 0.6 && g.collapsed === false;
+})());
 
 console.log('');
 if (failures > 0) {

@@ -86,6 +86,8 @@ export interface Group {
   color: string;
   parentId?: string;
   collapsed: boolean;
+  /** 底色不透明度（0.02–0.6），M2-2 新增；未设置时用默认值 */
+  opacity?: number;
 }
 
 export interface Annotation {

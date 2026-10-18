@@ -236,6 +236,10 @@ function normalizeGroup(raw: unknown, index: number): Group | null {
   };
   const parentId = str(raw.parentId);
   if (parentId.length > 0 && parentId !== id) group.parentId = parentId;
+  // 底色不透明度：只接受有限数，夹在 0.02–0.6，非法值一律回落到默认
+  if (typeof raw.opacity === 'number' && Number.isFinite(raw.opacity)) {
+    group.opacity = Math.min(0.6, Math.max(0.02, raw.opacity));
+  }
   return group;
 }
 

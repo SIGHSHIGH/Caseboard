@@ -316,6 +316,18 @@ function check(name, condition, detail) {
     return buttons.length === 2 && buttons.every((b) => b.disabled);
   })());
   check('关系标签渲染', text.includes('转账 50 万'), null);
+  check('分组框已渲染', doc.querySelectorAll('.cb-group').length === 1, doc.querySelectorAll('.cb-group').length);
+  check('分组标题可见', text.includes('诈骗团伙'));
+  check('分组显示成员数', (() => {
+    const count = doc.querySelector('.cb-group__count');
+    return count !== null && /2/.test(count.textContent || '');
+  })(), doc.querySelector('.cb-group__count')?.textContent);
+  check('分组底色使用标识色', (() => {
+    const group = doc.querySelector('.cb-group');
+    const bg = group ? group.style.background || group.style.backgroundColor : '';
+    return /192, *57, *43/.test(bg);
+  })(), doc.querySelector('.cb-group')?.getAttribute('style'));
+  check('左栏有 2 个分组入口', doc.querySelectorAll('.cb-group-actions .cb-btn').length === 2, doc.querySelectorAll('.cb-group-actions .cb-btn').length);
 
   console.log('');
   if (failures > 0) {
