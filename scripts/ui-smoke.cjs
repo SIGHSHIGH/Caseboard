@@ -303,7 +303,9 @@ function check(name, condition, detail) {
   check('根容器已渲染', doc.querySelector('#root') !== null && doc.querySelector('#root').children.length > 0);
   check('顶栏存在', doc.querySelector('.cb-topbar') !== null);
   check('标题含「案情板」', text.includes('案情板'));
-  check('左栏 4 个节点类型按钮', doc.querySelectorAll('.cb-type-btn').length === 4, doc.querySelectorAll('.cb-type-btn').length);
+  check('左栏 8 个节点类型按钮', doc.querySelectorAll('.cb-type-btn').length === 8, doc.querySelectorAll('.cb-type-btn').length);
+  check('每个类型按钮带字段数提示', doc.querySelectorAll('.cb-type-btn__hint').length === 8, doc.querySelectorAll('.cb-type-btn__hint').length);
+  check('节点卡片展示模板字段摘要', doc.querySelectorAll('.cb-node__field').length >= 2, doc.querySelectorAll('.cb-node__field').length);
   check('画布渲染 6 个节点', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
   check('关系线已渲染', doc.querySelectorAll('.react-flow__edge').length === 6, doc.querySelectorAll('.react-flow__edge').length);
   check('线型图例 3 项', doc.querySelectorAll('.cb-legend__item').length === 3, doc.querySelectorAll('.cb-legend__item').length);

@@ -1,4 +1,5 @@
 import type { CaseDoc } from '../types';
+import { DocMigrateError, normalizeDoc } from './migrate';
 
 export function toJson(doc: CaseDoc): string {
   return JSON.stringify(doc, null, 2);
@@ -6,7 +7,10 @@ export function toJson(doc: CaseDoc): string {
 
 export class JsonImportError extends Error {}
 
-/** 导入做结构校验：宁可报错也不让残缺数据进 store（Gate 0-2）。 */
+/**
+ * 导入做结构校验：宁可报错也不让残缺数据进 store（Gate 0-2）。
+ * 校验通过后交给 normalizeDoc 兜底补字段（M2-1：老文件 / 手写文件也能打开）。
+ */
 export function fromJson(text: string): CaseDoc {
   let parsed: unknown;
   try {
@@ -14,7 +18,7 @@ export function fromJson(text: string): CaseDoc {
   } catch {
     throw new JsonImportError('JSON 解析失败：文件不是合法的 JSON');
   }
-  if (typeof parsed !== 'object' || parsed === null) {
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new JsonImportError('JSON 根节点必须是对象');
   }
   const doc = parsed as Partial<CaseDoc>;
@@ -27,27 +31,12 @@ export function fromJson(text: string): CaseDoc {
   if (typeof doc.meta.title !== 'string' || typeof doc.meta.id !== 'string') {
     throw new JsonImportError('meta.title 或 meta.id 缺失');
   }
-  const now = new Date().toISOString();
-  return {
-    meta: {
-      id: doc.meta.id,
-      title: doc.meta.title,
-      caseNo: doc.meta.caseNo,
-      createdAt: doc.meta.createdAt ?? now,
-      updatedAt: now,
-    },
-    nodes: doc.nodes,
-    edges: doc.edges,
-    groups: Array.isArray(doc.groups) ? doc.groups : [],
-    assets: Array.isArray(doc.assets) ? doc.assets : [],
-    views: Array.isArray(doc.views) ? doc.views : [],
-    settings: doc.settings ?? {
-      theme: 'whiteboard',
-      lineLegend: {
-        solid: { label: '已证实', style: 'solid', color: '#6E6862' },
-        dashed: { label: '推测', style: 'dashed', color: '#6E6862' },
-        dotted: { label: '待核实', style: 'dotted', color: '#6E6862' },
-      },
-    },
-  };
+  try {
+    const normalized = normalizeDoc(doc);
+    normalized.meta.updatedAt = new Date().toISOString();
+    return normalized;
+  } catch (error) {
+    if (error instanceof DocMigrateError) throw new JsonImportError(error.message);
+    throw error;
+  }
 }

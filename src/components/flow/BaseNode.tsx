@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { updateNode } from '../../commands';
 import { NODE_TYPE_META, STATUS_META } from '../../lib/theme';
+import { fieldEntriesOf } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import type { CaseNode } from '../../types';
 
@@ -109,7 +110,28 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
           {node.aliases && node.aliases.length > 0 ? (
             <span className="cb-node__alias">别名：{node.aliases.join('、')}</span>
           ) : null}
+          {node.collapsed ? <span className="cb-node__folded">已折叠</span> : null}
         </div>
+
+        {/* 未折叠时给出 2 条最关键的模板字段，替代「打开属性面板才知道节点装了什么」 */}
+        {node.collapsed ? null : (
+          <ul className="cb-node__fields">
+            {fieldEntriesOf(node.type, node.fields)
+              .slice(0, 2)
+              .map((entry) => (
+                <li key={entry.key} className="cb-node__field">
+                  <span className="cb-node__field-key">{entry.label}</span>
+                  <span className="cb-node__field-val">{entry.value}</span>
+                </li>
+              ))}
+            {node.comments && node.comments.length > 0 ? (
+              <li className="cb-node__field">
+                <span className="cb-node__field-key">评论</span>
+                <span className="cb-node__field-val">{node.comments.length} 条</span>
+              </li>
+            ) : null}
+          </ul>
+        )}
       </div>
 
       <div className="cb-node__foot">

@@ -22,6 +22,14 @@ export interface TimeRange {
   end?: string;
 }
 
+/** 节点评论（规格 M2 要求的「评论」；只存文本与时间，不做协作） */
+export interface NodeComment {
+  id: string;
+  text: string;
+  author?: string;
+  createdAt: string;
+}
+
 export interface CaseNode {
   id: string;
   type: NodeType;
@@ -41,6 +49,9 @@ export interface CaseNode {
   time?: TimeRange;
   attachments: string[];
   notes?: string;
+  /** 卡片折叠详情（只显示标题与状态）；M2-1 新增 */
+  collapsed?: boolean;
+  comments?: NodeComment[];
 }
 
 export interface CaseEdge {

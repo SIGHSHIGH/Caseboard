@@ -133,6 +133,28 @@
 
 **风险**：浏览器端缩略图/哈希在 500 张量级下的内存与耗时（需 Worker 化）；`react-rnd` 与 React Flow 坐标换算（世界坐标 vs 屏幕坐标）易错，需统一坐标工具函数。
 
+**拆步计划与进度（2026-10-18 拟定，逐条推进）**
+
+| 步骤 | 内容 | 状态 |
+|---|---|---|
+| M2-1 | 8 类节点模板字段（含下拉/日期/长文本）+ 别名/标签/折叠详情/评论 + 旧文档迁移兜底 `normalizeDoc` | ✅ 2026-10-18 |
+| M2-2 | 组：矩形组与自由圈选、标题栏拖拽、嵌套 `parentId`、折叠为超级节点、组级连线聚合 | ⬜ |
+| M2-3 | 图片四路导入（拖入/粘贴/批选/目录监视）+ 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库分区 | ⬜ |
+| M2-4 | 自由图片节点：移动/缩放/旋转吸附/层级/对齐参考线/网格/多选/吸附为头像 | ⬜ |
+| M2-5 | 标注层六图形（rect/arrow/pen/text/anchor/mosaic）+ PDF 抽页 / 视频抽帧链路 | ⬜ |
+
+**M2-1 验收记录（2026-10-18，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `pnpm typecheck` → 0 error | ✅ |
+| 构建 | 213 modules，JS 383.86 kB（gzip 124.93）、CSS 25.72 kB | ✅ |
+| 逻辑层 | `pnpm smoke` 44 条全通过（新增 17 条：模板齐全/字段顺序/空值跳过/旧文档迁移/去重/悬空边丢弃/评论增删与撤销/折叠开关） | ✅ |
+| 打包产物 | `pnpm ui-smoke` 13 条全通过（8 个类型按钮、字段数提示、节点卡片字段摘要） | ✅ |
+| 8 类模板可呈现 | 左侧 8 个类型按钮 + 右栏按类型渲染下拉/日期/数字/长文本；演示案件字段已对齐模板（证据种类、发生时刻等） | ✅ |
+| 状态流可改并写入 model | 右栏状态下拉 → `updateNode`（既有命令，smoke 覆盖） | ✅ |
+| 旧存档兼容 | `normalizeDoc` 兜底：缺 tags/attachments/status/confidence/w/h 自动补；未知类型落 `note`；重复 id 与悬空边丢弃；缺 meta 抛 `DocMigrateError` | ✅ |
+
 ---
 
 ### M3 · DSL + 双向同步（2–3 周）
@@ -322,6 +344,8 @@
 | D7 | **不用 `onlyBuiltDependencies` 白名单**，安装一律 `pnpm install --ignore-scripts`；`.npmrc` 固定 `node-linker=hoisted` + `strict-peer-dependencies=false` | 白名单会让 postinstall 真的执行，而沙箱禁止管道 stdio 子进程（`spawn EPERM`），install 直接失败；esbuild 二进制走 optionalDependencies 分发不需要 postinstall。hoisted 布局解决 Electron-as-node 下 junction 解析失败 | 新依赖若只能靠 postinstall 出二进制（如 @tauri-apps/cli），需在 M4 前单独验证或改用官方预编译包 |
 | D8 | 节点每边放**两个锚点**：`type="target"`（`isConnectable={false}`、`pointer-events:none`、不可见）做几何锚点，`type="source"` 负责发起拖拽；两者 id 相同（top/right/bottom/left） | React Flow `getEdgePosition` 需要 target 侧 handleBounds；原实现只有 source 锚点，连线在真实场景下可能整条不渲染 | 连线路径稳定；后续若要切 `ConnectionMode.Strict` 也不必改节点结构 |
 | D9 | 打包产物的渲染验收用 **jsdom + 伪布局**（注入 `offsetWidth/offsetHeight/getBoundingClientRect`、`ResizeObserver`、`DOMMatrixReadOnly`），脚本 `scripts/ui-smoke.cjs` | 本机 Chrome/Edge 无头模式被宿主拦截，无法做真实浏览器渲染断言；而 `offsetWidth` 恒为 0 会让 React Flow 判定节点未初始化、连线不渲染 | 结构性问题（缺锚点、缺线、缺标签）能被自动发现；拖拽手感/弹窗交互仍需人工验收 |
+| D10 | 图片二进制走 **IndexedDB（Blob）**，`CaseDoc` 只存素材元数据（`Asset.id/path/hash/thumbnails` 等）；缩略图与哈希在 **Web Worker** 里算 | 图片不能塞 localStorage（5MB 配额、同步阻塞），而 M2 阶段还没接 Tauri 文件系统（D2）；IndexedDB 支持 Blob 与事务，M4 换成 SQLite + 只读原件封存时只需替换 `imageService` 实现 | M2-3 起 `src/services/imageStore.ts` 提供 `putAsset/putThumb/getThumb/deleteAsset`，组件层不直接碰 IndexedDB |
+| D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
 

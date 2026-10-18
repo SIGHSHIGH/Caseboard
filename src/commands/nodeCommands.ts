@@ -1,4 +1,4 @@
-import type { CaseNode, NodeType, Status } from '../types';
+import type { CaseNode, NodeComment, NodeType, Status } from '../types';
 import { newId } from '../lib/id';
 import { NODE_TYPE_META } from '../lib/theme';
 import type { Command } from './types';
@@ -67,6 +67,40 @@ export function moveNode(id: string, x: number, y: number): Command {
       if (!node) return;
       node.x = x;
       node.y = y;
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
+/** 追加一条评论（M2-1）。评论只存文本，不影响状态与置信度。 */
+export function addComment(nodeId: string, text: string, author?: string): Command {
+  const trimmed = text.trim();
+  return {
+    label: '添加评论',
+    apply(draft) {
+      if (trimmed.length === 0) return;
+      const node = draft.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      const comment: NodeComment = {
+        id: newId('c'),
+        text: trimmed,
+        createdAt: new Date().toISOString(),
+      };
+      if (author !== undefined && author.trim().length > 0) comment.author = author.trim();
+      node.comments = [...(node.comments ?? []), comment];
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
+export function deleteComment(nodeId: string, commentId: string): Command {
+  return {
+    label: '删除评论',
+    apply(draft) {
+      const node = draft.nodes.find((n) => n.id === nodeId);
+      if (!node || !node.comments) return;
+      node.comments = node.comments.filter((comment) => comment.id !== commentId);
+      if (node.comments.length === 0) delete node.comments;
       draft.meta.updatedAt = new Date().toISOString();
     },
   };

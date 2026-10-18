@@ -15,6 +15,9 @@ const { useDocStore } = require(path.join(out, 'store', 'docStore.js'));
 const { addNode, deleteNode, moveNode, updateNode } = require(path.join(out, 'commands', 'nodeCommands.js'));
 const { addEdge, deleteEdge, updateEdge } = require(path.join(out, 'commands', 'edgeCommands.js'));
 const { toJson, fromJson } = require(path.join(out, 'serializers', 'json.js'));
+const { normalizeDoc } = require(path.join(out, 'serializers', 'migrate.js'));
+const { NODE_TEMPLATES, NODE_TYPE_ORDER, fieldEntriesOf } = require(path.join(out, 'lib', 'nodeTemplates.js'));
+const { addComment, deleteComment } = require(path.join(out, 'commands', 'nodeCommands.js'));
 
 let failures = 0;
 function check(name, condition, detail) {
@@ -109,6 +112,65 @@ check('缺字段 JSON 会被拒绝', (() => {
     return true;
   }
 })());
+
+console.log('[8] M2-1 节点模板');
+check('8 类节点模板齐全', NODE_TYPE_ORDER.length === 8 && NODE_TYPE_ORDER.every((t) => !!NODE_TEMPLATES[t]), NODE_TYPE_ORDER);
+check('每类模板至少 3 个字段', NODE_TYPE_ORDER.every((t) => NODE_TEMPLATES[t].fields.length >= 3), NODE_TYPE_ORDER.map((t) => NODE_TEMPLATES[t].fields.length));
+check('证据模板含「证据种类」下拉', (NODE_TEMPLATES.evidence.fields.find((f) => f.key === '证据种类') || {}).kind === 'select');
+check('人物模板含前科长文本', (NODE_TEMPLATES.person.fields.find((f) => f.key === '前科记录') || {}).kind === 'textarea');
+const zhangFields = fieldEntriesOf('person', { 年龄: 42, 籍贯: '常州', 职业: '无业', 自定义备注: '有前科' });
+check('字段展示按模板顺序且含自定义字段', zhangFields[0].key === '年龄' && zhangFields[zhangFields.length - 1].key === '自定义备注', zhangFields.map((f) => f.key));
+check('字段展示跳过空值', fieldEntriesOf('person', { 年龄: 42, 籍贯: '' }).length === 1);
+
+console.log('[9] M2-1 旧文档迁移兜底');
+const legacy = {
+  meta: { id: 'legacy-1', title: '老存档' },
+  nodes: [
+    { id: 'n1', type: 'person', title: '旧节点' },
+    { id: 'n2', type: '未知类型', title: '坏类型' },
+    { id: 'n1', type: 'note', title: '重复 id' },
+    { id: 'n3', title: '缺端点节点的边应被丢弃' },
+  ],
+  edges: [
+    { id: 'e1', source: 'n1', target: 'n2' },
+    { id: 'e2', source: 'n1', target: 'ghost' },
+  ],
+};
+const migrated = normalizeDoc(legacy);
+check('旧文档可迁移且去重', migrated.nodes.length === 3, migrated.nodes.map((n) => n.id));
+check('未知类型落到 note', migrated.nodes.find((n) => n.id === 'n2').type === 'note');
+check('缺失字段补齐为默认', (() => {
+  const node = migrated.nodes.find((n) => n.id === 'n1');
+  return Array.isArray(node.tags) && Array.isArray(node.attachments) && node.status === 'todo' && node.confidence === 50 && node.w > 0;
+})(), migrated.nodes.find((n) => n.id === 'n1'));
+check('悬空边被丢弃', migrated.edges.length === 1 && migrated.edges[0].id === 'e1', migrated.edges.map((e) => e.id));
+check('缺 meta 会抛错', (() => {
+  try {
+    normalizeDoc({ nodes: [], edges: [] });
+    return false;
+  } catch {
+    return true;
+  }
+})());
+check('缺字段的 JSON 也能导入', (() => {
+  const partial = fromJson(JSON.stringify({ meta: { id: 'x', title: 'y' }, nodes: [], edges: [] }));
+  return partial.nodes.length === 0 && partial.settings.lineLegend.solid.label === '已证实';
+})());
+
+console.log('[10] M2-1 评论与折叠');
+const commentNodeId = doc().nodes[0].id;
+const beforeComments = (doc().nodes[0].comments || []).length;
+state().dispatch(addComment(commentNodeId, '  待调取通话详单  '));
+const withComment = doc().nodes.find((n) => n.id === commentNodeId);
+check('评论已追加且去空白', withComment.comments.length === beforeComments + 1 && withComment.comments[beforeComments].text === '待调取通话详单', withComment.comments);
+state().dispatch(deleteComment(commentNodeId, withComment.comments[beforeComments].id));
+check('评论可删除', (doc().nodes.find((n) => n.id === commentNodeId).comments || []).length === beforeComments);
+state().undo();
+check('撤销可恢复评论', (doc().nodes.find((n) => n.id === commentNodeId).comments || []).length === beforeComments + 1);
+state().dispatch(updateNode(commentNodeId, { collapsed: true }));
+check('折叠详情可写入', doc().nodes.find((n) => n.id === commentNodeId).collapsed === true);
+state().dispatch(updateNode(commentNodeId, { collapsed: undefined }));
+check('折叠详情可取消', doc().nodes.find((n) => n.id === commentNodeId).collapsed === undefined);
 
 console.log('');
 if (failures > 0) {

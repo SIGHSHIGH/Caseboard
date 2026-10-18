@@ -609,3 +609,122 @@ button {
 .react-flow__handle {
   border-radius: 50%;
 }
+
+
+/* ===== M2-1：模板字段、别名/折叠、评论 ===== */
+.cb-type-btn {
+  position: relative;
+}
+.cb-type-btn__hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--cb-muted);
+  opacity: 0.75;
+}
+.cb-node__folded {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px dashed var(--cb-border-strong);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--cb-muted);
+}
+.cb-node__fields {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cb-node__field {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--cb-text);
+}
+.cb-node__field-key {
+  flex: none;
+  color: var(--cb-muted);
+}
+.cb-node__field-val {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cb-form__section {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--cb-border);
+}
+.cb-form__subtitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cb-text);
+}
+.cb-form__subtle {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--cb-muted);
+}
+.cb-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.cb-field--wide {
+  grid-column: 1 / -1;
+}
+.cb-field--wide textarea {
+  width: 100%;
+}
+.cb-comments {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.cb-comments__item {
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid var(--cb-border);
+  border-radius: var(--cb-radius);
+}
+.cb-comments__text {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cb-comments__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--cb-muted);
+}
+.cb-comments__new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cb-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cb-accent);
+  font-size: 10px;
+  cursor: pointer;
+}
+.cb-link-btn:hover {
+  text-decoration: underline;
+}
