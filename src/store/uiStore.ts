@@ -3,8 +3,8 @@ import type { AlignGuide } from '../lib/imageNode';
 import type { XY } from '../types';
 
 export type CanvasMode = 'select' | 'lasso';
-/** 左栏三个标签：对象类型 / 素材库 / 分组 */
-export type LeftTab = 'nodes' | 'assets' | 'groups';
+/** 左栏四个标签：对象类型 / 素材库 / 分组 / 分析（M5-2 过滤与聚焦） */
+export type LeftTab = 'nodes' | 'assets' | 'groups' | 'analysis';
 
 interface UiStore {
   selectedNodeId: string | null;

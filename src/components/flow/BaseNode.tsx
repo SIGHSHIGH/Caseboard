@@ -6,7 +6,15 @@ import { fieldEntriesOf } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import type { CaseNode } from '../../types';
 
-export type BaseNodeData = { node: CaseNode; attachTarget?: boolean };
+export type BaseNodeData = {
+  node: CaseNode;
+  attachTarget?: boolean;
+  dimmed?: boolean;
+  /** 中心度热力，0–1（M5-3） */
+  heat?: number;
+  /** 是否落在当前高亮路径上（M5-3） */
+  onPath?: boolean;
+};
 export type BaseFlowNode = Node<BaseNodeData, 'base'>;
 
 const SIDES = [
@@ -19,6 +27,8 @@ const SIDES = [
 function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const node = data.node;
   const attachTarget = data.attachTarget === true;
+  const heat = data.heat ?? 0;
+  const onPath = data.onPath === true;
   const meta = NODE_TYPE_META[node.type];
   const status = STATUS_META[node.status];
   const dispatch = useDocStore((s) => s.dispatch);
@@ -47,7 +57,8 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
 
   return (
     <div
-      className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}`}
+      className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}${data.dimmed ? ' is-dim' : ''}${onPath ? ' is-path' : ''}`}
+      data-heat={heat > 0 ? heat.toFixed(2) : undefined}
       style={{ width: node.w }}
       data-type={node.type}
     >
@@ -112,6 +123,14 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
             <span className="cb-node__alias">别名：{node.aliases.join('、')}</span>
           ) : null}
           {node.collapsed ? <span className="cb-node__folded">已折叠</span> : null}
+          {heat >= 0.33 ? (
+            <span
+              className={heat >= 0.66 ? 'cb-node__heat is-top' : 'cb-node__heat'}
+              title={`中心度 ${Math.round(heat * 100)}%：数值越高，越处在关系网络的关键位置`}
+            >
+              中心度 {Math.round(heat * 100)}%
+            </span>
+          ) : null}
         </div>
 
         {/* 未折叠时给出 2 条最关键的模板字段，替代「打开属性面板才知道节点装了什么」 */}

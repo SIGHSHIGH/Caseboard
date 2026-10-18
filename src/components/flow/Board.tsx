@@ -28,13 +28,26 @@ import {
 } from '../../commands';
 import { worldToScreen } from '../../lib/coords';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
-import { buildRenderModel, descendantGroupIdsOf, nodeIdsInRect, parseBoardNodeId } from '../../lib/groups';
+import { centralityMap } from '../../lib/analysis';
+import { applyView } from '../../lib/filter';
+import {
+  buildRenderModel,
+  descendantGroupIdsOf,
+  groupIdOfSuper,
+  isAggEdgeId,
+  isSuperId,
+  memberNodeIds,
+  nodeIdsInRect,
+  parseBoardNodeId,
+} from '../../lib/groups';
 import { newId } from '../../lib/id';
 import { fitImageSize, snapImageRect, type AlignGuide } from '../../lib/imageNode';
 import { NODE_TYPE_META } from '../../lib/theme';
+import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodeStore } from '../../store/codeStore';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
+import { useViewStore } from '../../store/viewStore';
 import type { CaseNode, Group, ImageNode, XY } from '../../types';
 import { ConnectDialog } from '../panels/ConnectDialog';
 import { BaseNode, type BaseFlowNode } from './BaseNode';
@@ -134,8 +147,40 @@ export function Board() {
   const lastFocusNonce = useRef(0);
   const [pending, setPending] = useState<Connection | null>(null);
 
+  const filter = useViewStore((s) => s.filter);
+  const focus = useViewStore((s) => s.focus);
+  const centrality = useAnalysisStore((s) => s.centrality);
+  const pathResult = useAnalysisStore((s) => s.result);
+  const activePath = useAnalysisStore((s) => s.activePath);
+
   // 折叠 / 聚合后的渲染模型（单一数据源的派生视图，不写回 doc）
   const model = useMemo(() => buildRenderModel(doc), [doc]);
+
+  // 过滤 / 聚焦结果：只影响渲染，不动 Model（M5-2）
+  const view = useMemo(() => applyView(doc, filter, focus), [doc, filter, focus]);
+
+  // 中心度热力（0–1）与当前高亮路径：都只用于渲染
+  const heat = useMemo(() => centralityMap(doc, centrality), [doc, centrality]);
+  const highlight = useMemo(() => {
+    const nodes = new Set<string>();
+    const edges = new Set<string>();
+    if (!pathResult?.found) return { nodes, edges };
+    const picks = activePath === -1 ? pathResult.paths : [pathResult.paths[activePath]].filter((item) => item !== undefined);
+    for (const path of picks) {
+      for (const id of path.nodes) nodes.add(id);
+      for (const id of path.edges) edges.add(id);
+    }
+    return { nodes, edges };
+  }, [pathResult, activePath]);
+
+  /** 组或超级节点按成员状态聚合：全部隐藏才隐藏，有任一淡化就淡化 */
+  const memberState = useCallback(
+    (ids: string[]): { hidden: boolean; dim: boolean } => ({
+      hidden: ids.length > 0 && ids.every((id) => view.hiddenNodes.has(id)),
+      dim: ids.some((id) => view.dimNodes.has(id)),
+    }),
+    [view],
+  );
 
   // 正在拖动的组矩形 → 位移；成员节点与超级节点用它做跟手预览
   const groupDragOffsets = useMemo(() => {
@@ -170,7 +215,9 @@ export function Board() {
   );
 
   const nodes = useMemo<BoardFlowNode[]>(() => {
-    const groupNodes: BoardFlowNode[] = model.groups.map(({ group, memberCount, childCount }) => ({
+    const groupNodes: BoardFlowNode[] = model.groups
+      .filter(({ group }) => !memberState(memberNodeIds(doc, group.id)).hidden)
+      .map(({ group, memberCount, childCount }) => ({
       id: rectNodeId(group.id),
       type: 'groupRect',
       position: dragPos[rectNodeId(group.id)] ?? { x: group.bounds.x, y: group.bounds.y },
@@ -179,9 +226,11 @@ export function Board() {
       selectable: false,
       zIndex: -1,
       style: { width: group.bounds.w, height: group.bounds.h },
-    }));
+      }));
 
-    const superNodes: BoardFlowNode[] = model.superNodes.map((superNode) => {
+    const superNodes: BoardFlowNode[] = model.superNodes
+      .filter((superNode) => !memberState(memberNodeIds(doc, superNode.group.id)).hidden)
+      .map((superNode) => {
       const offset = offsetOfGroup(superNode.group.parentId);
       return {
         id: superNode.node.id,
@@ -197,18 +246,26 @@ export function Board() {
       };
     });
 
-    const baseNodes: BoardFlowNode[] = model.nodes.map((node) => {
+    const baseNodes: BoardFlowNode[] = model.nodes
+      .filter((node) => !view.hiddenNodes.has(node.id))
+      .map((node) => {
       const own = dragPos[node.id];
       const offset = own ? null : offsetOfNode(node);
       return {
         id: node.id,
         type: 'base',
         position: own ?? { x: node.x + (offset?.x ?? 0), y: node.y + (offset?.y ?? 0) },
-        data: { node, attachTarget: attachTargetId === node.id },
+        data: {
+          node,
+          attachTarget: attachTargetId === node.id,
+          dimmed: view.dimNodes.has(node.id),
+          heat: heat.get(node.id) ?? 0,
+          onPath: highlight.nodes.has(node.id),
+        },
         selected: selectedNodeIds.includes(node.id),
         style: { width: node.w },
-      };
-    });
+        };
+      });
 
     // 自由图片节点：不依附卡片，层级由自身 zIndex 决定（可压住/被压住）
     const imageNodes: BoardFlowNode[] = doc.imageNodes.map((image) => ({
@@ -238,23 +295,41 @@ export function Board() {
     doc.assets,
     offsetOfGroup,
     offsetOfNode,
+    view,
+    memberState,
+    doc,
+    heat,
+    highlight,
   ]);
 
-  const edges = useMemo<CaseFlowEdge[]>(
-    () =>
-      model.edges.map((edge) => ({
-        id: edge.id,
-        type: 'bezier',
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle ?? 'right',
-        targetHandle: edge.targetHandle ?? 'left',
-        data: { edge },
-        selected: edge.id === selectedEdgeId,
-        markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 16, height: 16 } : undefined,
-      })),
-    [model.edges, selectedEdgeId],
-  );
+  const edges = useMemo<CaseFlowEdge[]>(() => {
+    const stateOf = (id: string): { hidden: boolean; dim: boolean } =>
+      isSuperId(id)
+        ? memberState(memberNodeIds(doc, groupIdOfSuper(id)))
+        : { hidden: view.hiddenNodes.has(id), dim: view.dimNodes.has(id) };
+    return model.edges
+      .filter((edge) => {
+        const source = stateOf(edge.source);
+        const target = stateOf(edge.target);
+        if (source.hidden || target.hidden) return false;
+        return isAggEdgeId(edge.id) ? true : !view.hiddenEdges.has(edge.id);
+      })
+      .map((edge) => {
+        const dimmed =
+          view.dimEdges.has(edge.id) || stateOf(edge.source).dim || stateOf(edge.target).dim;
+        return {
+          id: edge.id,
+          type: 'bezier' as const,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle ?? 'right',
+          targetHandle: edge.targetHandle ?? 'left',
+          data: { edge, dimmed, highlighted: highlight.edges.has(edge.id) },
+          selected: edge.id === selectedEdgeId,
+          markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 16, height: 16 } : undefined,
+        };
+      });
+  }, [model.edges, selectedEdgeId, view, memberState, doc, highlight]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<BoardFlowNode>[]) => {

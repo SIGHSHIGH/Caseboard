@@ -2,11 +2,13 @@ import { useUiStore, type LeftTab } from '../../store/uiStore';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { NODE_TEMPLATES, NODE_TYPE_ORDER } from '../../lib/nodeTemplates';
 import { AssetLibrary } from './AssetLibrary';
+import { AnalysisPanel } from './AnalysisPanel';
 
 const TABS: Array<{ id: LeftTab; label: string }> = [
   { id: 'nodes', label: '对象' },
   { id: 'assets', label: '素材' },
   { id: 'groups', label: '分组' },
+  { id: 'analysis', label: '分析' },
 ];
 
 /** 左栏：对象类型 / 素材库 / 分组 三个标签。点类型按钮就在画布中心落一个空节点。 */
@@ -64,6 +66,8 @@ export function LeftPanel() {
       ) : null}
 
       {leftTab === 'assets' ? <AssetLibrary /> : null}
+
+      {leftTab === 'analysis' ? <AnalysisPanel /> : null}
 
       {leftTab === 'groups' ? (
         <>

@@ -34,7 +34,7 @@
 | M2 | 领域模型 + 组 + 图片工作台 | 2–3 周 | 8 类节点模板、状态流、组（嵌套/折叠）、图片四路导入、自由图片节点、标注层 | 500 张图导入不崩；哈希去重命中；图片可旋转/层级/吸附 | ✅ 2026-10-19 |
 | M3 | DSL + 双向同步 | 2–3 周 | Lezer grammar、CodeMirror 6、serialize/parse/diff、同步状态机 | 序列化幂等；1000 节点解析+渲染 < 300ms；解析失败不清空 Model | ✅ 2026-10-19 |
 | M4 | Tauri + SQLite + 项目文件 + 导出 | 3–4 周 | Tauri 2 外壳、SQLite、`.caseboard` 单文件、图片/整板导出、脱敏导出 | `.caseboard` 可拷机打开；离线可用；PDF 报告可交付 | ✅ 2026-10-19 |
-| M5 | 分析视图 | 2–3 周 | 过滤、聚焦、路径/中心度、自动布局、时间线回放、演示模式 | 路径高亮可复现；时间游标可播放；一键整理保留锁定节点 | ⬜ |
+| M5 | 分析视图 | 2–3 周 | 过滤、聚焦、路径/中心度、自动布局、时间线回放、演示模式 | 路径高亮可复现；时间游标可播放；一键整理保留锁定节点 | ✅ 2026-10-19 |
 | M6 | AI 文本能力 | 2–3 周 | 抽取建图（P4）、自然语言编辑（P6）、矛盾检测/证据链（P5）、报告（P7）、本地模型 | 采纳率 ≥ 70%；AI 永不直接改 Model，只进待确认队列 | ⬜ |
 | M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ⬜ |
 | M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ⬜ |
@@ -459,15 +459,40 @@
 4. 时间游标可从头播放到尾，暂停/回退可用，区间条带正确显示。
 5. 演示模式可按步骤播放，退出后画布状态还原。
 
-**M5 拆步（计划，⬜ 待开工）**
+**M5 拆步（已完成，✅ 2026-10-19）**
 
 | 步骤 | 内容与涉及文件 | 验收抓手 | 状态 |
 |---|---|---|---|
-| M5-1 | 分析内核（纯函数，无 UI）：`src/lib/graph.ts`（`buildGraph` 邻接表、`shortestPath` 确定性 BFS/Dijkstra、`allPaths` 带上限截断与稳定排序、`degreeCentrality` / `betweennessCentrality`、`neighborsWithin(depth)`）、`src/lib/layout.ts`（`forceLayout`(d3-force) / `hierarchicalLayout`(dagre) / `radialLayout` / `circleLayout` / `gridLayout`，统一 `LayoutOptions{lockedIds}` 与 `separateOverlaps` 后处理）、`src/lib/timeline.ts`（时间范围归一化、泳道分组、游标切片） | smoke 新增段：验收 1（两节点最短路径 + 全部路径稳定复现）、验收 2（中心度前 3 稳定）、验收 3a（锁定坐标不变 / 无重叠 / 不穿组）、验收 4a（游标切片） | ⬜ |
-| M5-2 | 过滤器与聚焦：`src/store/viewStore.ts`（条件：类型/标签/状态/时间/置信度/关系类别；模式：显示·隐藏·淡化）、`src/components/panels/FilterPanel.tsx`（左栏新增「分析」页签）、`Board.tsx` 按视图状态做淡化与命中计数 | ui-smoke：面板控件存在、过滤后可见节点数变化、聚焦按钮文案与取消 | ⬜ |
-| M5-3 | 路径与中心度可视化：`src/services/graphAnalysis.ts`（调 M5-1）、`src/components/panels/PathPanel.tsx`（选源/汇、最短路径、全部路径列表、动线高亮）、中心度 Top3 排行与节点角标 | smoke（结论数据）+ ui-smoke（面板与高亮元素） | ⬜ |
-| M5-4 | 自动布局与一键整理：`src/commands/layoutCommands.ts`（一条 Command 改全部坐标 → 一次撤销）、顶栏/左栏布局菜单、过渡动画 | smoke：整理后锁定节点坐标不变、无重叠、不穿组、撤销一次全回 | ⬜ |
-| M5-5 | 时间线视图与演示模式：`src/components/views/TimelineView.tsx`（泳道、区间条带、游标播放/暂停/回退/倍速）、`src/components/views/PresentationView.tsx`（镜头路径 + 逐条连线亮起 + 全屏 + 退出还原）、`App.tsx` 视图切换 | smoke（游标与退出还原的纯逻辑）+ ui-smoke（DOM 与按钮）；真机视觉效果并入人工验收 | ⬜ |
+| M5-1 | 分析内核（纯函数，无 UI）：`src/lib/graph.ts`（`buildGraph` 邻接表、`shortestPath` 确定性 BFS、`allPaths` 带上限截断与稳定排序、`degreeCentrality` / `betweennessCentrality`、`neighborsWithin(depth)`、`components` / `graphStats`）、`src/lib/layout.ts`（`computeLayout` 统一五种布局：force 用 d3-force、hierarchical 用 dagre、radial / circle / grid 自写；`LayoutOptions{lockedIds}` + `separateOverlaps` + 组内夹紧）、`src/lib/timeline.ts`（时间解析/格式化、刻度归一化、泳道分组、游标切片、`advanceCursor`、`timelineBands`） | smoke [31] **41 条**：验收 1（最短 + 全部路径稳定复现）、验收 2（中心度前 3 稳定）、验收 3a（锁定坐标逐位不变 / 无重叠 / 不穿组）、验收 4a（游标切片与刻度换算） | ✅ |
+| M5-2 | 过滤器与聚焦：`src/lib/filter.ts`（条件：类型/标签/状态/时间/置信度/关系类别；模式：淡化·只显示命中·隐藏命中；`applyView` 输出四类集合）、`src/store/viewStore.ts`、`src/components/panels/FilterPanel.tsx`、`src/components/panels/AnalysisPanel.tsx`（左栏「分析」页签 + 子页签）、`Board.tsx` 按视图状态过滤/淡化并计命中数 | smoke [32] **25 条** + ui-smoke **14 条**：面板控件、三种模式、类型/状态/标签/置信度/文本/时间窗/关系类别、聚焦 1–2 跳、过滤与聚焦取交集、命中计数 | ✅ |
+| M5-3 | 路径与中心度可视化：`src/lib/analysis.ts`（`analyzePaths` / `centralityScores` / `centralityMap` 热力归一 / `topCentrality`）、`src/store/analysisStore.ts`、`src/components/panels/PathPanel.tsx`；画布侧 BaseNode 热力徽标 + BezierEdge 动线高亮（Top6 排行，超出原计划的 Top3） | smoke [33] **15 条**（最短/全部路径、并列关系、边界、度与中介中心度、热力归一、文案）+ ui-smoke **11 条**（子页签、选源/汇、计算、路径高亮、排行点击定位） | ✅ |
+| M5-4 | 自动布局与一键整理：`src/commands/layoutCommands.ts`（一条 Command 改全部坐标 → 一次撤销）、`src/store/layoutStore.ts`、`src/components/panels/LayoutPanel.tsx`（5 种布局 chip、锁定选中、应用、撤销提示；无顶栏菜单与过渡动画） | smoke [34] **7 条**：锁定坐标逐位不变、无重叠、不穿组、撤销一次全回、重做恢复；ui-smoke **10 条**：面板与锁定交互 | ✅ |
+| M5-5 | 时间线视图与演示模式：`src/components/views/TimelineView.tsx`（泳道、区间条带、游标播放/暂停/回退/倍速、未排期提示）、`src/components/views/PresentationView.tsx`（按实体类型分组的逐步讲解 + 关联清单 + 键盘翻页 + 「在画布中查看」，**不含**镜头动画/全屏/导出，见 D38）、`src/store/{viewModeStore,timelineStore}.ts`、`src/lib/present.ts`、`App.tsx` 与 `TopBar.tsx` 视图切换 | smoke [35] **13 条**（演示顺序/关联方向/只读性、区间条带几何、1× 播放 60 秒到末尾、游标比例往返）+ ui-smoke **15 条**（三视图切换、时间线控件与轨道、演示翻页与退出还原） | ✅ |
+
+**M5 验收记录（2026-10-19，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `pnpm typecheck` → 0 error | ✅ |
+| 逻辑层 | `pnpm smoke` **460 条全通过**（M5 新增 101 条：[31] 41 / [32] 25 / [33] 15 / [34] 7 / [35] 13） | ✅ |
+| 打包层 | `pnpm ui-smoke` **142 条全通过**（M5 期间新增 52 条）；`pnpm build` 811 modules，CSS 55.58 kB (gzip 9.58)、主包 764.62 kB (gzip 257.54)、CodePanel 345.79 kB、pdf 483.44 kB、selftest 13.11 kB、2.85s | ✅ |
+| 桌面产物 | `node scripts/tauri-cli.cjs build --no-bundle` → `src-tauri/target/release/caseboard.exe`（release 1m48s，版本 0.5.0）；`node scripts/run-selftest.cjs` 两轮 **PASS 14 / 15**（第 2 轮跨进程数据完整）；`pnpm bench` 1000 节点 **90.0 ms** < 300 ms | ✅ |
+| 验收 1 路径高亮 | `analyzePaths(zhang→ktv)` 最短 2 跳 `['zhang','e1','ktv']`、每跳带 `e-actor`/`e-place`；全部路径稳定排序、`maxPaths` 截断标记；画布 `.cb-node.is-path` 与加粗动线 | ✅ |
+| 验收 2 中心度稳定 | 度中心度前 3 = 张建国 3 / 首次接触 2 / 恒信财务 2；中介中心度最高张建国 0.4；同数据重复计算结果逐位一致 | ✅ |
+| 验收 3 一键整理 | 圆环布局锁定张建国 (120,140)、李梅 (660,140) 后其余 4 个重排，锁定坐标逐位不变、无矩形重叠、组内节点不穿组；整板只压 1 条撤销，Ctrl+Z 一次全回 | ✅ |
+| 验收 4 时间游标 | 刻度 2026-09-01 → 09-10；1× 播放按 60fps 在 60 秒内走到末尾并停住（3750 帧）；暂停/回退/跳到末尾与滑杆可用；区间条带宽度 = 区间长度 / 总跨度（4/9 实测） | ✅ |
+| 验收 5 演示模式 | 演示台按类型分组（人物 → 组织 → 地点 → 事件 → 证据）逐屏播放，键盘 ←/→/空格与按钮翻页；演示只读文档（smoke 断言 JSON 前后一致），退出只切视图与选中，画布数据无变化 | ✅ |
+| 门禁口径 | 分析内核全部为纯函数、同输入同输出；演示镜头动画/全屏属**人工观赏项**且本期不做（D38）；五种布局的真实手感与长文本渲染并入人工验收 | ✅ |
+
+**M5 与计划的偏离（如实记录）**
+
+| 项 | 计划 | 实际 | 原因 |
+|---|---|---|---|
+| 路径/中心度实现 | 「graphology」 | 自写 BFS / Brandes（`src/lib/graph.ts`），依赖已装但未调用 | 需要稳定可复现的排序与并列处理（D40） |
+| 路径服务位置 | `src/services/graphAnalysis.ts` | `src/lib/analysis.ts`（纯函数）+ `src/store/analysisStore.ts` | 不产生副作用，放 lib 便于 smoke 直接测 |
+| 中心度展示 | Top3 排行 + 角标 | Top6 排行 + 画布热力徽标（≥33% 显示） | 排行更长不增加噪声，热力让关键节点在画布上直接可辨 |
+| 一键整理入口 | 顶栏/左栏菜单 + 过渡动画 | 左栏「分析 → 自动布局」，无动画 | 动画无法机器验收，且整理是低频重操作，瞬时完成更利落 |
+| 演示模式 | 镜头路径 + 逐条连线亮起 + 全屏 + 导出 | 按类型分组的实体逐步讲解 + 关联清单 + 键盘翻页 + 定位回画布 | D38：镜头/全屏/导出成本高且不可自动验收；验收 5「按步骤播放、退出还原」已由只读性与视图切换满足 |
 
 > 依赖顺序：M5-1 是其余四步的地基（纯函数先可测），M5-2 与 M5-3 可并行，M5-4/M5-5 依赖坐标与时间数据就绪。
 
@@ -677,6 +702,9 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D35 | 多选与批量移动：**选中态由 React Flow 的 select 变更驱动**，`uiStore.selectedNodeIds` 只是镜像；多个选中节点一起拖动时，用 `dragPos` 计算全部位置后 dispatch 一条 `moveNodes` | v12 单选（Meta 键）在 Windows 上不可用，且忽略 select 变更会让「框选高亮」与内部状态脱节；逐节点落命令会把一次拖动拆成 N 条撤销记录 | `Board.tsx` 的 `onNodesChange` 消费 select、`multiSelectionKeyCode={['Meta','Control']}`、`selectionOnDrag`；组节点 `selectable:false` 以免框选把组带进选中集 |
 | D36 | 版本快照**自动兜底**：每次成功落库后节流 5 分钟写一份「自动快照」，启动时若库里 0 份则补「启动快照」 | 面板承诺「每 5 分钟自动存一份」但代码从未实现，用户打开历史只看到 0 份（A6）；只有手动快照的话，回收站之外没有第二道保险 | `docStore` 的 `AUTO_SNAPSHOT_MS` / `maybeSnapshot` / `bootstrapDoc`；快照上限仍是 `SNAPSHOT_KEEP=50` |
 | D37 | 边曲率手柄：第一轮**延期**，第二轮复验后**已实现**（`src/lib/edgeCurve.ts`）。`CaseEdge.controlPoints[0]` 存「曲线中点相对两端锚点中点的偏移」，不是绝对坐标；控制点 = 中点 + 偏移 × 4/3（三次贝塞尔 t=0.5 只到控制点 3/4），偏移上限 1600，小于 2 视为直线 | 相对偏移让节点移动/缩放、画布平移后曲线自动跟随；4/3 增益让手柄正好落在曲线中点上，拖动所见即所得。DSL 不表达该字段，三方合并按 D20 白名单处理，代码侧编辑不会抹掉曲率 | `src/lib/edgeCurve.ts` 是曲线几何唯一来源，`BezierEdge`、`svg.ts`、`png.ts` 都调它；smoke `[30]` 覆盖几何/命令/JSON 往返/SVG 一致性 |
+| D38 | 演示模式先做**按实体类型分组的逐步讲解**（一屏一实体 + 关联清单 + 键盘 ←/→/空格翻页 + 「在画布中查看」），不做镜头动画、逐条连线亮起、全屏与导出；演示全程只读文档，退出只切视图与选中 | 镜头动画与全屏既无法用 jsdom 伪布局自动验收（D9），又是纯观赏成本；而验收 5 要求的「按步骤播放、退出后画布状态还原」靠只读性与视图切换即可严格满足 | `src/lib/present.ts` 的 `presentationOrder` / `relatedOf` / `presentationDeck` 是纯函数，smoke 直接断言顺序、方向与文档不变 |
+| D39 | 时间线播放口径：**1× = 整段时间在 60 秒内放完**（`advanceCursor(scale, at, speed, (span/60000)×delta)`），时间一律按 **UTC 墙上时间**解析与显示，刻度为空时禁用播放；区间事件的条带宽度 = `(end-start)/span` | 案件跨度从数小时到数年，若按真实毫秒推进，长跨度永远播不完、短跨度一闪而过；固定 60 秒让「播放」在不同案件上手感一致。UTC 墙上时间避免同一份笔录在不同时区显示不同时刻 | `src/lib/timeline.ts` 的 `parseTimelineTime` / `advanceCursor` / `timelineBands`；`TimelineView` 的 rAF 循环只负责按帧换算 |
+| D40 | 路径与中心度用**自写确定性 BFS / Brandes**（`src/lib/graph.ts`），不调用 graphology；依赖仍保留在 package.json（规格锁定技术栈） | 分析结果要能「同数据同结果」写进验收，自写实现可固定邻居顺序（id 升序）、并列路径排序与浮点保留位数；引库还要再包一层排序 | `shortestPath` / `allPaths` / `degreeCentrality` / `betweennessCentrality` 全是纯函数，smoke [31]/[33] 直接断言数值；将来需要更多图算法时再评估切到 graphology |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -699,3 +727,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M4 人工验收热修（第一轮回执 A1–A8）**：修好 A1 拖入（`dragDropEnabled:false`，D34）、A2 图片缩放/旋转手柄（补 `nodrag`）、A4 框选与 Ctrl 多选 + 批量移动（D35）、A6 自动/启动快照（D36）、A7 回收站恢复连同关系并一次撤销（`restoreEntities`）、A8 导出面板错位（`.cb-modal__mask` + `.cb-modal cb-export`）；A3 曲率手柄延期至 M5（D37）。机器验收：typecheck 0 error、smoke **346 条**、ui-smoke 84 条、build 470 modules、`tauri build --no-bundle` 成功、自检 phase1 14 / phase2 15 全绿。 |
 | 2026-10-19 | **M4 整体验收通过**（✅ 打 tag `ms/M4`）：Tauri 2 外壳 + SQLite/FTS5 + `.caseboard` 单文件 + 整板 PNG/SVG/PDF + 案件图片包 + 脱敏导出 + 自动保存/版本快照/回收站/历史面板落地；`caseboard.exe --selftest` 两轮 **14 + 15 项全绿**（数据跨进程完整、跨目录打开、零外呼、PDF 回读 2 页、脱敏 1024 像素可验证抹平）；§1 总表 M4 置 ✅、§3 写入 M4 拆步表与验收记录（含遗留与延期表），新增 D25–D33（Rust 装进工作区 / 二进制 base64 过 IPC / Rust 只做 IO / 模型驱动出图 / `--selftest` 通道 / 绝对路径存素材 / 数据目录可覆盖 + 建表提前 / PDF 关对象流 / 删除进回收站）；`pnpm smoke` **337 条**、`pnpm ui-smoke` 84 条、`pnpm bench` 75.7ms、`pnpm build` 469 modules。 |
 | 2026-10-19 | **M4 人工验收第二轮回执热修（A1 旋转 / A3 曲率手柄）**：旋转手柄被图层工具条压住（层级上下文）→ 工具条 `top:-60px` + window 指针监听；新增 `CaseEdge.controlPoints` 与 `src/lib/edgeCurve.ts`，选中关系可拖曲率手柄、双击复位，SVG/PNG 与画布共用曲线（D37 由延期改为已实现）；§3 增第二轮回执表并致谢「其余通过」；机器验收 smoke **359 条**、ui-smoke **90 条**、自检 14 + 15 全绿；「视觉对齐 / 折叠操作提示」语义待用户确认。 |
+| 2026-10-19 | **M5 整体验收通过**（✅ 打 tag `ms/M5`）：分析视图五步落地——图内核（路径/中心度/五种布局/时间线）、过滤与聚焦、路径与中心度可视化、一键整理、时间线回放与演示模式；`pnpm smoke` **460 条**（M5 新增 101）、`pnpm ui-smoke` **142 条**（新增 52）、`pnpm build` 811 modules；§1 总表 M5 置 ✅，§3 写入 M5 拆步与验收记录（含与计划的五项偏离），新增 D38（演示模式先做逐步讲解）、D39（1× = 60 秒、UTC 口径）、D40（自写确定性 BFS/Brandes）。 |

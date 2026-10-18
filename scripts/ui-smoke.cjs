@@ -94,7 +94,7 @@ function check(name, condition, detail) {
   };
 
   console.log('[UI] M2-3 左栏标签与素材库');
-  check('左栏三个标签', doc.querySelectorAll('.cb-tabs .cb-tab').length === 3, doc.querySelectorAll('.cb-tabs .cb-tab').length);
+  check('左栏四个标签', doc.querySelectorAll('.cb-tabs .cb-tab').length === 4, doc.querySelectorAll('.cb-tabs .cb-tab').length);
 
   check('可切到素材标签', await clickByText('.cb-tabs .cb-tab', '素材'));
   check('素材库区块已渲染', doc.querySelector('.cb-assets') !== null);
@@ -236,6 +236,146 @@ function check(name, condition, detail) {
   if (curveHandle) curveHandle.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
   await new Promise((resolve) => setTimeout(resolve, 150));
   check('曲率手柄可双击复位（不残留控制点）', doc.querySelector('.cb-curve-handle') !== null);
+
+  console.log('[UI] M5-2 过滤与聚焦面板');
+  const analysisTab = [...doc.querySelectorAll('.cb-tab')].find((tab) => (tab.textContent || '').trim() === '分析');
+  check('左栏有「分析」页签', !!analysisTab);
+  if (analysisTab) analysisTab.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('分析面板已渲染', doc.querySelector('.cb-filter') !== null);
+  check('三种过滤模式按钮', doc.querySelectorAll('.cb-filter__mode').length === 3, doc.querySelectorAll('.cb-filter__mode').length);
+  const personChip = [...doc.querySelectorAll('.cb-filter .cb-chip')].find((chip) => (chip.textContent || '').startsWith('人物'));
+  check('实体类型 chip 含「人物」', !!personChip);
+  if (personChip) personChip.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('淡化模式：4 个未命中实体变淡', doc.querySelectorAll('.cb-node.is-dim').length === 4, doc.querySelectorAll('.cb-node.is-dim').length);
+  check('淡化模式不隐藏实体（仍 6 个）', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
+  check('命中统计显示 2 / 6', (doc.querySelector('.cb-filter__summary')?.textContent || '').includes('2 / 6'), doc.querySelector('.cb-filter__summary')?.textContent);
+  const showMode = [...doc.querySelectorAll('.cb-filter__mode')].find((btn) => (btn.textContent || '').includes('只显示命中'));
+  if (showMode) showMode.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('只显示命中：隐藏 4 个实体', doc.querySelectorAll('.cb-node').length === 2, doc.querySelectorAll('.cb-node').length);
+  const resetBtn = [...doc.querySelectorAll('.cb-filter .cb-btn')].find((btn) => (btn.textContent || '').includes('重置全部筛选'));
+  check('重置按钮存在', !!resetBtn);
+  if (resetBtn) resetBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('重置后 6 个实体全部恢复', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
+  check('重置后没有淡化节点', doc.querySelectorAll('.cb-node.is-dim').length === 0, doc.querySelectorAll('.cb-node.is-dim').length);
+  const focusBtn = [...doc.querySelectorAll('.cb-filter .cb-btn')].find((btn) => (btn.textContent || '').includes('聚焦所选'));
+  check('未选中实体时聚焦按钮禁用', !!focusBtn && focusBtn.disabled === true);
+  const anyNode = doc.querySelector('.cb-node');
+  if (anyNode) anyNode.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const focusBtn2 = [...doc.querySelectorAll('.cb-filter .cb-btn')].find((btn) => (btn.textContent || '').includes('聚焦所选'));
+  check('选中实体后聚焦按钮可用', !!focusBtn2 && focusBtn2.disabled === false);
+  if (focusBtn2) focusBtn2.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('聚焦后外部实体淡化（2 个）', doc.querySelectorAll('.cb-node.is-dim').length === 2, doc.querySelectorAll('.cb-node.is-dim').length);
+
+  console.log('[UI] M5-3 路径与中心度面板');
+  const pathTab = [...doc.querySelectorAll('.cb-subtab')].find((tab) => (tab.textContent || '').includes('路径与中心度'));
+  check('分析面板有「路径与中心度」子页签', !!pathTab);
+  if (pathTab) pathTab.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('路径面板已渲染', doc.querySelector('.cb-path') !== null);
+  const pathSelects = doc.querySelectorAll('.cb-path__field select');
+  check('起点与终点两个下拉框', pathSelects.length === 2, pathSelects.length);
+  const analyzeBtn = [...doc.querySelectorAll('.cb-path .cb-btn')].find((btn) => (btn.textContent || '').includes('计算路径'));
+  check('未选端点时「计算路径」禁用', !!analyzeBtn && analyzeBtn.disabled === true);
+  if (pathSelects.length === 2) {
+    pathSelects[0].value = 'zhang';
+    pathSelects[0].dispatchEvent(new window.Event('change', { bubbles: true }));
+    pathSelects[1].value = 'ktv';
+    pathSelects[1].dispatchEvent(new window.Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const analyzeBtn2 = [...doc.querySelectorAll('.cb-path .cb-btn')].find((btn) => (btn.textContent || '').includes('计算路径'));
+    check('选好两端后「计算路径」可用', !!analyzeBtn2 && analyzeBtn2.disabled === false);
+    if (analyzeBtn2) analyzeBtn2.click();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const shortestText = doc.querySelector('.cb-path__shortest')?.textContent || '';
+    check('结果区显示最短 2 跳', shortestText.includes('最短 2 跳'), shortestText);
+    check('路径列表渲染并高亮在画布上', doc.querySelectorAll('.cb-path__list .cb-path__item').length >= 1 && doc.querySelectorAll('.cb-node.is-path').length >= 2, doc.querySelectorAll('.cb-node.is-path').length);
+  }
+  const degreeChip = [...doc.querySelectorAll('.cb-path .cb-chip')].find((chip) => (chip.textContent || '') === '度中心度');
+  const centralityChips = [...doc.querySelectorAll('.cb-path .cb-chip')].filter((chip) => ['关闭', '度中心度', '中介中心度'].includes((chip.textContent || '').trim()));
+  check('中心度三个选项', centralityChips.length === 3, centralityChips.map((chip) => chip.textContent));
+  if (degreeChip) degreeChip.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('打开度中心度后出现 6 条排行', doc.querySelectorAll('.cb-path__rank').length === 6, doc.querySelectorAll('.cb-path__rank').length);
+  const firstRank = doc.querySelector('.cb-path__rank');
+  check('排行首项是张建国', (firstRank?.textContent || '').includes('张建国'), firstRank?.textContent);
+  if (firstRank) firstRank.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('点击排行不会崩且定位到该实体', doc.querySelectorAll('.cb-node.is-selected').length === 1, doc.querySelectorAll('.cb-node.is-selected').length);
+
+  console.log('[UI] M5-4 自动布局面板');
+  const layoutTab = [...doc.querySelectorAll('.cb-subtab')].find((tab) => (tab.textContent || '').includes('自动布局'));
+  check('分析面板有「自动布局」子页签', !!layoutTab);
+  if (layoutTab) layoutTab.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('自动布局面板已渲染', doc.querySelector('.cb-layout') !== null);
+  const layoutChips = doc.querySelectorAll('.cb-layout .cb-chip');
+  check('五种布局类型可选', layoutChips.length === 5, [...layoutChips].map((chip) => chip.textContent));
+  const gridChip = [...layoutChips].find((chip) => (chip.textContent || '') === '网格');
+  if (gridChip) gridChip.click();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  check('切换布局类型后高亮跟随', !!gridChip && gridChip.className.includes('is-active'), gridChip?.className);
+  const lockBox = doc.querySelector('.cb-layout .cb-filter__check input');
+  check('有「锁定选中的实体」开关', !!lockBox);
+  const selectedCountBefore = doc.querySelectorAll('.cb-node.is-selected').length;
+  // checkbox 的 React onChange 由 click 触发（jdom 里直接改 checked + change 不生效）
+  if (lockBox) lockBox.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const layoutSummary = doc.querySelector('.cb-layout .cb-filter__summary')?.textContent || '';
+  check('勾选锁定后摘要显示锁定数量', layoutSummary.includes('锁定 1'), layoutSummary);
+  const applyBtn = [...doc.querySelectorAll('.cb-layout .cb-btn')].find((btn) => (btn.textContent || '').includes('应用布局'));
+  check('有「应用布局」按钮', !!applyBtn);
+  if (applyBtn) applyBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const layoutStatus = doc.querySelector('.cb-layout__status')?.textContent || '';
+  check('应用后提示整理了 5 个实体', layoutStatus.includes('已整理 5 个实体'), layoutStatus);
+  check('锁定后画布仍保留 6 个实体', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
+  check('被锁定的实体保持选中状态', doc.querySelectorAll('.cb-node.is-selected').length === selectedCountBefore, selectedCountBefore);
+
+  console.log('[UI] M5-5 时间线与演示视图');
+  const viewTabs = [...doc.querySelectorAll('.cb-viewtab')];
+  check('顶栏有三个视图切换按钮', viewTabs.length === 3, viewTabs.map((tab) => tab.textContent));
+  const timelineTab = viewTabs.find((tab) => (tab.textContent || '') === '时间线');
+  check('视图按钮含「时间线」', !!timelineTab);
+  if (timelineTab) timelineTab.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('时间线视图已渲染', doc.querySelector('.cb-timeline') !== null);
+  check('时间线有游标滑杆', doc.querySelector('.cb-timeline__scrub') !== null);
+  check('按实体类型分泳道', doc.querySelectorAll('.cb-timeline__lane').length >= 1, doc.querySelectorAll('.cb-timeline__lane').length);
+  check('时间片渲染在轨道上', doc.querySelectorAll('.cb-timeline__track .cb-timeline__chip').length >= 1, doc.querySelectorAll('.cb-timeline__track .cb-timeline__chip').length);
+  check('未排期实体 5 个（演示数据只有事件带时间）', (doc.querySelector('.cb-timeline__footer')?.textContent || '').includes('未排期实体 5 个'), doc.querySelector('.cb-timeline__footer')?.textContent);
+  check(
+    '每条泳道各有一条轨道',
+    doc.querySelectorAll('.cb-timeline__track').length === doc.querySelectorAll('.cb-timeline__lane').length,
+    [doc.querySelectorAll('.cb-timeline__track').length, doc.querySelectorAll('.cb-timeline__lane').length],
+  );
+  const bandRule = (cssText.match(/\.cb-timeline__band\{[^}]*\}/) || [''])[0];
+  check('区间条带样式已打包（绝对定位 + 不挡点击）', bandRule.includes('position:absolute') && bandRule.includes('pointer-events:none'), bandRule.slice(0, 160));
+  const presentTab = [...doc.querySelectorAll('.cb-viewtab')].find((tab) => (tab.textContent || '') === '演示');
+  check('视图按钮含「演示」', !!presentTab);
+  if (presentTab) presentTab.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('演示视图已渲染', doc.querySelector('.cb-present') !== null);
+  check('演示有标题与进度', (doc.querySelector('.cb-present__title')?.textContent || '').length > 0 && (doc.querySelector('.cb-present__progress')?.textContent || '').includes('第 1 / 6'), doc.querySelector('.cb-present__progress')?.textContent);
+  const nextBtn = [...doc.querySelectorAll('.cb-present__bar .cb-btn')].find((btn) => (btn.textContent || '').includes('下一个'));
+  if (nextBtn) nextBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('点「下一个」切到第 2 个实体', (doc.querySelector('.cb-present__progress')?.textContent || '').includes('第 2 / 6'), doc.querySelector('.cb-present__progress')?.textContent);
+  check('演示屏展示关联关系', doc.querySelectorAll('.cb-present__related-item').length >= 1, doc.querySelectorAll('.cb-present__related-item').length);
+  const prevBtn = [...doc.querySelectorAll('.cb-present__bar .cb-btn')].find((btn) => (btn.textContent || '').includes('上一个'));
+  if (prevBtn) prevBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('点「上一个」回到第 1 个实体', (doc.querySelector('.cb-present__progress')?.textContent || '').includes('第 1 / 6'), doc.querySelector('.cb-present__progress')?.textContent);
+  const toBoard = [...doc.querySelectorAll('.cb-present__bar .cb-btn')].find((btn) => (btn.textContent || '').includes('在画布中查看'));
+  check('演示有「在画布中查看」按钮', !!toBoard);
+  if (toBoard) toBoard.click();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  check('回到画布并选中该实体', doc.querySelector('.cb-work__canvas') !== null && doc.querySelectorAll('.cb-node.is-selected').length === 1, doc.querySelectorAll('.cb-node.is-selected').length);
 
   console.log('');
   if (failures > 0) {

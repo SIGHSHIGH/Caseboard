@@ -1559,6 +1559,482 @@ async function main() {
   check('有曲率与无曲率的导出结果不同', withCurve.svg !== straightSvg);
   state().dispatch(replaceDocument(createDemoDoc()));
 
+  console.log('[31] 分析内核：路径 / 中心度 / 自动布局 / 时间线（M5-1）');
+  const {
+    allPaths,
+    betweennessCentrality,
+    buildGraph,
+    components,
+    degreeCentrality,
+    graphStats,
+    neighborsWithin,
+    pairKey,
+    shortestPath,
+  } = require(path.join(out, 'lib', 'graph.js'));
+  const { computeLayout } = require(path.join(out, 'lib', 'layout.js'));
+  const {
+    advanceCursor,
+    buildTimeline,
+    clampCursor,
+    cursorFromRatio,
+    formatTimelineTime,
+    laneGroups,
+    nodesWithoutTime,
+    parseTimelineTime,
+    ratioFromCursor,
+    sliceTimeline,
+    timelineBands,
+    timelineScale,
+  } = require(path.join(out, 'lib', 'timeline.js'));
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const graph = buildGraph(doc());
+  check('邻接表覆盖全部节点', graph.nodes.size === 6 && graph.edges.length === 6, [graph.nodes.size, graph.edges.length]);
+  check('邻接表按 id 升序', JSON.stringify(graph.adjacency.get('zhang')) === JSON.stringify(['e1', 'gang', 'li']), graph.adjacency.get('zhang'));
+  check('无向边对 key 与端点顺序无关', pairKey('zhang', 'li') === pairKey('li', 'zhang'));
+  const shortPath = shortestPath(graph, 'zhang', 'ktv');
+  check('最短路径为 张建国 → 首次接触 → 夜色KTV', JSON.stringify(shortPath) === JSON.stringify(['zhang', 'e1', 'ktv']), shortPath);
+  check('最短路径可复现', JSON.stringify(shortestPath(graph, 'zhang', 'ktv')) === JSON.stringify(shortPath));
+  check('不可达节点返回 null', shortestPath(graph, 'zhang', 'ev1') === null);
+  const firstPaths = allPaths(graph, 'zhang', 'ktv');
+  const secondPaths = allPaths(graph, 'zhang', 'ktv');
+  check('两节点间全部路径稳定复现', JSON.stringify(firstPaths) === JSON.stringify(secondPaths) && firstPaths.length === 1, firstPaths);
+  check('全部路径截断到上限', allPaths(graph, 'li', 'ktv', { maxPaths: 1, maxDepth: 6 }).length === 1);
+  const degreeRank = degreeCentrality(graph);
+  check(
+    '度中心性前 3 稳定（张建国 / 首次接触 / 恒信财务）',
+    JSON.stringify(degreeRank.slice(0, 3).map((entry) => entry.id)) === JSON.stringify(['zhang', 'e1', 'gang']),
+    degreeRank.slice(0, 3),
+  );
+  const betweenness = betweennessCentrality(graph);
+  check(
+    '介数中心性可复现且张建国最高',
+    JSON.stringify(betweenness) === JSON.stringify(betweennessCentrality(graph)) && betweenness[0].id === 'zhang',
+    betweenness.slice(0, 3),
+  );
+  const near = neighborsWithin(graph, ['zhang'], 1);
+  check('一跳聚焦按距离与 id 排序', JSON.stringify(near.map((item) => item.id)) === JSON.stringify(['zhang', 'e1', 'gang', 'li']), near);
+  check('两跳聚焦覆盖 KTV', neighborsWithin(graph, ['zhang'], 2).some((item) => item.id === 'ktv'));
+  const stats = graphStats(graph);
+  check(
+    '图统计：6 节点 / 6 边 / 1 个孤立点',
+    stats.nodeCount === 6 && stats.edgeCount === 6 && stats.isolated.join() === 'ev1' && stats.componentCount === 2,
+    stats,
+  );
+  check('连通分量按规模排序', JSON.stringify(components(graph).map((group) => group.length)) === JSON.stringify([5, 1]));
+
+  const locked = ['zhang', 'li'];
+  const gridFirst = computeLayout(doc(), { kind: 'grid', lockedIds: locked, gap: 40 });
+  const gridSecond = computeLayout(doc(), { kind: 'grid', lockedIds: locked, gap: 40 });
+  check('自动布局可复现（同输入同坐标）', JSON.stringify(gridFirst.placements) === JSON.stringify(gridSecond.placements));
+  check(
+    '锁定节点坐标逐位不变',
+    locked.every((id) => {
+      const node = doc().nodes.find((item) => item.id === id);
+      const placement = gridFirst.placements.find((item) => item.id === id);
+      return placement.locked && placement.x === node.x && placement.y === node.y;
+    }),
+    gridFirst.placements.filter((item) => item.locked),
+  );
+  const placed = gridFirst.placements.map((placement) => {
+    const node = doc().nodes.find((item) => item.id === placement.id);
+    return { ...node, x: placement.x, y: placement.y };
+  });
+  let overlapPairs = 0;
+  for (let i = 0; i < placed.length; i += 1) {
+    for (let j = i + 1; j < placed.length; j += 1) {
+      const a = placed[i];
+      const b = placed[j];
+      if (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y) overlapPairs += 1;
+    }
+  }
+  check('整理后没有矩形重叠', overlapPairs === 0, overlapPairs);
+  const group = doc().groups[0];
+  const inGroup = placed.filter((node) => node.groupId === group.id);
+  check(
+    '组内节点不穿出组边界',
+    inGroup.length === 2 &&
+      inGroup.every((node) => node.x >= group.bounds.x && node.y >= group.bounds.y && node.x + node.w <= group.bounds.x + group.bounds.w && node.y + node.h <= group.bounds.y + group.bounds.h),
+    inGroup.map((node) => [node.id, node.x, node.y]),
+  );
+  check('布局确实移动了未锁定节点', gridFirst.moved > 0 && gridFirst.placements.filter((item) => item.locked).length === 2, gridFirst.moved);
+  for (const kind of ['force', 'hierarchical', 'radial', 'circle', 'grid']) {
+    const result = computeLayout(doc(), { kind, lockedIds: ['zhang'], gap: 36 });
+    check('布局算法可用：' + kind, result.placements.length === 6 && result.placements.every((item) => Number.isFinite(item.x) && Number.isFinite(item.y)), result.placements.length);
+  }
+  state().dispatch(replaceDocument(createDemoDoc()));
+
+  const timelineDoc = JSON.parse(JSON.stringify(createDemoDoc()));
+  timelineDoc.nodes.find((node) => node.id === 'zhang').time = { start: '2026-09-05' };
+  timelineDoc.nodes.find((node) => node.id === 'li').time = { start: '2026-09-01', end: '2026-09-10' };
+  const timeline = buildTimeline(timelineDoc);
+  check('时间线只收有时间的节点（3 条）', timeline.length === 3, timeline.map((item) => item.id));
+  check('时间线按起点升序', JSON.stringify(timeline.map((item) => item.id)) === JSON.stringify(['li', 'e1', 'zhang']), timeline.map((item) => item.id));
+  check('区间事件标记 hasRange', timeline.find((item) => item.id === 'li').hasRange === true && timeline.find((item) => item.id === 'e1').hasRange === false);
+  check('未排期节点 3 个', nodesWithoutTime(timelineDoc).length === 3, nodesWithoutTime(timelineDoc).map((node) => node.id));
+  const scale = timelineScale(timelineDoc);
+  check(
+    '时间刻度覆盖 9 月 1 日到 9 月 10 日',
+    !scale.empty && scale.min === Date.UTC(2026, 8, 1) && scale.max === Date.UTC(2026, 8, 10) && scale.span === 9 * 86400000,
+    scale,
+  );
+  const halfCursor = cursorFromRatio(scale, 0.5);
+  check('比例换算成游标（中点 = 9 月 5 日 12:00）', formatTimelineTime(halfCursor) === '2026-09-05 12:00', formatTimelineTime(halfCursor));
+  check('游标换算回比例', Math.abs(ratioFromCursor(scale, halfCursor) - 0.5) < 1e-9);
+  check('比例越界被夹到 0/1', cursorFromRatio(scale, -3) === scale.min && cursorFromRatio(scale, 9) === scale.max);
+  const atStart = sliceTimeline(timeline, scale.min);
+  check('游标在起点：进行中 1 条、未来 2 条', atStart.running.length === 1 && atStart.future.length === 2 && atStart.past.length === 0, atStart.running.map((item) => item.id));
+  const atMid = sliceTimeline(timeline, halfCursor);
+  check(
+    '游标在 9 月 5 日：进行中李梅、已发生首次接触',
+    atMid.running.some((item) => item.id === 'li') && atMid.past.some((item) => item.id === 'e1') && atMid.past.some((item) => item.id === 'zhang'),
+    { past: atMid.past.map((item) => item.id), running: atMid.running.map((item) => item.id) },
+  );
+  const advanced = advanceCursor(scale, scale.min, 2, 86400000);
+  check('播放推进按倍速计算时间', advanced === scale.min + 2 * 86400000, formatTimelineTime(advanced));
+  check('播放到末尾不越界', advanceCursor(scale, scale.max - 1000, 8, 5000) === scale.max);
+  check('游标夹紧到刻度范围', clampCursor(scale, scale.min - 999999) === scale.min && clampCursor(scale, scale.max + 5) === scale.max);
+  const lanes = laneGroups(timeline);
+  check(
+    '泳道按首次出现分道（人物 2 条、事件 1 条）',
+    lanes.length === 2 && lanes[0].lane === 'person' && lanes[0].items.length === 2 && lanes[1].lane === 'event',
+    lanes.map((lane) => [lane.lane, lane.items.length]),
+  );
+  check('时间格式固定为 UTC 墙上时间', formatTimelineTime(Date.UTC(2026, 8, 3, 20, 10)) === '2026-09-03 20:10');
+  check(
+    '宽松解析：点事件 / 日期 / 年月 / 非法输入',
+    parseTimelineTime('2026-09-03T20:10') === Date.UTC(2026, 8, 3, 20, 10) &&
+      parseTimelineTime('2026-09-03 20:10') === Date.UTC(2026, 8, 3, 20, 10) &&
+      parseTimelineTime('2026-09-03') === Date.UTC(2026, 8, 3) &&
+      parseTimelineTime('2026') === Date.UTC(2026, 0, 1) &&
+      parseTimelineTime('2026-13-01') === null &&
+      parseTimelineTime('待查') === null &&
+      parseTimelineTime(undefined) === null,
+  );
+  check('空文档时间刻度为空', timelineScale({ ...timelineDoc, nodes: [] }).empty === true);
+
+  const {
+    EMPTY_FILTER: M52_EMPTY,
+    applyView: m52ApplyView,
+    collectTags: m52CollectTags,
+    edgeMatches: m52EdgeMatches,
+    focusNodeIds: m52FocusIds,
+    isEmptyFilter: m52IsEmpty,
+    nodeMatches: m52NodeMatches,
+  } = require(path.join(out, 'lib', 'filter.js'));
+
+  console.log('[32] 过滤与聚焦（M5-2）');
+  const m52Doc = createDemoDoc();
+  check('空条件是空过滤', m52IsEmpty(M52_EMPTY) === true);
+  check('选中类型后不再算空条件', m52IsEmpty({ ...M52_EMPTY, nodeTypes: ['person'] }) === false);
+  const m52Full = m52ApplyView(m52Doc, M52_EMPTY, null);
+  check(
+    '无过滤时全部可见且全部命中',
+    m52Full.hiddenNodes.size === 0 &&
+      m52Full.dimNodes.size === 0 &&
+      m52Full.matchedNodes.size === 6 &&
+      m52Full.matchedEdges.size === 6 &&
+      m52Full.visibleNodeCount === 6 &&
+      m52Full.filterActive === false,
+    [m52Full.hiddenNodes.size, m52Full.dimNodes.size, m52Full.matchedNodes.size],
+  );
+
+  const m52Dim = m52ApplyView(m52Doc, { ...M52_EMPTY, nodeTypes: ['person'] }, null);
+  check(
+    '淡化模式：只淡化未命中的 4 个实体，不隐藏',
+    m52Dim.filterActive === true &&
+      m52Dim.matchedNodes.size === 2 &&
+      m52Dim.dimNodes.size === 4 &&
+      m52Dim.hiddenNodes.size === 0,
+    [m52Dim.matchedNodes.size, m52Dim.dimNodes.size, m52Dim.hiddenNodes.size],
+  );
+  check(
+    '淡化模式：与命中实体无关的边全部淡化（4 条）',
+    m52Dim.dimEdges.size === 4 && m52Dim.hiddenEdges.size === 0,
+    [m52Dim.dimEdges.size, m52Dim.hiddenEdges.size],
+  );
+
+  const m52Show = m52ApplyView(m52Doc, { ...M52_EMPTY, nodeTypes: ['person'], mode: 'show' }, null);
+  check(
+    '只显示命中：隐藏 4 个实体，剩 2 个',
+    m52Show.hiddenNodes.size === 4 && m52Show.visibleNodeCount === 2 && m52Show.dimNodes.size === 0,
+    [m52Show.hiddenNodes.size, m52Show.visibleNodeCount],
+  );
+  check(
+    '只显示命中：端点被隐藏的边一并隐藏（剩 2 条人物间关系）',
+    m52Show.hiddenEdges.size === 4 && 6 - m52Show.hiddenEdges.size === 2,
+    m52Show.hiddenEdges.size,
+  );
+
+  const m52Hide = m52ApplyView(m52Doc, { ...M52_EMPTY, nodeTypes: ['person'], mode: 'hide' }, null);
+  check(
+    '隐藏命中：把 2 个人物藏起来，其余 4 个仍在',
+    m52Hide.hiddenNodes.size === 2 && m52Hide.visibleNodeCount === 4 && m52Hide.dimNodes.size === 0,
+    [m52Hide.hiddenNodes.size, m52Hide.visibleNodeCount],
+  );
+  check(
+    '隐藏命中：人物相关边全部隐藏，只剩事件-地点 1 条',
+    m52Hide.hiddenEdges.size === 5 && 6 - m52Hide.hiddenEdges.size === 1,
+    m52Hide.hiddenEdges.size,
+  );
+
+  const m52Status = m52ApplyView(m52Doc, { ...M52_EMPTY, statuses: ['confirmed'] }, null);
+  check('按状态过滤：已证实 3 个', m52Status.matchedNodes.size === 3, Array.from(m52Status.matchedNodes));
+  const m52Confidence = m52ApplyView(m52Doc, { ...M52_EMPTY, minConfidence: 75 }, null);
+  check('按置信度过滤：≥75 的 3 个', m52Confidence.matchedNodes.size === 3, Array.from(m52Confidence.matchedNodes));
+  const m52Tag = m52ApplyView(m52Doc, { ...M52_EMPTY, tags: ['主犯'] }, null);
+  check('按标签过滤：只剩张建国', m52Tag.matchedNodes.size === 1 && m52Tag.matchedNodes.has('zhang'));
+  const m52Query = m52ApplyView(m52Doc, { ...M52_EMPTY, query: '银行' }, null);
+  check('文本检索命中标题与字段', m52Query.matchedNodes.size === 1 && m52Query.matchedNodes.has('ev1'), Array.from(m52Query.matchedNodes));
+  const m52Time = m52ApplyView(m52Doc, { ...M52_EMPTY, timeFrom: '2026-09-03', timeTo: '2026-09-04' }, null);
+  check(
+    '时间窗只留 9 月 3 日的事件，且无时间实体被排除',
+    m52Time.matchedNodes.size === 1 && m52Time.matchedNodes.has('e1'),
+    Array.from(m52Time.matchedNodes),
+  );
+  const m52Rel = m52ApplyView(m52Doc, { ...M52_EMPTY, relTypes: ['call'] }, null);
+  check(
+    '按关系类别过滤：1 条通话，两端实体命中',
+    m52Rel.matchedEdges.size === 1 &&
+      m52Rel.matchedEdges.has('e-call') &&
+      m52Rel.matchedNodes.has('zhang') &&
+      m52Rel.matchedNodes.has('li'),
+    Array.from(m52Rel.matchedEdges),
+  );
+  const m52Transfer = m52Doc.edges.find((edge) => edge.id === 'e-transfer');
+  check(
+    '边条件独立判断：类别 / 置信度 / 文本',
+    m52EdgeMatches(m52Transfer, { ...M52_EMPTY, relTypes: ['call'] }) === false &&
+      m52EdgeMatches(m52Transfer, { ...M52_EMPTY, minConfidence: 96 }) === false &&
+      m52EdgeMatches(m52Transfer, { ...M52_EMPTY, query: '转账' }) === true &&
+      m52EdgeMatches(m52Transfer, { ...M52_EMPTY, minConfidence: 95 }) === true,
+  );
+
+  const m52FocusOne = m52FocusIds(m52Doc, { seeds: ['zhang'], depth: 1 });
+  check('聚焦 1 跳：张建国及直接相邻 4 个', m52FocusOne !== null && m52FocusOne.size === 4 && m52FocusOne.has('zhang') && m52FocusOne.has('li'), m52FocusOne ? Array.from(m52FocusOne) : null);
+  const m52FocusTwo = m52FocusIds(m52Doc, { seeds: ['zhang'], depth: 2 });
+  // 银行流水（ev1）在演示数据里是孤立点，没有任何关系可达，所以 2 跳只覆盖 5 个
+  check('聚焦 2 跳：覆盖 5 个（银行流水是孤立点）', m52FocusTwo !== null && m52FocusTwo.size === 5 && !m52FocusTwo.has('ev1'), m52FocusTwo ? Array.from(m52FocusTwo) : null);
+  const m52FocusAll = m52FocusIds(m52Doc, { seeds: ['zhang', 'ev1'], depth: 2 });
+  check('多起点聚焦：两个起点合起来覆盖全部 6 个', m52FocusAll !== null && m52FocusAll.size === 6);
+  check('空 seeds 视为未聚焦', m52FocusIds(m52Doc, { seeds: [], depth: 1 }) === null);
+  const m52Focused = m52ApplyView(m52Doc, M52_EMPTY, { seeds: ['zhang'], depth: 1 });
+  check(
+    '聚焦只淡化外部（2 个），不隐藏任何实体',
+    m52Focused.focusActive === true && m52Focused.hiddenNodes.size === 0 && m52Focused.dimNodes.size === 2,
+    [m52Focused.hiddenNodes.size, m52Focused.dimNodes.size],
+  );
+  const m52Combo = m52ApplyView(m52Doc, { ...M52_EMPTY, nodeTypes: ['person'], mode: 'show' }, { seeds: ['zhang'], depth: 1 });
+  check(
+    '过滤与聚焦取交集：只显示 2 个人物，且都在聚焦集合内',
+    m52Combo.hiddenNodes.size === 4 && m52Combo.dimNodes.size === 0,
+    [m52Combo.hiddenNodes.size, m52Combo.dimNodes.size],
+  );
+  const m52LiFocus = m52ApplyView(m52Doc, M52_EMPTY, { seeds: ['li'], depth: 1 });
+  check(
+    '李梅 1 跳：张建国 + 恒信财务在聚焦内，3 个外部淡化',
+    m52LiFocus.dimNodes.size === 3 && m52LiFocus.dimNodes.has('ktv') && m52LiFocus.dimNodes.has('e1') && m52LiFocus.dimNodes.has('ev1'),
+    Array.from(m52LiFocus.dimNodes),
+  );
+  const m52Tags = m52CollectTags(m52Doc);
+  check(
+    '标签候选项按使用次数统计（7 个标签各 1 次）',
+    m52Tags.length === 7 && m52Tags.every((item) => item.count === 1) && m52Tags.some((item) => item.tag === '主犯'),
+    m52Tags,
+  );
+  check(
+    '单条判定函数：置信度与时间窗边界',
+    m52NodeMatches(m52Doc.nodes.find((node) => node.id === 'zhang'), { ...M52_EMPTY, minConfidence: 91 }, []) === false &&
+      m52NodeMatches(m52Doc.nodes.find((node) => node.id === 'e1'), { ...M52_EMPTY, timeFrom: '2026-09-04' }, []) === false,
+  );
+
+  console.log('[33] 路径与中心度（M5-3）');
+  const {
+    analyzePaths,
+    centralityMap: m53CentralityMap,
+    centralityScores,
+    formatCentralityScore,
+    toPathHit,
+    topCentrality,
+  } = require(path.join(out, 'lib', 'analysis.js'));
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m53Path = analyzePaths(doc(), 'zhang', 'ktv');
+  check(
+    '两点间最短路径：张建国 → 首次接触 → 夜色KTV',
+    m53Path.found === true &&
+      JSON.stringify(m53Path.shortest.nodes) === JSON.stringify(['zhang', 'e1', 'ktv']) &&
+      m53Path.shortest.nodes.length - 1 === 2,
+    m53Path.shortest ? m53Path.shortest.nodes : null,
+  );
+  check(
+    '最短路径带上每一跳的原始关系 id',
+    m53Path.shortest.edges.length === 2 &&
+      m53Path.shortest.edges.includes('e-actor') &&
+      m53Path.shortest.edges.includes('e-place') &&
+      m53Path.shortest.hopEdges.length === 2 &&
+      m53Path.shortest.hopEdges.every((ids) => ids.length === 1),
+    m53Path.shortest.hopEdges,
+  );
+  check('全部路径默认只有 1 条且未截断', m53Path.paths.length === 1 && m53Path.truncated === false, m53Path.paths.length);
+  check('起点即终点视为无路径', analyzePaths(doc(), 'zhang', 'zhang').found === false);
+  check('不存在的端点返回空结果', analyzePaths(doc(), 'zhang', 'nobody').found === false);
+  check('孤立实体之间没有路径', analyzePaths(doc(), 'zhang', 'ev1').found === false);
+  const m53Limited = analyzePaths(doc(), 'zhang', 'ktv', { maxPaths: 1 });
+  check('maxPaths 边界：只有 1 条时标记为截断', m53Limited.paths.length === 1 && m53Limited.truncated === true, m53Limited.truncated);
+  const m53Single = toPathHit(doc(), ['zhang']);
+  check('单点路径没有跳与关系', m53Single.nodes.length === 1 && m53Single.edges.length === 0 && m53Single.hopEdges.length === 0);
+  const m53Parallel = toPathHit(doc(), ['zhang', 'li']);
+  check(
+    '并列关系：同一跳的两条关系都收进来',
+    m53Parallel.hopEdges.length === 1 && m53Parallel.hopEdges[0].length === 2 && m53Parallel.edges.length === 2,
+    m53Parallel.edges,
+  );
+  const m53Degree = centralityScores(doc(), 'degree');
+  check(
+    '度中心度前三：张建国 3 / 首次接触 2 / 恒信财务 2',
+    m53Degree.length === 6 &&
+      m53Degree[0].id === 'zhang' &&
+      m53Degree[0].score === 3 &&
+      m53Degree.slice(1, 3).every((entry) => entry.score === 2),
+    m53Degree.slice(0, 3),
+  );
+  const m53Between = centralityScores(doc(), 'betweenness');
+  check('中介中心度最高是张建国（0.4）', m53Between[0].id === 'zhang' && m53Between[0].score === 0.4, m53Between[0]);
+  check('关闭中心度时不返回任何分数', centralityScores(doc(), 'off').length === 0);
+  const m53Heat = m53CentralityMap(doc(), 'degree');
+  check(
+    '热力值归一到 0–1：最高 1，孤立点为 0',
+    m53Heat.get('zhang') === 1 && m53Heat.get('li') === Number((2 / 3).toFixed(4)) && m53Heat.get('ev1') === 0,
+    [m53Heat.get('zhang'), m53Heat.get('li'), m53Heat.get('ev1')],
+  );
+  check(
+    '中心度文案：度取整、中介百分比',
+    formatCentralityScore(3, 'degree') === '3' &&
+      formatCentralityScore(0.4, 'betweenness') === '40.0%' &&
+      formatCentralityScore(0, 'betweenness') === '0.0%',
+  );
+  check(
+    '排行榜按分数取前 N，关闭时为空',
+    topCentrality(doc(), 'degree', 2).length === 2 &&
+      topCentrality(doc(), 'degree', 2)[0].id === 'zhang' &&
+      topCentrality(doc(), 'off').length === 0,
+  );
+
+  console.log('[34] 自动布局写回与撤销（M5-4）');
+  const { applyLayout } = require(path.join(out, 'commands', 'layoutCommands.js'));
+  const m54Positions = () => Object.fromEntries(doc().nodes.map((node) => [node.id, [node.x, node.y]]));
+  const m54Same = (a, b) => a[0] === b[0] && a[1] === b[1];
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m54Base = m54Positions();
+  const m54BaseHistory = state().past.length;
+  const m54Result = computeLayout(doc(), { kind: 'circle' });
+  check('圆环布局能算出全部 6 个实体的新坐标', m54Result.placements.length === 6 && m54Result.moved === 6, m54Result.moved);
+  state().dispatch(applyLayout(m54Result));
+  const m54After = m54Positions();
+  check(
+    '写回后坐标与布局结果一致',
+    m54Result.placements.every((placement) => m54Same(m54After[placement.id], [placement.x, placement.y])),
+  );
+  check('自动布局只压一条撤销记录', state().past.length === m54BaseHistory + 1, state().past.length - m54BaseHistory);
+  state().undo();
+  check(
+    '撤销一次全部坐标回到原位',
+    Object.keys(m54Base).every((id) => m54Same(m54Positions()[id], m54Base[id])),
+  );
+  state().redo();
+  check(
+    '重做后回到布局后的坐标',
+    m54Result.placements.every((placement) => m54Same(m54Positions()[placement.id], [placement.x, placement.y])),
+  );
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m54Locked = computeLayout(doc(), { kind: 'grid', lockedIds: ['zhang', 'li'] });
+  check(
+    '锁定的实体不移动',
+    m54Locked.placements.filter((placement) => placement.locked).map((placement) => placement.id).sort().join(',') === 'li,zhang' &&
+      m54Locked.moved === 4,
+    m54Locked.moved,
+  );
+  state().dispatch(applyLayout(m54Locked));
+  check(
+    '锁定实体坐标逐位不变，其余实体被整理',
+    m54Same(m54Positions().zhang, [120, 140]) && m54Same(m54Positions().li, [660, 140]),
+    [m54Positions().zhang, m54Positions().li],
+  );
+
+  console.log('[35] 演示顺序与关联（M5-5）');
+  const { presentationDeck, presentationOrder, relatedOf } = require(path.join(out, 'lib', 'present.js'));
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m55Order = presentationOrder(doc());
+  check(
+    '演示顺序按实体类型分组：人物 → 组织 → 地点 → 事件 → 证据',
+    m55Order.length === 6 &&
+      m55Order.map((node) => node.type).join(',') === 'person,person,org,place,event,evidence',
+    m55Order.map((node) => node.type + ':' + node.title),
+  );
+  check(
+    '同一类型内按中文标题排序（人物：李梅在张建国之前）',
+    m55Order[0].id === 'li' && m55Order[1].id === 'zhang',
+    m55Order.slice(0, 2).map((node) => node.title),
+  );
+  const m55Zhang = relatedOf(doc(), 'zhang');
+  check('张建国的关联 4 条', m55Zhang.length === 4, m55Zhang.length);
+  check(
+    '关联方向与对端正确：转入 / 转出都收集',
+    m55Zhang.find((item) => item.edge.id === 'e-call')?.direction === 'in' &&
+      m55Zhang.find((item) => item.edge.id === 'e-call')?.other.id === 'li' &&
+      m55Zhang.find((item) => item.edge.id === 'e-accomplice')?.direction === 'out' &&
+      m55Zhang.find((item) => item.edge.id === 'e-accomplice')?.other.id === 'gang',
+  );
+  check('不存在的实体没有关联', relatedOf(doc(), 'nobody').length === 0);
+  const m55Ktv = relatedOf(doc(), 'ktv');
+  check('地点只有一条入边（首次接触 → 夜色KTV）', m55Ktv.length === 1 && m55Ktv[0].direction === 'in' && m55Ktv[0].other.id === 'e1');
+  const m55Deck = presentationDeck(doc());
+  check(
+    '演示台每屏是一实体 + 其关联，总数与实体一致',
+    m55Deck.length === 6 && m55Deck[0].node.id === m55Order[0].id && m55Deck.every((slide) => slide.related.length === relatedOf(doc(), slide.node.id).length),
+  );
+  const m55Before = JSON.stringify(doc());
+  presentationDeck(doc());
+  check('演示数据只读：生成演示台不改动文档', JSON.stringify(doc()) === m55Before);
+  check(
+    '全部关联合计 = 关系的两倍（每条边两端各出现一次）',
+    m55Deck.reduce((sum, slide) => sum + slide.related.length, 0) === doc().edges.length * 2,
+    [m55Deck.reduce((sum, slide) => sum + slide.related.length, 0), doc().edges.length * 2],
+  );
+
+  console.log('');
+  const m55Bands = timelineBands(timeline, scale);
+  check(
+    '区间条带只覆盖有区间的实体（李梅 09-01 → 09-10 占满整条）',
+    m55Bands.length === 1 && m55Bands[0].id === 'li' && m55Bands[0].left === 0 && Math.abs(m55Bands[0].width - 1) < 1e-9,
+    m55Bands,
+  );
+  const m55Shorter = JSON.parse(JSON.stringify(timelineDoc));
+  m55Shorter.nodes.find((node) => node.id === 'li').time = { start: '2026-09-01', end: '2026-09-05' };
+  m55Shorter.nodes.find((node) => node.id === 'gang').time = { start: '2026-09-10' };
+  const m55ShortBands = timelineBands(buildTimeline(m55Shorter), timelineScale(m55Shorter));
+  check(
+    '区间条带宽度 = 区间长度 / 总跨度（4 天 / 9 天）',
+    m55ShortBands.length === 1 && Math.abs(m55ShortBands[0].width - 4 / 9) < 1e-9,
+    m55ShortBands[0] && m55ShortBands[0].width,
+  );
+  let m55Cursor = scale.min;
+  let m55Frames = 0;
+  while (m55Cursor < scale.max && m55Frames < 100000) {
+    m55Cursor = advanceCursor(scale, m55Cursor, 1, (scale.span / 60000) * 16);
+    m55Frames += 1;
+  }
+  check(
+    '1× 播放按 60fps 在 60 秒内走到末尾并停住',
+    m55Cursor === scale.max && m55Frames >= 3600 && m55Frames <= 3800,
+    m55Frames,
+  );
+  check(
+    '游标滑杆比例可往返换算（0 / 0.5 / 1）',
+    cursorFromRatio(scale, 0) === scale.min &&
+      cursorFromRatio(scale, 1) === scale.max &&
+      Math.abs(ratioFromCursor(scale, scale.min + scale.span / 2) - 0.5) < 1e-9,
+  );
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

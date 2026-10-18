@@ -10,6 +10,9 @@ import { useCodeStore } from './store/codeStore';
 import { useDocStore, useReady } from './store/docStore';
 import { useImportStore } from './store/importStore';
 import { useUiStore } from './store/uiStore';
+import { useViewModeStore } from './store/viewModeStore';
+import { PresentationView } from './components/views/PresentationView';
+import { TimelineView } from './components/views/TimelineView';
 
 // 代码视图带着 CodeMirror 6，按需加载，避免拖慢画布首屏
 const CodePanel = lazy(() => import('./components/code/CodePanel').then((mod) => ({ default: mod.CodePanel })));
@@ -25,6 +28,7 @@ export default function App() {
   const startImport = useImportStore((s) => s.startImport);
   const codeOpen = useCodeStore((s) => s.open);
   const ready = useReady();
+  const viewMode = useViewModeStore((s) => s.mode);
   const [splitPct, setSplitPct] = useState(44);
   const workRef = useRef<HTMLDivElement>(null);
   useCodeSyncBridge();
@@ -92,14 +96,18 @@ export default function App() {
         }}
         onDrop={onDrop}
       >
-        <LeftPanel />
-        <div className="cb-work" ref={workRef}>
-          <div className="cb-work__canvas">
-            <ReactFlowProvider>
-              <Board />
-            </ReactFlowProvider>
-          </div>
-          {codeOpen ? (
+        {viewMode === 'board' ? <LeftPanel /> : null}
+        <div className={viewMode === 'board' ? 'cb-work' : 'cb-work cb-work--stage'} ref={workRef}>
+          {viewMode === 'timeline' ? <TimelineView /> : null}
+          {viewMode === 'present' ? <PresentationView /> : null}
+          {viewMode === 'board' ? (
+            <div className="cb-work__canvas">
+              <ReactFlowProvider>
+                <Board />
+              </ReactFlowProvider>
+            </div>
+          ) : null}
+          {codeOpen && viewMode === 'board' ? (
             <>
               <div
                 className="cb-splitter"
@@ -130,7 +138,7 @@ export default function App() {
             </>
           ) : null}
         </div>
-        <RightPanel />
+        {viewMode === 'board' ? <RightPanel /> : null}
       </div>
       <ImportWizard />
     </div>

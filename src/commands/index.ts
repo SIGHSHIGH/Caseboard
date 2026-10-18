@@ -4,6 +4,7 @@ export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
 export { replaceDocument } from './docCommands';
+export { applyLayout } from './layoutCommands';
 export { restoreEntities } from './restoreCommands';
 export type { RestoreEntitiesInput } from './restoreCommands';
 export { applyDslChanges } from './dslCommands';

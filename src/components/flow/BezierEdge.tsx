@@ -13,7 +13,12 @@ import { LINE_STYLE_META, relColor } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
 import type { CaseEdge, XY } from '../../types';
 
-export type CaseEdgeData = { edge: CaseEdge };
+export type CaseEdgeData = {
+  edge: CaseEdge;
+  dimmed?: boolean;
+  /** 落在当前高亮路径上（M5-3） */
+  highlighted?: boolean;
+};
 export type CaseFlowEdge = Edge<CaseEdgeData, 'bezier'>;
 
 function weightToWidth(weight?: number): number {
@@ -108,6 +113,8 @@ function BezierEdgeInner({
   const lineStyle = LINE_STYLE_META[edge.style];
   const stroke = edge.color ?? relColor(edge.relType);
   const dash = lineStyle.dash;
+  const highlighted = data?.highlighted === true;
+  const width = weightToWidth(edge.weight) + (selected ? 1 : 0) + (highlighted ? 1.8 : 0);
 
   const commitLabel = () => {
     const label = draft.trim();
@@ -125,9 +132,9 @@ function BezierEdgeInner({
         markerEnd={markerEnd}
         style={{
           stroke,
-          strokeWidth: selected ? weightToWidth(edge.weight) + 1 : weightToWidth(edge.weight),
+          strokeWidth: width,
           strokeDasharray: dash,
-          opacity: selected ? 1 : 0.88,
+          opacity: data?.dimmed ? 0.16 : selected || highlighted ? 1 : 0.88,
         }}
       />
       <path
@@ -140,7 +147,7 @@ function BezierEdgeInner({
       />
       <EdgeLabelRenderer>
         <div
-          className={`cb-edge-label${selected ? ' is-selected' : ''}`}
+          className={`cb-edge-label${selected ? ' is-selected' : ''}${highlighted ? ' is-path' : ''}`}
           style={{
             transform: `translate(-50%, -50%) translate(${handleX}px, ${handleY}px)`,
             borderColor: stroke,

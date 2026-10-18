@@ -5,12 +5,19 @@ import { exportCaseboardFile, openCaseboardFile } from '../../services/exporters
 import { fileService } from '../../services/file';
 import { closeCodeView, openCodeView, useCodeStore } from '../../store/codeStore';
 import { useBackend, useDocStore, useLastSavedAt } from '../../store/docStore';
+import { useViewModeStore, type ViewMode } from '../../store/viewModeStore';
 import { LINE_STYLE_META } from '../../lib/theme';
 import type { LineStyle } from '../../types';
 import { ExportDialog } from './ExportDialog';
 import { HistoryDialog } from './HistoryDialog';
 
 const LEGEND: LineStyle[] = ['solid', 'dashed', 'dotted'];
+
+const VIEW_TABS: Array<{ id: ViewMode; label: string; hint: string }> = [
+  { id: 'board', label: '画布', hint: '图形视图：拖拽、连线、分组' },
+  { id: 'timeline', label: '时间线', hint: '按时间播放案件经过' },
+  { id: 'present', label: '演示', hint: '逐项讲解实体与关联' },
+];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误';
@@ -26,6 +33,8 @@ export function TopBar() {
   const lastLabel = useDocStore((s) => s.past[s.past.length - 1]?.label ?? '');
   const nextLabel = useDocStore((s) => s.future[0]?.label ?? '');
   const codeOpen = useCodeStore((s) => s.open);
+  const viewMode = useViewModeStore((s) => s.mode);
+  const setViewMode = useViewModeStore((s) => s.setMode);
   const backend = useBackend();
   const lastSavedAt = useLastSavedAt();
   const importing = useRef(false);
@@ -79,6 +88,20 @@ export function TopBar() {
         <span className="cb-topbar__logo">案情板</span>
         <span className="cb-topbar__case">{doc.meta.title}</span>
         {doc.meta.caseNo ? <span className="cb-topbar__no">{doc.meta.caseNo}</span> : null}
+      </div>
+
+      <div className="cb-viewtabs" role="group" aria-label="视图切换">
+        {VIEW_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            title={tab.hint}
+            className={viewMode === tab.id ? 'cb-viewtab is-active' : 'cb-viewtab'}
+            onClick={() => setViewMode(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <div className="cb-topbar__tools">

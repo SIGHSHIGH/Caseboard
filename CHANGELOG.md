@@ -2,6 +2,20 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.5.0 · M5 分析视图
+
+### M5 整体验收通过（2026-10-19，tag ms/M5）
+
+- **图内核**（`src/lib/graph.ts`）：`buildGraph` 邻接表、`shortestPath` 确定性 BFS、`allPaths` 带上限截断与稳定排序、度/中介中心度（Brandes）、`neighborsWithin`、连通分量与图统计。全部纯函数，同输入同输出。
+- **自动布局**（`src/lib/layout.ts`）：`computeLayout` 统一五种布局——力导向（d3-force，含碰撞与向心力）、层级（dagre LR）、径向（BFS 分环）、环形、网格；锁定节点坐标逐位不变，整理后用 `separatePass` 消重叠并重新夹进组边界；`src/commands/layoutCommands.ts` 把整板坐标压成**一条**命令，Ctrl+Z 一次全回。
+- **时间线内核**（`src/lib/timeline.ts`）：宽松解析 `2026` / `2026-09` / `2026-09-03` / `2026-09-03 20:10` / 带时区 ISO；刻度归一化与比例换算、游标切片（已发生/进行中/未发生）、`advanceCursor`（1× = 60 秒放完，D39）、泳道分组、区间条带几何 `timelineBands`。
+- **过滤与聚焦**（`src/lib/filter.ts` + `src/components/panels/FilterPanel.tsx`）：类型/状态/标签/关系类别/最低置信度/时间窗/文本检索七类条件，淡化·只显示命中·隐藏命中三种模式；聚焦按 N 度取邻域，其余淡化；端点被隐藏的关系一并隐藏，命中计数实时显示。
+- **路径与中心度**（`src/lib/analysis.ts` + `PathPanel.tsx`）：选源/汇算最短与全部路径（每跳带原始关系 id），路径 chip 切换高亮；度/中介中心度 Top6 排行可点击定位，画布节点显示热力徽标（≥33%），路径节点描红、动线加粗。
+- **时间线视图与演示**（`TimelineView.tsx` / `PresentationView.tsx`）：泳道 + 区间条带 + 游标滑杆 + 播放/暂停/倍速/回起点/到末尾，未排期实体单独提示；演示按实体类型分组的逐步讲解（关联方向 →/←/↔、键盘翻页、「在画布中查看」），全程只读文档（D38）。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **460 条全绿**（M5 新增 101：[31] 41 / [32] 25 / [33] 15 / [34] 7 / [35] 13）、`pnpm ui-smoke` **142 条全绿**（M5 新增 52）、`pnpm build` 811 modules（CSS 55.58 kB / 主包 764.62 kB gzip 257.54）。
+- **文档**：`docs/MILESTONES.md` §1 M5 置 ✅、§3 拆步与验收记录（含五项偏离）、§6 新增 D38–D40、§7 一行；`AGENTS.md` 验收命令不变（四件套 + 桌面自检）。
+
+
 ## [未发布] v0.4.0 · M4 Tauri + SQLite + 项目文件 + 导出
 
 ### M4 人工验收热修（2026-10-19，第二轮回执 A1 旋转 / A3 曲率手柄）
