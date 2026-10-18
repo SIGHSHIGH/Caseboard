@@ -260,6 +260,163 @@ check('迁移会夹紧分组透明度', (() => {
   return g.opacity === 0.6 && g.collapsed === false;
 })());
 
+// ---------- M2-3 素材编号 / 缩略图 / 去重 / EXIF ----------
+const { computeThumbSize, dedupeCandidates, formatAssetNo, formatBytes, nextAssetNo, parseAssetNo } = require(
+  path.join(out, 'lib', 'assetMeta.js'),
+);
+const { normalizeExifDate, parseExif } = require(path.join(out, 'services', 'exif.js'));
+const { importAssets, updateAsset } = require(path.join(out, 'commands', 'assetCommands.js'));
+
+console.log('[11] 素材编号与缩略图尺寸');
+check('编号格式 IMG-0001', formatAssetNo(1) === 'IMG-0001', formatAssetNo(1));
+check('编号解析', parseAssetNo('IMG-0042') === 42 && parseAssetNo('随便') === 0);
+check('下一个编号取最大值 +1', nextAssetNo([{ no: 'IMG-0003' }, { no: 'IMG-0009' }]) === 'IMG-0010');
+check('空库从 IMG-0001 开始', nextAssetNo([]) === 'IMG-0001');
+const thumb1 = computeThumbSize(4000, 3000, 256);
+check('横图等比缩到 256 宽', thumb1.w === 256 && thumb1.h === 192, thumb1);
+const thumb2 = computeThumbSize(100, 50, 256);
+check('小图不放大', thumb2.w === 100 && thumb2.h === 50, thumb2);
+const thumb3 = computeThumbSize(0, 0, 256);
+check('非法尺寸回退正方形', thumb3.w === 256 && thumb3.h === 256, thumb3);
+check('文件大小可读化', formatBytes(1536) === '1.5 KB' && formatBytes(undefined) === '—', formatBytes(1536));
+
+console.log('[12] SHA-256 去重');
+const dedupe = dedupeCandidates(
+  [{ id: 'a1', hash: 'h1' }],
+  [
+    { hash: 'h1', name: 'dup-lib.png' },
+    { hash: 'h2', name: 'new.png' },
+    { hash: 'h2', name: 'same-batch.png' },
+    { hash: 'h3', name: 'new2.png' },
+  ],
+);
+check('库内重复被拦下', dedupe.duplicates.some((d) => d.reason === 'hash' && d.existingId === 'a1'), dedupe.duplicates);
+check('批内重复被拦下', dedupe.duplicates.some((d) => d.reason === 'batch' && d.item.name === 'same-batch.png'));
+check('新图片保留 2 张', dedupe.fresh.length === 2, dedupe.fresh.map((i) => i.name));
+
+console.log('[13] EXIF 解析（合成 JPEG）');
+/** 手工拼一段最小 JPEG：SOI + APP1(Exif) + TIFF(IFD0/ExifIFD/GPSIFD)，不依赖任何图片库 */
+function buildExifJpeg() {
+  const buf = new Uint8Array(260);
+  const dv = new DataView(buf.buffer);
+  const u16 = (pos, value) => dv.setUint16(pos, value, true);
+  const u32 = (pos, value) => dv.setUint32(pos, value, true);
+  const ascii = (pos, text) => {
+    for (let i = 0; i < text.length; i += 1) buf[pos + i] = text.charCodeAt(i);
+  };
+  const entry = (ifdRel, index, tag, type, count, valueOrOffset) => {
+    const base = 12 + ifdRel + 2 + index * 12;
+    dv.setUint16(base, tag, true);
+    dv.setUint16(base + 2, type, true);
+    dv.setUint32(base + 4, count, true);
+    dv.setUint32(base + 8, valueOrOffset, true);
+  };
+  // 外壳
+  buf[0] = 0xff;
+  buf[1] = 0xd8;
+  buf[2] = 0xff;
+  buf[3] = 0xe1;
+  dv.setUint16(4, 240, false);
+  ascii(6, 'Exif');
+  buf[10] = 0;
+  buf[11] = 0;
+  // TIFF 头（小端）
+  const tiff = 12;
+  ascii(tiff, 'II');
+  u16(tiff + 2, 42);
+  u32(tiff + 4, 8);
+  // IFD0
+  u16(tiff + 8, 4);
+  entry(8, 0, 0x010f, 2, 8, 146);
+  entry(8, 1, 0x0110, 2, 5, 154);
+  entry(8, 2, 0x8769, 4, 1, 74);
+  entry(8, 3, 0x8825, 4, 1, 92);
+  u32(tiff + 58, 0);
+  // Exif IFD
+  u16(tiff + 74, 1);
+  entry(74, 0, 0x9003, 2, 20, 159);
+  u32(tiff + 88, 0);
+  // GPS IFD
+  u16(tiff + 92, 4);
+  entry(92, 0, 0x0001, 2, 2, 0);
+  entry(92, 1, 0x0002, 5, 3, 184);
+  entry(92, 2, 0x0003, 2, 2, 0);
+  entry(92, 3, 0x0004, 5, 3, 208);
+  u32(tiff + 142, 0);
+  // EXIF 规范：不超过 4 字节的 ASCII 直接内联在 value 字段（不能写成偏移）
+  buf[tiff + 94 + 8] = 78; // 'N'
+  buf[tiff + 94 + 9] = 0;
+  buf[tiff + 118 + 8] = 69; // 'E'
+  buf[tiff + 118 + 9] = 0;
+  // 数据区
+  ascii(tiff + 146, 'TestCam\0');
+  ascii(tiff + 154, 'X100\0');
+  ascii(tiff + 159, '2026:09:03 20:10:00\0');
+  u32(tiff + 184, 31);
+  u32(tiff + 188, 1);
+  u32(tiff + 192, 47);
+  u32(tiff + 196, 1);
+  u32(tiff + 200, 0);
+  u32(tiff + 204, 1);
+  u32(tiff + 208, 119);
+  u32(tiff + 212, 1);
+  u32(tiff + 216, 58);
+  u32(tiff + 220, 1);
+  u32(tiff + 224, 0);
+  u32(tiff + 228, 1);
+  return buf.buffer;
+}
+const exif = parseExif(buildExifJpeg());
+check('读出台相机机型', exif && exif.camera === 'TestCam X100', exif && exif.camera);
+check('DateTimeOriginal 归一化', exif && exif.capturedAt === '2026-09-03T20:10:00', exif && exif.capturedAt);
+check('GPS 度分秒转十进制', exif && Math.abs(exif.gps.lat - (31 + 47 / 60)) < 1e-6 && Math.abs(exif.gps.lng - (119 + 58 / 60)) < 1e-6, exif && exif.gps);
+check('非 JPEG 返回 null', parseExif(new Uint8Array([1, 2, 3]).buffer) === null);
+check('无 EXIF 的 JPEG 返回 null', parseExif(new Uint8Array([0xff, 0xd8, 0xff, 0xd9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).buffer) === null);
+check('日期格式非法返回 undefined', normalizeExifDate('not a date') === undefined);
+
+console.log('[14] 导入命令（素材 + 证据节点 + 关联）');
+const assetsBefore = doc().assets.length;
+const nodesBefore = doc().nodes.length;
+const zhangBefore = doc().nodes.find((n) => n.id === 'zhang').attachments.length;
+state().dispatch(
+  importAssets({
+    assets: [
+      {
+        id: 'a-smoke',
+        path: 'assets/a-smoke',
+        kind: 'image',
+        hash: 'cafe'.repeat(16),
+        thumbnails: ['a-smoke:256', 'a-smoke:1024'],
+        source: 'import',
+        sourceLabel: '现场照片',
+        zone: 'evidence',
+        width: 1200,
+        height: 900,
+        name: '现场.png',
+        no: 'IMG-0100',
+        annotations: [],
+      },
+    ],
+    evidenceNodes: [
+      { id: 'n-smoke', title: '照片 IMG-0100', x: 160, y: 160, fields: { 来源: '现场照片' }, attachments: ['a-smoke'] },
+    ],
+    linkNodeId: 'zhang',
+  }),
+);
+check('素材入库', doc().assets.length === assetsBefore + 1 && doc().assets.some((a) => a.id === 'a-smoke'));
+const smokeNode = doc().nodes.find((n) => n.id === 'n-smoke');
+check(
+  '证据节点按草稿建立',
+  doc().nodes.length === nodesBefore + 1 && smokeNode.type === 'evidence' && smokeNode.status === 'todo' && smokeNode.confidence === 30 && smokeNode.attachments.includes('a-smoke'),
+  smokeNode && { type: smokeNode.type, status: smokeNode.status },
+);
+check('关联实体挂上附件', doc().nodes.find((n) => n.id === 'zhang').attachments.length === zhangBefore + 1);
+state().undo();
+check('一次撤销回退素材/节点/附件', doc().assets.length === assetsBefore && doc().nodes.length === nodesBefore && doc().nodes.find((n) => n.id === 'zhang').attachments.length === zhangBefore);
+state().redo();
+state().dispatch(updateAsset('a-smoke', { sourceLabel: '书证翻拍', no: 'IMG-0101' }));
+check('素材可改编号与来源', doc().assets.find((a) => a.id === 'a-smoke').no === 'IMG-0101' && doc().assets.find((a) => a.id === 'a-smoke').sourceLabel === '书证翻拍');
+
 console.log('');
 if (failures > 0) {
   console.log('结果：' + failures + ' 项失败');

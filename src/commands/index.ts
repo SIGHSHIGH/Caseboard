@@ -19,3 +19,5 @@ export {
   canParentGroup,
 } from './groupCommands';
 export type { AddGroupInput, GroupPatch } from './groupCommands';
+export { addAsset, addAssets, updateAsset, deleteAsset, importAssets } from './assetCommands';
+export type { AssetPatch, ImportBundle, EvidenceNodeDraft } from './assetCommands';

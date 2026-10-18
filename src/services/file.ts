@@ -10,6 +10,8 @@ export interface PickedFile {
 export interface FileService {
   downloadText(fileName: string, text: string, mime?: string): void;
   pickTextFile(accept: string): Promise<PickedFile | null>;
+  /** 批量选择文件（图片导入向导的入口之一） */
+  pickFiles(accept: string, multiple?: boolean): Promise<File[]>;
 }
 
 export const fileService: FileService = {
@@ -36,6 +38,17 @@ export const fileService: FileService = {
         }
         resolve({ name: file.name, text: await file.text() });
       };
+      input.click();
+    });
+  },
+
+  async pickFiles(accept, multiple = true) {
+    return new Promise<File[]>((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = accept;
+      input.multiple = multiple;
+      input.onchange = () => resolve(Array.from(input.files ?? []));
       input.click();
     });
   },

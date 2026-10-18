@@ -327,7 +327,36 @@ function check(name, condition, detail) {
     const bg = group ? group.style.background || group.style.backgroundColor : '';
     return /192, *57, *43/.test(bg);
   })(), doc.querySelector('.cb-group')?.getAttribute('style'));
-  check('左栏有 2 个分组入口', doc.querySelectorAll('.cb-group-actions .cb-btn').length === 2, doc.querySelectorAll('.cb-group-actions .cb-btn').length);
+  const clickByText = async (selector, needle) => {
+    const target = [...doc.querySelectorAll(selector)].find((el) => (el.textContent || '').includes(needle));
+    if (!target) return false;
+    target.click();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    return true;
+  };
+
+  console.log('[UI] M2-3 左栏标签与素材库');
+  check('左栏三个标签', doc.querySelectorAll('.cb-tabs .cb-tab').length === 3, doc.querySelectorAll('.cb-tabs .cb-tab').length);
+
+  check('可切到素材标签', await clickByText('.cb-tabs .cb-tab', '素材'));
+  check('素材库区块已渲染', doc.querySelector('.cb-assets') !== null);
+  check('证据素材 / AI 生成 两分区', doc.querySelectorAll('.cb-assets__zones .cb-tab').length === 2, doc.querySelectorAll('.cb-assets__zones .cb-tab').length);
+  check('证据分区空态提示', (doc.querySelector('.cb-assets__empty')?.textContent || '').includes('尚无证据素材'), doc.querySelector('.cb-assets__empty')?.textContent);
+  check('导入图片按钮存在', [...doc.querySelectorAll('.cb-assets__actions .cb-btn')].some((b) => (b.textContent || '').includes('导入图片')));
+  check('无 File System Access 时监视按钮禁用', (() => {
+    const watch = [...doc.querySelectorAll('.cb-assets__actions .cb-btn')].find((b) => (b.textContent || '').includes('监视文件夹'));
+    return !!watch && watch.disabled === true;
+  })());
+
+  check('可切到 AI 生成分区', await clickByText('.cb-assets__zones .cb-tab', 'AI 生成'));
+  check('AI 分区空态提示', (doc.querySelector('.cb-assets__empty')?.textContent || '').includes('AI 生成图'), doc.querySelector('.cb-assets__empty')?.textContent);
+
+  check('可切到分组标签', await clickByText('.cb-tabs .cb-tab', '分组'));
+  check('分组标签含 2 个入口', doc.querySelectorAll('.cb-group-actions .cb-btn').length === 2, doc.querySelectorAll('.cb-group-actions .cb-btn').length);
+
+  check('可切回对象标签', await clickByText('.cb-tabs .cb-tab', '对象'));
+  check('切回后类型按钮恢复 8 个', doc.querySelectorAll('.cb-type-btn').length === 8, doc.querySelectorAll('.cb-type-btn').length);
+  check('粘贴导入不会破坏初始渲染', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
 
   console.log('');
   if (failures > 0) {

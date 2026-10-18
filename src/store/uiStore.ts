@@ -2,11 +2,14 @@ import { create } from 'zustand';
 import type { XY } from '../types';
 
 export type CanvasMode = 'select' | 'lasso';
+/** 左栏三个标签：对象类型 / 素材库 / 分组 */
+export type LeftTab = 'nodes' | 'assets' | 'groups';
 
 interface UiStore {
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   selectedGroupId: string | null;
+  selectedAssetId: string | null;
   /** 拖拽中的临时位置：不进 doc，松手才落 MoveNode 命令，避免污染撤销栈 */
   dragPos: Record<string, XY>;
   /** 左栏点类型按钮后置位，由 Board 换算成画布坐标后消费 */
@@ -15,6 +18,8 @@ interface UiStore {
   groupRequest: 'rect' | 'lasso' | null;
   /** 画布交互模式：默认选择，圈选时临时进入 lasso */
   mode: CanvasMode;
+  leftTab: LeftTab;
+  setLeftTab: (tab: LeftTab) => void;
   requestAdd: (type: string) => void;
   consumeAdd: () => void;
   requestGroup: (kind: 'rect' | 'lasso') => void;
@@ -23,27 +28,36 @@ interface UiStore {
   selectNode: (id: string | null) => void;
   selectEdge: (id: string | null) => void;
   selectGroup: (id: string | null) => void;
+  selectAsset: (id: string | null) => void;
   clearSelection: () => void;
   setDragPos: (id: string, pos: XY | null) => void;
 }
 
-export const useUiStore = create<UiStore>((set) => ({
+const NO_SELECTION = {
   selectedNodeId: null,
   selectedEdgeId: null,
   selectedGroupId: null,
+  selectedAssetId: null,
+} as const;
+
+export const useUiStore = create<UiStore>((set) => ({
+  ...NO_SELECTION,
   dragPos: {},
   addRequest: null,
   groupRequest: null,
   mode: 'select',
+  leftTab: 'nodes',
+  setLeftTab: (leftTab) => set({ leftTab }),
   requestAdd: (type) => set({ addRequest: type }),
   consumeAdd: () => set({ addRequest: null }),
   requestGroup: (kind) => set({ groupRequest: kind }),
   consumeGroup: () => set({ groupRequest: null }),
   setMode: (mode) => set({ mode }),
-  selectNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null, selectedGroupId: null }),
-  selectEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null, selectedGroupId: null }),
-  selectGroup: (id) => set({ selectedGroupId: id, selectedNodeId: null, selectedEdgeId: null }),
-  clearSelection: () => set({ selectedNodeId: null, selectedEdgeId: null, selectedGroupId: null }),
+  selectNode: (id) => set({ ...NO_SELECTION, selectedNodeId: id }),
+  selectEdge: (id) => set({ ...NO_SELECTION, selectedEdgeId: id }),
+  selectGroup: (id) => set({ ...NO_SELECTION, selectedGroupId: id }),
+  selectAsset: (id) => set({ ...NO_SELECTION, selectedAssetId: id }),
+  clearSelection: () => set({ ...NO_SELECTION }),
   setDragPos: (id, pos) =>
     set((state) => {
       const next = { ...state.dragPos };

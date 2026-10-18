@@ -5,9 +5,11 @@ import {
   addComment,
   assignNodesToGroup,
   canParentGroup,
+  deleteAsset,
   deleteComment,
   deleteGroup,
   toggleGroupCollapsed,
+  updateAsset,
   updateEdge,
   updateGroup,
   updateNode,
@@ -16,7 +18,9 @@ import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } f
 import { NODE_TYPE_ORDER, NODE_TEMPLATES, templateOf, type NodeFieldDef } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
-import type { CaseEdge, CaseNode, Group, LineStyle, NodeType, Status } from '../../types';
+import { formatBytes } from '../../lib/assetMeta';
+import { imageStore, thumbUrl } from '../../services/imageStore';
+import type { Asset, CaseEdge, CaseNode, Group, LineStyle, NodeType, Status } from '../../types';
 
 const STATUSES: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
 const STYLES: LineStyle[] = ['solid', 'dashed', 'dotted'];
@@ -584,15 +588,149 @@ function GroupForm({ group }: { group: Group }) {
   );
 }
 
+/** 素材详情：只看元数据，二进制在 IndexedDB；编号与来源可改，删除会同步摘掉节点附件引用 */
+function AssetForm({ asset }: { asset: Asset }) {
+  const dispatch = useDocStore((s) => s.dispatch);
+  const doc = useDocStore((s) => s.doc);
+  const [no, setNo] = useState(asset.no ?? '');
+  const [label, setLabel] = useState(asset.sourceLabel ?? '');
+  const [thumb, setThumb] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    thumbUrl(asset.id)
+      .then((url) => {
+        if (alive) setThumb(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [asset.id]);
+
+  const related = doc.nodes.filter((node) => node.attachments.includes(asset.id));
+
+  return (
+    <div className="cb-form">
+      {thumb ? (
+        <img className="cb-form__preview" src={thumb} alt={asset.name ?? '素材预览'} />
+      ) : (
+        <p className="cb-form__subtle">原件不在当前环境（IndexedDB 未初始化或素材来自其他设备）。</p>
+      )}
+
+      <label className="cb-field">
+        <span>素材编号</span>
+        <input
+          value={no}
+          onChange={(event) => setNo(event.target.value)}
+          onBlur={() => {
+            const next = no.trim();
+            if (next !== (asset.no ?? '')) dispatch(updateAsset(asset.id, { no: next || undefined }));
+          }}
+        />
+      </label>
+
+      <label className="cb-field">
+        <span>来源说明</span>
+        <input
+          value={label}
+          placeholder="现场照片 / 书证翻拍 …"
+          onChange={(event) => setLabel(event.target.value)}
+          onBlur={() => {
+            const next = label.trim();
+            if (next !== (asset.sourceLabel ?? '')) dispatch(updateAsset(asset.id, { sourceLabel: next || undefined }));
+          }}
+        />
+      </label>
+
+      <dl className="cb-summary">
+        <div>
+          <dt>文件名</dt>
+          <dd>{asset.name ?? '未记录'}</dd>
+        </div>
+        <div>
+          <dt>尺寸</dt>
+          <dd>{asset.width && asset.height ? `${asset.width} × ${asset.height}` : '未知'}</dd>
+        </div>
+        <div>
+          <dt>文件大小</dt>
+          <dd>{formatBytes(asset.size)}</dd>
+        </div>
+        <div>
+          <dt>SHA-256</dt>
+          <dd title={asset.hash}>{asset.hash ? `${asset.hash.slice(0, 16)}…` : '未计算'}</dd>
+        </div>
+        <div>
+          <dt>导入渠道</dt>
+          <dd>{asset.source === 'clipboard' ? '粘贴' : asset.source === 'watch' ? '目录监视' : asset.source === 'ai' ? 'AI 生成' : '手动导入'}</dd>
+        </div>
+        <div>
+          <dt>拍摄时间</dt>
+          <dd>{asset.capturedAt ? asset.capturedAt.slice(0, 19).replace('T', ' ') : '未识别'}</dd>
+        </div>
+        <div>
+          <dt>相机</dt>
+          <dd>{asset.camera ?? '未识别'}</dd>
+        </div>
+        <div>
+          <dt>GPS</dt>
+          <dd>{asset.gps ? `${asset.gps.lat.toFixed(5)}, ${asset.gps.lng.toFixed(5)}` : '无'}</dd>
+        </div>
+        <div>
+          <dt>标注</dt>
+          <dd>{asset.annotations.length} 处</dd>
+        </div>
+      </dl>
+
+      <div className="cb-form__section">
+        <h3 className="cb-form__subtitle">关联对象（{related.length}）</h3>
+        {related.length === 0 ? (
+          <p className="cb-form__subtle">导入向导里选择「关联实体」，或在节点属性中手动挂接。</p>
+        ) : (
+          <ul className="cb-members">
+            {related.map((node) => (
+              <li key={node.id} className="cb-members__item">
+                <span className="cb-members__dot" style={{ background: NODE_TYPE_META[node.type].color }} />
+                <span className="cb-members__title">{node.title}</span>
+                <button type="button" className="cb-link-btn" onClick={() => useUiStore.getState().selectNode(node.id)}>
+                  查看
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="cb-form__section">
+        <button
+          type="button"
+          className="cb-btn cb-btn--danger"
+          onClick={() => {
+            dispatch(deleteAsset(asset.id));
+            useUiStore.getState().selectAsset(null);
+            void imageStore.remove(asset.id);
+          }}
+        >
+          删除素材（同时摘掉节点引用）
+        </button>
+      </div>
+
+      <p className="cb-form__meta">ID：{asset.id}</p>
+    </div>
+  );
+}
+
 export function RightPanel() {
   const doc = useDocStore((s) => s.doc);
   const selectedNodeId = useUiStore((s) => s.selectedNodeId);
   const selectedEdgeId = useUiStore((s) => s.selectedEdgeId);
   const selectedGroupId = useUiStore((s) => s.selectedGroupId);
+  const selectedAssetId = useUiStore((s) => s.selectedAssetId);
 
   const node = doc.nodes.find((item) => item.id === selectedNodeId) ?? null;
   const edge = doc.edges.find((item) => item.id === selectedEdgeId) ?? null;
   const group = doc.groups.find((item) => item.id === selectedGroupId) ?? null;
+  const asset = doc.assets.find((item) => item.id === selectedAssetId) ?? null;
 
   const titleOf = (id: string) => doc.nodes.find((item) => item.id === id)?.title ?? id;
 
@@ -627,6 +765,16 @@ export function RightPanel() {
             </span>
           </h2>
           <GroupForm key={group.id} group={group} />
+        </>
+      ) : asset ? (
+        <>
+          <h2 className="cb-panel__title">
+            素材属性
+            <span className="cb-panel__badge" style={{ background: asset.zone === 'ai' ? '#8C7A2E' : '#4A5568' }}>
+              {asset.zone === 'ai' ? 'AI 生成' : '证据素材'}
+            </span>
+          </h2>
+          <AssetForm key={asset.id} asset={asset} />
         </>
       ) : (
         <>

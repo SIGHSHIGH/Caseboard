@@ -139,7 +139,7 @@
 |---|---|---|
 | M2-1 | 8 类节点模板字段（含下拉/日期/长文本）+ 别名/标签/折叠详情/评论 + 旧文档迁移兜底 `normalizeDoc` | ✅ 2026-10-18 |
 | M2-2 | 组：矩形组与自由圈选、标题栏拖拽、嵌套 `parentId`、折叠为超级节点、组级连线聚合 | ✅ 2026-10-19 |
-| M2-3 | 图片四路导入（拖入/粘贴/批选/目录监视）+ 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库分区 | ⬜ |
+| M2-3 | 图片四路导入（拖入/粘贴/批选/目录监视）+ 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库分区 | ✅ 2026-10-19 |
 | M2-4 | 自由图片节点：移动/缩放/旋转吸附/层级/对齐参考线/网格/多选/吸附为头像 | ⬜ |
 | M2-5 | 标注层六图形（rect/arrow/pen/text/anchor/mosaic）+ PDF 抽页 / 视频抽帧链路 | ⬜ |
 
@@ -170,6 +170,22 @@
 | 折叠为超级节点 | 折叠后组内节点与子组隐藏，只留 `group` 超级节点（对象数/子组数/「已折叠」） | ✅ |
 | 组级连线聚合 | 跨组边按「源渲染体→目标渲染体」聚合为 `__agg:` 合成边，多条显示「N 条关系」；线型取最弱、置信度取最小；聚合边不可选不可删 | ✅ |
 | 旧存档兼容 | `normalizeDoc` 补齐 `opacity`（夹到 0.02–0.6）与 `collapsed` 布尔 | ✅ |
+
+**M2-3 验收记录（2026-10-19，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `pnpm typecheck` → 0 error | ✅ |
+| 构建 | 226 modules，JS 424.03 kB（gzip 137.50）、CSS 31.84 kB，另有独立 worker chunk `imageWorker-*.js` 3.73 kB | ✅ |
+| 逻辑层 | `pnpm smoke` 93 条全通过（新增 22 条：素材编号与缩略图尺寸、SHA-256 库内/批内去重、EXIF 合成 JPEG 解析、导入命令与撤销） | ✅ |
+| 打包产物 | `pnpm ui-smoke` 31 条全通过（新增 14 条：左栏三标签、素材库两分区、两区空态、导入/监视按钮、无 File System Access 时监视禁用、切回对象页类型按钮恢复） | ✅ |
+| 四路导入 | 拖入（`.cb-main` onDrop）、粘贴（window paste 取 `clipboardData.files`）、批选（`fileService.pickFiles`）、目录监视（`startDirectoryWatch` 轮询 File System Access，去重键 `name:size:lastModified`） | ✅ |
+| 双级缩略图 + 哈希 | Worker 内 `OffscreenCanvas` 出 256/1024 JPEG，`crypto.subtle.digest('SHA-256')` 出哈希；原件与缩略图落 IndexedDB | ✅ |
+| 去重 | `dedupeCandidates` 先查库内（hash）再查批内（batch），重复项在向导里单列并计原因 | ✅ |
+| EXIF | 自研 DataView 解析（Make/Model/DateTimeOriginal/GPS 度分秒）；解析中修掉「LONG 型 IFD 指针被当成内联值」导致的 `RangeError`，并加损坏 IFD 兜底 | ✅ |
+| 导入向导 | 预览列表（尺寸/体积/哈希/拍摄时间/相机/GPS）、按张移除、两种导入方式（仅素材库 / 建证据节点并铺排）、证据来源、拍摄时间、关联实体；全重复或大批失败时给中文提示 | ✅ |
+| 素材库分区 | 「证据素材 · N」「AI 生成 · N」；AI 分区空态明示 M7 产物强制角标与分区规则 | ✅ |
+| 素材详情 | 右栏 `AssetForm`：编号/来源说明可改（blur 提交）、哈希与 EXIF 只读展示、关联对象列表、删除素材同时摘掉节点引用 | ✅ |
 
 ---
 
@@ -362,6 +378,8 @@
 | D9 | 打包产物的渲染验收用 **jsdom + 伪布局**（注入 `offsetWidth/offsetHeight/getBoundingClientRect`、`ResizeObserver`、`DOMMatrixReadOnly`），脚本 `scripts/ui-smoke.cjs` | 本机 Chrome/Edge 无头模式被宿主拦截，无法做真实浏览器渲染断言；而 `offsetWidth` 恒为 0 会让 React Flow 判定节点未初始化、连线不渲染 | 结构性问题（缺锚点、缺线、缺标签）能被自动发现；拖拽手感/弹窗交互仍需人工验收 |
 | D10 | 图片二进制走 **IndexedDB（Blob）**，`CaseDoc` 只存素材元数据（`Asset.id/path/hash/thumbnails` 等）；缩略图与哈希在 **Web Worker** 里算 | 图片不能塞 localStorage（5MB 配额、同步阻塞），而 M2 阶段还没接 Tauri 文件系统（D2）；IndexedDB 支持 Blob 与事务，M4 换成 SQLite + 只读原件封存时只需替换 `imageService` 实现 | M2-3 起 `src/services/imageStore.ts` 提供 `putAsset/putThumb/getThumb/deleteAsset`，组件层不直接碰 IndexedDB |
 | D12 | 分组**直接进 React Flow 节点层**（展开态 `groupRect`、折叠态 `group` 超级节点，zIndex -1），不做独立覆盖层；成员归属用 `CaseNode.groupId` + `Group.parentId`，不引入 `nodeIds` 数组 | 覆盖层会被 React Flow 的 pane 吞掉点击，拖拽/缩放还得自己重复实现视口换算；`groupId` 单点归属天然保证「一个对象只属于一个组」且便于 `moveGroup` 原子位移 | 画布只渲染 `buildRenderModel(doc)` 的派生视图；折叠相关隐藏/聚合逻辑集中在 `src/lib/groups.ts`，DSL（M3）只需处理真实节点与组 |
+| D13 | 图片预处理（SHA-256、双级缩略图、EXIF）**全部在 Web Worker 内完成**，主线程只做去重判定与派发 Command；导入向导状态独立放 `src/store/importStore.ts`，不写进 `CaseDoc` | 500 张量级的解码与哈希会阻塞 UI 数秒；向导的半成品（待导入草稿、重复列表）属于临时态，若进 Model 会污染撤销栈与存档 | `src/workers/imageWorker.ts` 与 `src/services/image.ts` 的 `ImageWorkerPool`（3 个 worker、按传入顺序重排结果）；确认导入才落一条 `importAssets` 命令 |
+| D14 | M2 的「目录监视」用 **File System Access API 轮询**（`showDirectoryPicker` + `handle.values()`，最短 1.5s），不支持时按钮禁用并写明原因；M4 改用 Rust `notify` 事件推送 | 浏览器端没有目录变更事件；轮询可离线工作且零依赖，代价是延迟与需用户授权目录 | `src/services/watch.ts` 的 `supportsDirectoryWatch()` / `startDirectoryWatch()`；去重键 `name:size:lastModified` |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -373,3 +391,4 @@
 | 2026-10-18 | 建立本里程碑契约；规格文档归档至 `docs/CaseBoard-SPEC.md`；完成工具链实测（§5）与首批决策（D1–D6）。 |
 | 2026-10-18 | **M1 验收通过**（✅）：写入验收记录与两个缺陷修复说明；§5 修正安装通道结论（`--ignore-scripts` + `node-linker=hoisted`、vite CLI 需脱离沙箱）；决策 D7 修正，新增 D8（双锚点）、D9（jsdom 伪布局验收）。 |
 | 2026-10-19 | **M2-2 验收通过**（✅）：组系统（矩形/圈选、嵌套、折叠超级节点、组级连线聚合）落地；§3 拆步表 M2-2 置 ✅ 并写入验收记录，新增 D12（组走节点层而非覆盖层）。 |
+| 2026-10-19 | **M2-3 验收通过**（✅）：图片四路导入 + 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库两分区落地；§3 拆步表 M2-3 置 ✅ 并写入验收记录，新增 D13（导入预处理全部在 Worker 内完成）、D14（目录监视 M2 用 File System Access 轮询，M4 换 notify）。 |

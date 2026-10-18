@@ -108,8 +108,14 @@ export interface AiMeta {
   createdAt: string;
 }
 
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+}
+
 export interface Asset {
   id: string;
+  /** 素材在库内的相对路径（M2 为 IndexedDB key，M4 起为项目内相对路径） */
   path: string;
   kind: 'image' | 'pdf' | 'video' | 'audio' | 'file';
   hash: string;
@@ -120,6 +126,22 @@ export interface Asset {
   zone?: 'evidence' | 'ai';
   width?: number;
   height?: number;
+  /** 原始文件名 */
+  name?: string;
+  /** 字节数 */
+  size?: number;
+  mimeType?: string;
+  /** 案件内素材编号，如 IMG-0001 */
+  no?: string;
+  /** 来源文字标签（现场照片 / 书证翻拍 / 监控截图 …），与 source 渠道字段并存 */
+  sourceLabel?: string;
+  /** EXIF 拍摄时间（ISO 字符串） */
+  capturedAt?: string;
+  /** EXIF 机身/镜头描述 */
+  camera?: string;
+  /** EXIF GPS：读取后仅提示定位风险，不清洗也不自动上图 */
+  gps?: GeoPoint;
+  addedAt?: string;
   annotations: Annotation[];
   aiGenerated?: boolean;
   aiMeta?: AiMeta;

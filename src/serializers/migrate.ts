@@ -211,6 +211,28 @@ function normalizeAsset(raw: unknown, index: number): Asset | null {
   if (raw.width !== undefined) asset.width = num(raw.width, 0);
   if (raw.height !== undefined) asset.height = num(raw.height, 0);
   if (raw.ocrText !== undefined) asset.ocrText = str(raw.ocrText);
+  const sourceLabel = str(raw.sourceLabel);
+  if (sourceLabel) asset.sourceLabel = sourceLabel;
+  const name = str(raw.name);
+  if (name) asset.name = name;
+  const no = str(raw.no);
+  if (no) asset.no = no;
+  if (typeof raw.size === 'number' && Number.isFinite(raw.size) && raw.size >= 0) asset.size = raw.size;
+  const mimeType = str(raw.mimeType);
+  if (mimeType) asset.mimeType = mimeType;
+  const capturedAt = str(raw.capturedAt);
+  if (capturedAt) asset.capturedAt = capturedAt;
+  const camera = str(raw.camera);
+  if (camera) asset.camera = camera;
+  if (isRecord(raw.gps)) {
+    const lat = raw.gps.lat;
+    const lng = raw.gps.lng;
+    if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
+      asset.gps = { lat, lng };
+    }
+  }
+  const addedAt = str(raw.addedAt);
+  if (addedAt) asset.addedAt = addedAt;
   if (raw.aiGenerated === true) asset.aiGenerated = true;
   if (isRecord(raw.aiMeta)) asset.aiMeta = raw.aiMeta as unknown as Asset['aiMeta'];
   void index;
