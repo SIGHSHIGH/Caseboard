@@ -260,7 +260,7 @@
 | 步骤 | 范围 | 状态 |
 |---|---|---|
 | M3-1 | `src/dsl/serialize.ts`：Model → DSL 文本，幂等（含 id 名称化、双向名表、稳定 JSON） | ✅ 2026-10-19 |
-| M3-2 | `grammar/caseboard.grammar` + `src/dsl/parse.ts`：AST、行列错误、修复建议 | ⬜ |
+| M3-2 | `grammar/caseboard.grammar` + `src/dsl/parse.ts`：AST、行列错误、修复建议 | ✅ 2026-10-19 |
 | M3-3 | `src/dsl/diff.ts`：AST ↔ Model 最小 Command 批次、字段级三方合并、整批一次撤销 | ⬜ |
 | M3-4 | 分屏 + CodeMirror 6（高亮/折叠/补全/悬停/波浪线/格式化）+ 同步状态机 + 光标滚动保护 | ⬜ |
 | M3-5 | 验收加固：错误用例全覆盖、50 次连续操作、1000 节点基准脚本 | ⬜ |
@@ -279,6 +279,23 @@
 | id 名称化 | 非 ASCII / 含 `-` 的 id 转成合法标识符（保留中文），与原 id 不同时补 `id: "原 id"`；重名自动加 `_2`；连线引用同步改名 | ✅ |
 | 纯函数 | 序列化不修改 Model（快照比较）、不读时间/随机数；空文档输出合法骨架且无 `undefined` | ✅ |
 | 边界 | 行尾无空格/制表符、无连续空行结尾；`stableJson` 递归排序键 | ✅ |
+
+**M3-2 验收记录（2026-10-19，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `pnpm typecheck` → 0 error | ✅ |
+| 逻辑层 | `pnpm smoke` 241 条全通过（新增 37 条 `[21] DSL 解析（M3-2）`） | ✅ |
+| 往返一致 | `parseDsl(serializeDoc(demo))` 无诊断；再次序列化 **逐字节相同**（验收 1 的闭环） | ✅ |
+| 语法覆盖 | 规格 §4 全部形状：`case/caseNo`、8 类实体、`group … color="#C0392B" { nodes: […] }`、`view timeline|scenario|presentation …`、三种线型箭头、`at/size`、`key: value` 字段（字符串/数字/布尔/日期/区间/数组/对象/枚举）、`camera/filters/steps`、`scenario`、`//` 与 `/* */` 注释 | ✅ |
+| 容错（验收 2） | 六类错误全部有中文诊断 + 行列（1 起）+ 修复建议：悬空引用、重复 id、自环、未闭合块、非法枚举、非数字坐标；**出错时已解析的好块仍在（Model 不被清空）**，且 `parseDsl` 永不抛异常（空文本用例） | ✅ |
+| 身份对齐 | `id:` 覆盖行生效；`"quoted id"` 可作关系端点与组成员；名称冲突时靠 `id:` 行还原；解析为纯函数（同一文本 → 同一 `meta.id`，`createdAt` 留空由存储层填） | ✅ |
+| 缺 header 容错 | 只有 `{ … }` 块（无 `case` 行）仍解析正文，标题回退「未命名案件」+ warning | ✅ |
+| 关系缺 id | 自动生成 `e_<source>__<target>` 并 warning（不静默丢边） | ✅ |
+| 未知字段 | warning + 可照抄的 hint（指引写进 `fields: { … }`），不阻塞其余字段 | ✅ |
+| 代码生成 | `node scripts/build-grammar.mjs` → `src/dsl/generated/caseboard.parser.ts`（3917 字节）提交进库，构建/测试不依赖 codegen | ✅ |
+
+> 语法层取舍（见 D21）：不把类型/枚举做成关键字，统一 `Declaration { Ident Ident QuotedString Attr* Block }`；数字/日期/时间统一 `Scalar` token；整段箭头做成单个 `Arrow` token 再在 parse 层切分线型与标签 —— 这些都是为了绕开 Lezer 的 token 重叠判定（`Ident` vs `true/false`、`Number` vs 日期、标签 vs 空白）。
 
 ---
 
@@ -462,6 +479,7 @@
 | D18 | 视频抽帧用 **`<video>` + `<canvas>`**（`currentTime` 跳转 + `drawImage`），不引入 ffmpeg.wasm；M4 换 Rust `ffmpeg-sidecar` | ffmpeg.wasm 需 30MB+ 的 wasm 与 SharedArrayBuffer（要 COOP/COEP 头），对本机离线单机应用是纯负担；浏览器原生解码已能覆盖监控截图抽帧 | `src/services/video.ts` 的 `probeVideo/grabFrame`，等距时间点由 `src/lib/mediaPlan.ts` 的 `planFrameTimes` 纯函数给出（smoke 可测）；抽帧失败（如编码不受支持）时给出中文原因 |
 | D19 | **pdf.js 走动态 import 懒加载**（`await import('../../services/pdf')`），只在用户点「选择 PDF 文件」时才拉解析器与 worker | 静态引入会让主包从 464 kB 涨到 948 kB（gzip 296 kB），首屏白等；抽页是低频操作，单独分块更合适 | 构建产物出现独立块 `pdf-*.js`（483 kB）与 `pdf.worker.min-*.mjs`（1264 kB）；`ExtractDialog` 只用 `import type { PdfJob }`，类型不拉运行时 |
 | D20 | DSL **只表达实体 / 关系 / 组 / 视图**（规格 §4 的语法面）；素材元数据、自由图片节点、评论、`settings` 不进文本视图。坐标与尺寸一律显式写出（`at(x, y)` / `size(w, h)`），不依赖「省略即自动布局」。排序固定：节点按（类型顺序, id）、边按（source, target, id）、组与视图按 id。id 名称化：保留 ASCII 与中文，其余字符 → `_`，数字开头补 `n_`，重名追加 `_2`；名字与原 id 不同时补一行 `id: "原 id"`。解析方向（M3-3）按 id 名称反查 + `id:` 行对齐，未在文本中表达的字段原样保留，绝不整份覆盖模型 | 理由：素材二进制与图片节点是 DSL 无法承载的，硬塞进去会让文本视图变成不可读的 base64 墙；显式坐标让「在文本里改位置」可靠；固定排序 + 名称化把「同一模型 → 同一字节序列」变成可自动测试的不变量（M3 验收 1），也是字段级 diff 的对齐基础 | M3-2 解析需支持 `id:` 覆盖行与 `at/size`；M4 的 `.caseboard` 里 DSL 只是可读副本，权威数据仍是 SQLite |
+| D21 | 语法层**不把实体类型/枚举做成关键字**，统一 `Declaration { Ident Ident QuotedString Attr* Block }`，语义在 `parse.ts` 里按第一个 Ident 文本判定；数字/日期/时间统一 `Scalar` token，`true/false` 当 `Ident` 文本判；整段箭头做成单个 `Arrow` token（`-->` / `-.->` / `..>` 与 `---->` 共用一个 token），线型与标签在 parse 层切分；顶层允许只有 `{ … }` 块 | Lezer 会报 `overlapping tokens used in same context`（`Ident` vs `"true"`、`Number` vs 日期、标签 vs `WS`），拆成多个 token 过不了生成器；把类型做成关键字还会让 id 叫 `place`、`transfer` 的正常案件被误判为语法错误。单 token 箭头让「标签里含 `-`/`.`/`>`」不再需要转义规则 | `grammar/caseboard.grammar` + `scripts/build-grammar.mjs` 生成 `src/dsl/generated/caseboard.parser.ts`（提交进库）；解析器对外只暴露 `parseDsl` / `parseArrow` / `hasErrors`，`parseDsl` 永不抛异常 |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -476,4 +494,5 @@
 | 2026-10-19 | **M2-3 验收通过**（✅）：图片四路导入 + 双级缩略图 + SHA-256 去重 + EXIF + 导入向导 + 素材库两分区落地；§3 拆步表 M2-3 置 ✅ 并写入验收记录，新增 D13（导入预处理全部在 Worker 内完成）、D14（目录监视 M2 用 File System Access 轮询，M4 换 notify）。 |
 | 2026-10-19 | **M2-4 验收通过**（✅）：自由图片节点（移动/8 向缩放/旋转吸附/层级/对齐参考线与网格/多选整体移动/吸附头像与附件/三种边框/素材库拖入）落地；`CaseDoc` 新增 `imageNodes` 并补齐迁移与级联删除；§3 拆步表 M2-4 置 ✅ 并写入验收记录，新增 D15（交互过程只留本地预览，松手才落命令）、D16（吸附与「关联实体」共用一套规则）。 |
 | 2026-10-19 | **M2 整体验收通过**（✅）：M2-5 标注层六图形 + PDF 抽页 / 视频抽帧落地，标注可关联实体并随素材导出；§1 总表 M2 置 ✅，§3 拆步表 M2-5 置 ✅ 并写入验收记录，新增 D17（标注几何归一化）、D18（视频抽帧用原生 video+canvas）、D19（pdf.js 懒加载）；§5 补充「构建时 TMP/TEMP 指到工作区」的工具链结论。 |
+| 2026-10-19 | **M3-2 语法与容错解析落地**（M3 第 2 步，⏳ 进行中）：`grammar/caseboard.grammar`（Lezer）+ `scripts/build-grammar.mjs` 生成解析器，`src/dsl/parse.ts` 实现 AST → Model、六类中文诊断（含行列与修复建议）、`id:` 覆盖行与 quoted id 引用、缺 header 容错；演示文档 `parseDsl → serializeDoc` 逐字节往返一致；`pnpm smoke` 241 条全绿（新增 37 条 `[21] DSL 解析`）；§3 拆步表 M3-2 置 ✅ 并写入验收记录，新增 D21（语法层不设关键字、单 token 箭头）。 |
 | 2026-10-19 | **M3-1 序列化器落地**（M3 第 1 步，⏳ 进行中）：`src/dsl/serialize.ts` 实现 Model → DSL 文本，含 id 名称化双向表（`createNameTable` / `dslNameTable`）、`stableJson`、显式 `at/size`、按（类型序, id）稳定排序；`pnpm smoke` 204 条全绿（新增 31 条 `[20] DSL 序列化`）；§3 写入 M3 拆步表与 M3-1 验收记录，新增 D20（DSL 只表达式语法面、坐标显式、名称化保身份）。 |

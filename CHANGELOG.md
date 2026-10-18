@@ -13,6 +13,16 @@
 - **坐标显式化**：每个实体与组都写出 `at(x, y)` 与 `size(w, h)`，避免「省略即自动布局」在文本编辑时漂移（D20）。
 - **DSL 边界**（D20）：只表达实体/关系/组/视图；素材元数据、自由图片节点、评论、`settings` 不进文本，M3-3 合并时未表达字段原样保留。
 - **验收**：`pnpm typecheck` 0 error，`pnpm smoke` **204 条全绿**（新增 31 条 `[20] DSL 序列化（M3-1）`：幂等、排序、三种箭头、id 名称化与重名、字段顺序与转义、时间区间、空文档骨架、纯函数不改模型、stableJson 等）。
+### M3-2 Lezer grammar + 容错解析（2026-10-19）
+
+- **语法文件**（`grammar/caseboard.grammar`，Lezer）：`case "标题" caseNo "编号" { … }`、`类型 id "显示名" { … }`、`group g "…" color="#C0392B" { nodes: [...] }`、`view timeline|scenario|presentation "…" { … }`、三种线型箭头、`at(x, y)` / `size(w, h)`、`key: value` 字段（字符串/数字/布尔/日期/区间/数组/对象/枚举）、`//` 与 `/* */` 注释；代码生成脚本 `scripts/build-grammar.mjs` 产出 `src/dsl/generated/caseboard.parser.ts`（提交进库，构建不依赖 codegen）。
+- **不设关键字**（D21）：统一 `Declaration` 形状、`Scalar` 统一数字/日期、整段箭头做成单个 `Arrow` token——绕开 Lezer 的 token 重叠判定，同时让 id 叫 `place` / `transfer` 不会被当成语法错误。
+- **解析器**（`src/dsl/parse.ts`）：`parseDsl(text) → { doc, diagnostics }`，两遍扫描（先登记名字与 `id:` 覆盖 → 再实例化实体/组，最后绑组成员与解析边引用）；`parseArrow` 切分线型与标签（`-->` / `-.->` / `..>` / 带标签 / 带引号标签）；`hasErrors` 供 M3-4 的图形只读态使用。
+- **容错**：`parseDsl` **永不抛异常**；六类错误全部给出中文诊断 + 一基行列 + 可照抄的修复建议（悬空引用、重复 id、自环、未闭合块、非法枚举、非数字坐标），**出错时已解析的好块保留**，图形不被清空；缺 `case` 文件头、关系缺 `id`（自动生成 `e_<source>__<target>`）、未知字段（warning + `fields` 提示）都只降级不中断。
+- **身份对齐**：`id: "原 id"` 覆盖行生效，`"quoted id"` 可作关系端点与组成员；同一文本两次解析得到同一 `meta.id`（纯函数，`createdAt` 交给存储层）。
+- **往返一致**：`parseDsl(serializeDoc(demo))` 无诊断，再序列化**逐字节相同**（M3 验收 1 的闭环）。
+- **验收**：`pnpm typecheck` 0 error，`pnpm smoke` **241 条全绿**（新增 37 条 `[21] DSL 解析（M3-2）`）。
+
 ## [未发布] v0.2.0 · M2 领域模型 + 组 + 图片工作台
 
 ### M2-1 领域模型与节点模板（2026-10-18）

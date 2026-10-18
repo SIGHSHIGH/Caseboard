@@ -753,6 +753,208 @@ check(
   })(),
 );
 
+console.log('[21] DSL 解析（M3-2）');
+const { parseDsl, parseArrow, hasErrors } = require(path.join(out, 'dsl', 'parse.js'));
+const demoText = serializeDoc(base);
+const parsedDemo = parseDsl(demoText);
+check('演示文档解析无诊断', parsedDemo.diagnostics.length === 0, parsedDemo.diagnostics);
+check(
+  '解析后节点/关系/组/视图数量一致',
+  parsedDemo.doc.nodes.length === base.nodes.length &&
+    parsedDemo.doc.edges.length === base.edges.length &&
+    parsedDemo.doc.groups.length === base.groups.length &&
+    parsedDemo.doc.views.length === base.views.length,
+  {
+    nodes: parsedDemo.doc.nodes.length,
+    edges: parsedDemo.doc.edges.length,
+    groups: parsedDemo.doc.groups.length,
+    views: parsedDemo.doc.views.length,
+  },
+);
+check('解析后再序列化逐字节一致', serializeDoc(parsedDemo.doc) === demoText);
+check('标题与案号往返', parsedDemo.doc.meta.title === base.meta.title && parsedDemo.doc.meta.caseNo === base.meta.caseNo);
+const zhangSrc = base.nodes.find((node) => node.id === 'zhang');
+const zhangDst = parsedDemo.doc.nodes.find((node) => node.id === 'zhang');
+check(
+  '节点坐标/尺寸/状态/置信度保真',
+  Boolean(zhangDst) &&
+    ['x', 'y', 'w', 'h', 'status', 'confidence', 'type', 'title'].every((key) => zhangDst[key] === zhangSrc[key]),
+  zhangDst,
+);
+check(
+  '字段值/标签/别名/备注保真',
+  Boolean(zhangDst) &&
+    JSON.stringify(zhangDst.fields) === JSON.stringify(zhangSrc.fields) &&
+    zhangDst.tags.join(',') === zhangSrc.tags.join(',') &&
+    (zhangDst.aliases || []).join(',') === (zhangSrc.aliases || []).join(',') &&
+    zhangDst.notes === zhangSrc.notes,
+);
+const transferSrc = base.edges.find((edge) => edge.id === 'e-transfer');
+const transferDst = parsedDemo.doc.edges.find((edge) => edge.id === 'e-transfer');
+check(
+  '关系端点/类型/线型/权重/证据保真',
+  Boolean(transferDst) &&
+    transferDst.source === transferSrc.source &&
+    transferDst.target === transferSrc.target &&
+    transferDst.relType === transferSrc.relType &&
+    transferDst.style === transferSrc.style &&
+    transferDst.label === transferSrc.label &&
+    transferDst.weight === transferSrc.weight &&
+    JSON.stringify(transferDst.evidenceIds) === JSON.stringify(transferSrc.evidenceIds),
+  transferDst,
+);
+check('关系时间区间保真', JSON.stringify(transferDst.time) === JSON.stringify(transferSrc.time), transferDst.time);
+check(
+  '组边界与颜色保真',
+  JSON.stringify(parsedDemo.doc.groups[0].bounds) === JSON.stringify(base.groups[0].bounds) &&
+    parsedDemo.doc.groups[0].color === base.groups[0].color &&
+    parsedDemo.doc.groups[0].opacity === base.groups[0].opacity,
+  parsedDemo.doc.groups[0],
+);
+check('组成员通过 groupId 回填', parsedDemo.doc.nodes.filter((node) => node.groupId === 'g-suspect').length === 2);
+check(
+  '视图类型与名称保真',
+  parsedDemo.doc.views[0].kind === base.views[0].kind && parsedDemo.doc.views[0].name === base.views[0].name,
+  parsedDemo.doc.views[0],
+);
+
+check(
+  '空标签箭头三种线型',
+  parseArrow('-->').style === 'solid' && parseArrow('-.->').style === 'dashed' && parseArrow('..>').style === 'dotted',
+);
+check('空标签箭头不带 label', parseArrow('-->').label === undefined);
+check(
+  '带标签箭头解析出线型与标签',
+  parseArrow('--转账 500000-->').style === 'solid' &&
+    parseArrow('--转账 500000-->').label === '转账 500000' &&
+    parseArrow('..通话..>').style === 'dotted' &&
+    parseArrow('..通话..>').label === '通话',
+);
+check('引号标签去引号', parseArrow('--"转账 50 万"-->').label === '转账 50 万');
+check('无法识别的箭头返回 null', parseArrow('===>') === null && parseArrow('') === null);
+
+const danglingEdge = parseDsl('case "x" {\n  person a "A" { }\n  a --call--> zzz { rel: call }\n}');
+check(
+  '悬空引用报错且已解析实体保留',
+  hasErrors(danglingEdge.diagnostics) &&
+    danglingEdge.doc.nodes.length === 1 &&
+    danglingEdge.diagnostics.some((d) => d.message.includes('引用「zzz」没有对应声明')),
+  danglingEdge.diagnostics,
+);
+const duplicate = parseDsl('case "x" {\n  person a "A" { }\n  person a "B" { }\n}');
+check(
+  '重复声明报错且只实例化一次',
+  duplicate.doc.nodes.length === 1 && duplicate.diagnostics.some((d) => d.message.includes('id「a」重复声明')),
+  { nodes: duplicate.doc.nodes.length, diagnostics: duplicate.diagnostics },
+);
+const selfLoop = parseDsl('case "x" {\n  person a "A" { }\n  a --自己--> a { }\n}');
+check('自环报错且不生成关系', hasErrors(selfLoop.diagnostics) && selfLoop.doc.edges.length === 0, selfLoop.diagnostics);
+const unclosed = parseDsl('case "x" {\n  person a "A" {\n');
+check(
+  '未闭合块报错但已解析实体保留',
+  hasErrors(unclosed.diagnostics) && unclosed.doc.nodes.length === 1,
+  { nodes: unclosed.doc.nodes.length, diagnostics: unclosed.diagnostics },
+);
+const badEnum = parseDsl('case "x" {\n  person a "A" { status: suspect }\n}');
+check(
+  '非法枚举报错并回落默认值',
+  badEnum.doc.nodes[0].status === 'todo' && badEnum.diagnostics.some((d) => d.message.includes('status 只能是')),
+  badEnum.doc.nodes[0],
+);
+const badCoord = parseDsl('case "x" {\n  person a "A" { at(a, b) }\n}');
+check(
+  '非数字坐标报错且给出修复建议',
+  badCoord.diagnostics.filter((d) => d.message.includes('必须是数字')).length === 2 &&
+    badCoord.diagnostics.some((d) => (d.hint || '').includes('at(x, y)')),
+  badCoord.diagnostics,
+);
+const lineCheck = parseDsl('case "x" {\n  person a "A" {\n    status: suspect\n  }\n}');
+check('诊断行号为一基且指向出错行', lineCheck.diagnostics[0].line === 3 && lineCheck.diagnostics[0].column > 0, lineCheck.diagnostics[0]);
+check('诊断区间落在文本内', lineCheck.diagnostics.every((d) => d.from >= 0 && d.to <= 'case "x" {\n  person a "A" {\n    status: suspect\n  }\n}'.length && d.to >= d.from));
+
+const quoted = parseDsl(
+  'case "x" {\n  person a "A" { id: "p-a" }\n  person b "B" { }\n  group g "G" { nodes: ["p-a", b] }\n  "p-a" --> b { id: "e-x" }\n}',
+);
+check(
+  'id 覆盖行生效且关系可用 quoted id 引用',
+  !hasErrors(quoted.diagnostics) &&
+    quoted.doc.nodes.some((node) => node.id === 'p-a') &&
+    quoted.doc.edges.length === 1 &&
+    quoted.doc.edges[0].source === 'p-a',
+  quoted.diagnostics,
+);
+check(
+  '组引用 quoted id 与名字混用',
+  quoted.doc.nodes.filter((node) => node.groupId === 'g').length === 2,
+  quoted.doc.nodes.map((node) => node.groupId),
+);
+const dupEdge = parseDsl('case "x" {\n  person a "A" { }\n  person b "B" { }\n  a --> b { id: "e1" }\n  a --> b { id: "e1" }\n}');
+check(
+  '关系 id 重复报错且只保留一条',
+  dupEdge.doc.edges.length === 1 && dupEdge.diagnostics.some((d) => d.message.includes('关系 id「e1」重复')),
+  dupEdge.diagnostics,
+);
+const noIdEdge = parseDsl('case "x" {\n  person a "A" { }\n  person b "B" { }\n  a --call--> b { }\n}');
+check(
+  '关系缺 id 时自动生成并警告',
+  noIdEdge.doc.edges.length === 1 &&
+    noIdEdge.doc.edges[0].id === 'e_a__b' &&
+    noIdEdge.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('已自动生成')),
+  noIdEdge.doc.edges,
+);
+const unknownField = parseDsl('case "x" {\n  person a "A" { foo: 1 }\n}');
+check(
+  '未知字段 warning 并给出 fields 提示',
+  unknownField.doc.nodes[0] !== undefined &&
+    unknownField.diagnostics.some((d) => d.severity === 'warning' && (d.hint || '').includes('fields:')),
+  unknownField.diagnostics,
+);
+const noHeader = parseDsl('{ person a "A" { } }');
+check(
+  '缺 case 文件头仍解析块内语句',
+  noHeader.doc.nodes.length === 1 &&
+    noHeader.doc.meta.title === '未命名案件' &&
+    noHeader.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('缺少 case 文件头')),
+  noHeader.doc.meta,
+);
+const commented = parseDsl('// 头注释\ncase "x" {\n  /* 块注释 */ person a "A" { }\n}');
+check('注释行不产生诊断', !hasErrors(commented.diagnostics) && commented.doc.nodes.length === 1, commented.diagnostics);
+let threw = false;
+let emptyResult = null;
+try {
+  emptyResult = parseDsl('');
+} catch (error) {
+  threw = true;
+}
+check('空文本不抛异常且返回空文档', !threw && emptyResult !== null && emptyResult.doc.nodes.length === 0 && emptyResult.diagnostics.length > 0);
+
+const rich = parseDsl(
+  'case "x" {\n  person a "A" { time: 2026-09-01/2026-09-10 fields: { 年龄: 42 } confidence: 120 }\n  person b "B" { }\n  view timeline "T" { id: "v1" camera: 12, 34, 2 filters: { types: [person] } steps: [a, b] }\n  a -.证据不足.-> b { id: "e1" rel: call scenario: { s1: support } }\n}',
+);
+check('时间区间解析为 start/end', JSON.stringify(rich.doc.nodes[0].time) === JSON.stringify({ start: '2026-09-01', end: '2026-09-10' }), rich.doc.nodes[0].time);
+check('置信度夹在 0–100', rich.doc.nodes[0].confidence === 100);
+check(
+  '视图 camera/filters/steps 解析',
+  JSON.stringify(rich.doc.views[0].camera) === JSON.stringify({ x: 12, y: 34, zoom: 2 }) &&
+    JSON.stringify(rich.doc.views[0].filters) === JSON.stringify({ types: ['person'] }) &&
+    JSON.stringify(rich.doc.views[0].steps) === JSON.stringify(['a', 'b']),
+  rich.doc.views[0],
+);
+check(
+  '关系 scenario 与箭头线型解析',
+  rich.doc.edges[0].style === 'dashed' &&
+    rich.doc.edges[0].label === '证据不足' &&
+    JSON.stringify(rich.doc.edges[0].scenario) === JSON.stringify({ s1: 'support' }),
+  rich.doc.edges[0],
+);
+const metaA = parseDsl('case "同一案件" { }').doc.meta;
+const metaB = parseDsl('case "同一案件" { }').doc.meta;
+check(
+  '解析为纯函数（同一文本得到同一 meta.id，不读时间）',
+  metaA.id === metaB.id && metaA.id.startsWith('case_') && metaA.createdAt === '' && metaA.updatedAt === '',
+  metaA,
+);
+
 console.log('');
 if (failures > 0) {
   console.log('结果：' + failures + ' 项失败');

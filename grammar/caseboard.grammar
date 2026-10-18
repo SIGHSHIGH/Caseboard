@@ -1,0 +1,54 @@
+// 案情板 CaseBoard · 文本视图语法（Lezer）
+// 只描述规格 §4 的语法面：case 块、实体声明、组、关系、视图；素材与自由图片节点不进文本（D20）。
+// 容错：解析失败时 Lezer 产出错误节点，parse.ts 翻译成中文诊断，不阻塞其它块。
+
+// 顶层也允许只有 { … } 块（缺 case 文件头时仍能解析正文）
+@top Document { CaseStatement | Block }
+
+CaseStatement { CaseHead Block }
+
+CaseHead { "case" QuotedString ("caseNo" QuotedString)? }
+
+Block { "{" Statement* "}" }
+
+Statement { Declaration | EdgeStatement | FieldStatement | CallStatement }
+
+// person zhang "张建国" { … } / group g_suspect "诈骗团伙" color="#C0392B" { … } / view timeline "案发经过" { … }
+Declaration { Ident Ident QuotedString Attr* Block }
+
+// color="#C0392B"
+Attr { Ident "=" FieldValue }
+
+// status: confirmed / camera: 0, 0, 1
+FieldStatement { Ident ":" FieldValue ("," FieldValue)* }
+
+// at(10, 20) / size(208, 108)
+CallStatement { Ident "(" FieldValue "," FieldValue ")" }
+
+// zhang --转账 50 万--> li { … } / zhang -.疑似同伙.-> li { … } / zhang ..通话..> li { … }
+EdgeStatement { Ref Arrow Ref Block }
+
+Ref { Ident | QuotedString }
+
+FieldValue { QuotedString | Scalar | Ident | Array | ObjectLit }
+
+Array { "[" (FieldValue ("," FieldValue)*)? "]" }
+
+ObjectLit { "{" (Pair ("," Pair)*)? "}" }
+
+Pair { ObjectKey ":" FieldValue }
+
+ObjectKey { Ident | QuotedString | Scalar }
+
+@skip { WS | LineComment | BlockComment }
+
+@tokens {
+  WS { $[ \t\r\n]+ }
+  LineComment { "//" ![\n]* }
+  BlockComment { "/*" (![*] | "*" ![/])* "*/" }
+  Ident { $[A-Za-z_\u4e00-\u9fa5] $[A-Za-z0-9_\u4e00-\u9fa5]* }
+  QuotedString { '"' (!["\\\n] | "\\" _)* '"' }
+  Scalar { "-"? $[0-9] (![ \t\r\n,{}\[\]()"])* }
+  // 空标签箭头有两种写法：手写习惯的 --> / -.-> / ..>，以及序列化器输出的 ---->（前缀+后缀连写）
+  Arrow { "-->" | "-.->" | "..>" | "--" (![\n])* "-->" | "-." (![\n])* ".->" | ".." (![\n])* "..>" }
+}
