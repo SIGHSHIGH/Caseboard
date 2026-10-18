@@ -1,0 +1,22 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物
+dist/
+build/
+src-tauri/target/
+
+# 日志与临时文件
+*.log
+.probe-*.txt
+.DS  Store
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/
+
+# 本地数据
+*.caseboard
+*.cbd.bak
