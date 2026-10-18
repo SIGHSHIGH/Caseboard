@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "dist-smoke",
+    "rootDir": "src",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/types/**/*.ts",
+    "src/lib/**/*.ts",
+    "src/commands/**/*.ts",
+    "src/serializers/**/*.ts",
+    "src/data/**/*.ts",
+    "src/store/**/*.ts"
+  ],
+  "exclude": ["src/**/*.tsx"]
+}

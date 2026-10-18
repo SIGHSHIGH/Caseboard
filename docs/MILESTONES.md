@@ -30,7 +30,7 @@
 
 | # | 主题 | 预估工时 | 关键产出 | 验收门禁（摘要） | 状态 |
 |---|---|---|---|---|---|
-| M1 | 画布 MVP | 1–2 周 | React Flow 画布 + Command 体系 + JSON 持久化 | `pnpm build` 零错误；刷新不丢；撤销/重做可用；三种线型 | ⬜ |
+| M1 | 画布 MVP | 1–2 周 | React Flow 画布 + Command 体系 + JSON 持久化 | `pnpm build` 零错误；刷新不丢；撤销/重做可用；三种线型 | ✅ 2026-10-18 |
 | M2 | 领域模型 + 组 + 图片工作台 | 2–3 周 | 8 类节点模板、状态流、组（嵌套/折叠）、图片四路导入、自由图片节点、标注层 | 500 张图导入不崩；哈希去重命中；图片可旋转/层级/吸附 | ⬜ |
 | M3 | DSL + 双向同步 | 2–3 周 | Lezer grammar、CodeMirror 6、serialize/parse/diff、同步状态机 | 序列化幂等；1000 节点解析+渲染 < 300ms；解析失败不清空 Model | ⬜ |
 | M4 | Tauri + SQLite + 项目文件 + 导出 | 3–4 周 | Tauri 2 外壳、SQLite、`.caseboard` 单文件、图片/整板导出、脱敏导出 | `.caseboard` 可拷机打开；离线可用；PDF 报告可交付 | ⬜ |
@@ -86,6 +86,26 @@
 6. 全中文界面；主色中性深灰 + `#C0392B`；无 UI 库默认紫蓝主题残留。
 
 **风险**：包管理器迁移（见 §5 / D1）；React Flow v12 与 React 18 的 peer 版本需锁定。
+
+**验收记录（2026-10-18，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 安装 | `pnpm install --ignore-scripts`（node-linker=hoisted） | ✅ |
+| 类型检查 | `pnpm typecheck` → 0 error | ✅ |
+| 构建 | `pnpm build` → 211 modules，`dist/assets/index-*.js` 369.58 kB（gzip 120.38 kB），668ms | ✅ |
+| 逻辑层 27 条断言 | `pnpm smoke`（`scripts/smoke.cjs`）→ 全部通过：演示数据 6 节点/6 边/三线型；增删改移动；删除节点联动清边；撤销重做；JSON 往返；非法 JSON 拒绝 | ✅ |
+| 打包产物挂载 12 条断言 | `pnpm ui-smoke`（`scripts/ui-smoke.cjs`，jsdom）→ 全部通过：顶栏/左栏 4 类型/6 节点/6 连线/3 项图例/撤销禁用/关系标签「转账 50 万」 | ✅ |
+| 可服务 | `vite preview` on :4173 → index 200、JS 200（365482 B）、CSS 200（23814 B），`scripts/preview-check.cjs` 断言通过 | ✅ |
+| 三种线型 + 4 类节点 | 演示数据 + 顶栏常驻图例（solid/dashed/dotted） | ✅ |
+| 全中文 + 主色 | 界面文案全中文；`--cb-accent: #C0392B`；无第三方 UI 库 | ✅ |
+| 刷新不丢 | localStorage 自动保存（key `caseboard-autosave`），逻辑层由 persist 单测覆盖 | ✅ |
+
+**验收过程中修掉的两个真缺陷**
+1. `enablePatches()` 未调用 → 首次下命令即抛 `The plugin for 'Patches' has not been loaded into Immer`，撤销栈完全不可用；已在 `src/store/docStore.ts` 顶部启用。
+2. 节点只有 `type="source"` 锚点 → React Flow 的 `getEdgePosition` 找不到 target 侧 handleBounds 时连线不渲染；已改为每边「一个不可交互的 target 几何锚点 + 一个 source 拖拽锚点」（D8）。
+
+**已知局限**：本机无法启动 Chrome/Edge 无头浏览器（进程被宿主拦截），故「真实浏览器渲染」用 jsdom + 伪布局（`offsetWidth/offsetHeight/getBoundingClientRect` 注入）替代，见 D9；交互手感（拖拽、连线弹窗）仍需人工在 `pnpm dev` 里点一遍。
 
 ---
 
@@ -276,14 +296,16 @@
 
 便捷脚本：`scripts\pnpm.cmd` 封装了上述直连命令（**文件必须是 CRLF 行尾**，LF 会让 cmd 解析失败），用法 `scripts\pnpm.cmd install`。
 
-**安装通道实测（2026-10-18）**：`scripts\pnpm.cmd -C .probe-install add esbuild` → 成功，4.5s，装上 `esbuild 0.28.2`。
-但 pnpm 10 默认**忽略依赖的构建脚本**（提示 `Ignored build scripts: esbuild@0.28.2`），必须在根 `package.json` 显式放行：
+**安装通道实测（2026-10-18，M1 期间修正）**
 
-```json
-"pnpm": { "onlyBuiltDependencies": ["esbuild", "@tauri-apps/cli", "electron"] }
-```
-
-否则 esbuild / tauri CLI 的平台二进制可能缺失，表现为 `vite build` 报找不到可执行文件。
+- 直连 pnpm 可安装依赖；但 **postinstall 会 `spawn EPERM`**：DSH 沙箱禁止带管道 stdio 的子进程（实测 `spawn(...,{stdio:'pipe'})` → `Error: spawn EPERM errno -4048`，`stdio:'inherit'` 正常）。因此 `pnpm.onlyBuiltDependencies` 白名单在沙箱内**反而会让 install 失败**，实际做法是：
+  ```powershell
+  scripts\pnpm.cmd install --ignore-scripts
+  ```
+  esbuild 的平台二进制随 npm 包分发（`@esbuild/win32-x64`），无需 postinstall。
+- **必须 `node-linker=hoisted`**（见 `.npmrc`）：本机 node 是 Electron-as-node，pnpm 的隔离虚拟 store 用 junction 链接，node 会把 junction 当普通目录，导致 `Cannot find package 'rollup' imported from .../vite/dist/node/index.js`；hoisted 布局下 vite/rollup/esbuild 解析正常。
+- **vite 全系 CLI 都需要 esbuild 子进程**（连 `vite preview` 也要先 bundle `vite.config.ts`），在 DSH 沙箱内必须用 `sandbox_permissions: danger-full-access` 才能 `dev/build/preview`；`tsc --noEmit` 与 `node scripts/*.cjs` 不需要提权。
+- 无头浏览器不可用：`chrome --headless=new --dump-dom` 与 Edge 同样被宿主拦截（无输出即退出），真实渲染验收改用 jsdom（D9）。
 
 ---
 
@@ -297,7 +319,9 @@
 | D4 | DSL 文件后缀 **`.cbd`**，项目文件 **`.caseboard`** | 规格 P2 给定 `.cbd`；`.caseboard` 为 zip 容器 | 文件关联与导入导出按此命名 |
 | D5 | 状态与持久化：Zustand + Immer + Command 栈；M1 落 localStorage（key `caseboard-autosave`），M4 迁 SQLite | 先跑通闭环，迁移成本被 service 层吸收 | 序列化格式需与 SQLite schema 对齐设计 |
 | D6 | 坐标体系统一为**画布世界坐标**；屏幕↔世界换算只允许走 `src/lib/coords.ts` 单点工具 | 自由图片节点（旋转/缩放）与 React Flow 坐标混用是最大缺陷来源 | 所有拖拽/吸附/导出计算复用同一函数 |
-| D7 | 依赖构建脚本白名单写进根 `package.json` 的 `pnpm.onlyBuiltDependencies`（esbuild / @tauri-apps/cli / electron） | pnpm 10 默认忽略 postinstall，缺失会让 vite、tauri 找不到平台二进制 | 新装带 postinstall 的依赖时必须先加白名单再装 |
+| D7 | **不用 `onlyBuiltDependencies` 白名单**，安装一律 `pnpm install --ignore-scripts`；`.npmrc` 固定 `node-linker=hoisted` + `strict-peer-dependencies=false` | 白名单会让 postinstall 真的执行，而沙箱禁止管道 stdio 子进程（`spawn EPERM`），install 直接失败；esbuild 二进制走 optionalDependencies 分发不需要 postinstall。hoisted 布局解决 Electron-as-node 下 junction 解析失败 | 新依赖若只能靠 postinstall 出二进制（如 @tauri-apps/cli），需在 M4 前单独验证或改用官方预编译包 |
+| D8 | 节点每边放**两个锚点**：`type="target"`（`isConnectable={false}`、`pointer-events:none`、不可见）做几何锚点，`type="source"` 负责发起拖拽；两者 id 相同（top/right/bottom/left） | React Flow `getEdgePosition` 需要 target 侧 handleBounds；原实现只有 source 锚点，连线在真实场景下可能整条不渲染 | 连线路径稳定；后续若要切 `ConnectionMode.Strict` 也不必改节点结构 |
+| D9 | 打包产物的渲染验收用 **jsdom + 伪布局**（注入 `offsetWidth/offsetHeight/getBoundingClientRect`、`ResizeObserver`、`DOMMatrixReadOnly`），脚本 `scripts/ui-smoke.cjs` | 本机 Chrome/Edge 无头模式被宿主拦截，无法做真实浏览器渲染断言；而 `offsetWidth` 恒为 0 会让 React Flow 判定节点未初始化、连线不渲染 | 结构性问题（缺锚点、缺线、缺标签）能被自动发现；拖拽手感/弹窗交互仍需人工验收 |
 
 ---
 
@@ -306,3 +330,4 @@
 | 日期 | 变更 |
 |---|---|
 | 2026-10-18 | 建立本里程碑契约；规格文档归档至 `docs/CaseBoard-SPEC.md`；完成工具链实测（§5）与首批决策（D1–D6）。 |
+| 2026-10-18 | **M1 验收通过**（✅）：写入验收记录与两个缺陷修复说明；§5 修正安装通道结论（`--ignore-scripts` + `node-linker=hoisted`、vite CLI 需脱离沙箱）；决策 D7 修正，新增 D8（双锚点）、D9（jsdom 伪布局验收）。 |

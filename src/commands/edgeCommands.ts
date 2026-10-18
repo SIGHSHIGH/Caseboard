@@ -1,0 +1,72 @@
+import type { CaseEdge, LineStyle } from '../types';
+import { newId } from '../lib/id';
+import type { Command } from './types';
+
+export interface AddEdgeInput {
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+  relType?: string;
+  label?: string;
+  directed?: boolean;
+  style?: LineStyle;
+  confidence?: number;
+  weight?: number;
+  color?: string;
+  time?: { start: string; end?: string };
+  evidenceIds?: string[];
+  id?: string;
+}
+
+export function addEdge(input: AddEdgeInput): Command {
+  const relType = input.relType ?? 'related';
+  return {
+    label: `新增关系：${input.label ?? relType}`,
+    apply(draft) {
+      const edge: CaseEdge = {
+        id: input.id ?? newId('edge'),
+        source: input.source,
+        target: input.target,
+        sourceHandle: input.sourceHandle,
+        targetHandle: input.targetHandle,
+        path: 'bezier',
+        relType,
+        directed: input.directed ?? true,
+        style: input.style ?? 'dotted',
+        confidence: input.confidence ?? 40,
+        evidenceIds: input.evidenceIds ?? [],
+      };
+      if (input.label !== undefined) edge.label = input.label;
+      if (input.weight !== undefined) edge.weight = input.weight;
+      if (input.color !== undefined) edge.color = input.color;
+      if (input.time !== undefined) edge.time = input.time;
+      draft.edges.push(edge);
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
+export function updateEdge(id: string, patch: Partial<Omit<CaseEdge, 'id'>>): Command {
+  return {
+    label: '修改关系属性',
+    apply(draft) {
+      const edge = draft.edges.find((e) => e.id === id);
+      if (!edge) return;
+      Object.assign(edge, patch);
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
+export function deleteEdge(id: string): Command {
+  return {
+    label: '删除关系',
+    apply(draft) {
+      const index = draft.edges.findIndex((e) => e.id === id);
+      if (index < 0) return;
+      draft.edges.splice(index, 1);
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
