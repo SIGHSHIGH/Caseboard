@@ -639,6 +639,120 @@ check('时长格式化补零与异常值', formatDuration(9) === '0:09' && forma
 check('抽页文件名去扩展名', extractedName('办案记录.pdf', '第1页') === '办案记录-第1页.png');
 check('抽帧文件名无扩展名兜底', extractedName('无扩展名', 'y') === '无扩展名-y.png' && extractedName('.hidden', 'x') === '.hidden-x.png');
 
+console.log('[20] DSL 序列化（M3-1）');
+const { createNameTable, serializeDoc, stableJson } = require(path.join(out, 'dsl', 'serialize.js'));
+const { createDemoDoc } = require(path.join(out, 'data', 'demo.js'));
+const base = createDemoDoc();
+const withParts = (patch) => ({ ...base, ...patch });
+const text1 = serializeDoc(base);
+const dslLines = text1.split('\n');
+check('序列化非空且以右花括号收尾', dslLines.length > 10 && dslLines[dslLines.length - 2] === '}', text1.slice(-40));
+check(
+  '标题行写入案件名与编号',
+  dslLines[2] === 'case ' + JSON.stringify(base.meta.title) + ' caseNo ' + JSON.stringify(base.meta.caseNo) + ' {',
+  dslLines[2],
+);
+check('两次序列化逐字节一致（幂等）', serializeDoc(base) === text1);
+check('节点数组顺序不影响输出', serializeDoc(withParts({ nodes: [...base.nodes].reverse() })) === text1);
+check('行尾无空格、无制表符、无连续空行结尾', dslLines.every((line) => line === line.replace(/[ \t]+$/, '') && !line.includes('\t')) && !/\n\n$/.test(text1));
+check('实体按类型顺序排列（人物在事件之前）', text1.indexOf('  person ') > 0 && text1.indexOf('  person ') < text1.indexOf('  event '));
+check(
+  '每个实体与组都写出坐标',
+  (text1.match(/^ {4}at\(/gm) || []).length === base.nodes.length + base.groups.length,
+  (text1.match(/^ {4}at\(/gm) || []).length,
+);
+check(
+  '每个实体与组都写出尺寸',
+  (text1.match(/^ {4}size\(/gm) || []).length === base.nodes.length + base.groups.length,
+);
+check('三种线型箭头齐全', text1.includes('--转账 50 万-->') && text1.includes('-.疑似同伙.->') && text1.includes('..通话..>'));
+check('边块写出 rel 与 style', text1.includes('    rel: transfer') && text1.includes('    style: solid'));
+check(
+  'style 条数与模型一致',
+  (text1.match(/^ {4}style: solid$/gm) || []).length === base.edges.filter((edge) => edge.style === 'solid').length,
+);
+check(
+  '分组块含颜色与成员列表',
+  text1.includes('group g_suspect ' + JSON.stringify(base.groups[0].title) + ' color=' + JSON.stringify(base.groups[0].color) + ' {') &&
+    text1.includes('    nodes: ['),
+);
+check('视图块保留类型与名称', text1.includes('view timeline ' + JSON.stringify(base.views[0].name) + ' {'));
+
+const renamed = withParts({
+  nodes: base.nodes.map((node) => (node.id === 'zhang' ? { ...node, id: '人物-甲' } : node)),
+  edges: base.edges.map((edge) => ({
+    ...edge,
+    source: edge.source === 'zhang' ? '人物-甲' : edge.source,
+    target: edge.target === 'zhang' ? '人物-甲' : edge.target,
+  })),
+});
+const renamedText = serializeDoc(renamed);
+check('非 ASCII id 名称化为合法标识符', renamedText.includes(' 人物_甲 ') && !renamedText.includes(' 人物-甲 '));
+check('名称化后原名用 id 字段保留', renamedText.includes('    id: "人物-甲"'));
+check(
+  '被改名 id 的连线跟着改名',
+  renamedText.split('\n').some((line) => line.includes(' 人物_甲 ') && line.includes('--')),
+);
+
+const fieldDoc = withParts({
+  nodes: base.nodes.map((node) => (node.id === 'zhang' ? { ...node, fields: { 自定义: 1, 年龄: 42 } } : node)),
+});
+check('字段按模板顺序、自定义键排后', serializeDoc(fieldDoc).includes('fields: { 年龄: 42, 自定义: 1 }'));
+
+const escDoc = withParts({
+  nodes: base.nodes.map((node) => (node.id === 'zhang' ? { ...node, title: '引用"测试"\n第二行' } : node)),
+});
+const escText = serializeDoc(escDoc);
+check('标题引号与换行被转义', escText.includes(JSON.stringify('引用"测试"\n第二行')));
+check('转义后不产生额外物理行', escText.split('\n').length === text1.split('\n').length);
+
+const timeDoc = withParts({
+  nodes: base.nodes.map((node) => (node.id === 'zhang' ? { ...node, time: { start: '2026-09-01', end: '2026-09-10' } } : node)),
+});
+check('时间区间写成 start/end 形式', serializeDoc(timeDoc).includes('time: 2026-09-01/2026-09-10'));
+
+const litDoc = withParts({
+  nodes: base.nodes.map((node) => (node.id === 'zhang' ? { ...node, fields: { 金额: 1234.5, 已核实: true } } : node)),
+});
+const litText = serializeDoc(litDoc);
+check('数字与布尔字面量不加引号', litText.includes('金额: 1234.5') && litText.includes('已核实: true'));
+
+const plainEdgeDoc = withParts({ edges: base.edges.map((edge) => ({ ...edge, label: undefined })) });
+check('无标签关系写成裸箭头', /--> [A-Za-z_][A-Za-z0-9_]* \{/.test(serializeDoc(plainEdgeDoc)));
+
+const quotedLabelDoc = withParts({
+  edges: base.edges.map((edge) => (edge.id === base.edges[0].id ? { ...edge, label: '疑似->同伙' } : edge)),
+});
+check('标签含箭头符号时加引号', serializeDoc(quotedLabelDoc).includes('--' + JSON.stringify('疑似->同伙') + '-->'));
+
+const clashDoc = withParts({
+  nodes: [...base.nodes, { ...base.nodes[0], id: 'a-b' }, { ...base.nodes[0], id: 'a_b' }],
+  edges: [],
+});
+const clashText = serializeDoc(clashDoc);
+check('名称冲突自动加序号', clashText.includes(' a_b ') && clashText.includes(' a_b_2 '));
+check('冲突双方都保留原 id', clashText.includes('    id: "a-b"') && clashText.includes('    id: "a_b"'));
+
+const emptyText = serializeDoc(withParts({ nodes: [], edges: [], groups: [], views: [] }));
+check(
+  '空文档仍输出合法骨架',
+  emptyText.trim().startsWith('// 案情板') && emptyText.includes('case ') && emptyText.trim().endsWith('}'),
+);
+check('空文档不出现 undefined / null 字面量', !/undefined|null/.test(emptyText));
+
+const snapshot = JSON.stringify(base);
+serializeDoc(base);
+check('序列化不修改模型（纯函数）', JSON.stringify(base) === snapshot);
+check('跨 JSON 往返输出不变', serializeDoc(fromJson(toJson(base))) === text1);
+check('stableJson 递归排序对象键', stableJson({ b: 1, a: { d: 2, c: 3 } }) === '{"a":{"c":3,"d":2},"b":1}');
+check(
+  'createNameTable 双向映射且去重',
+  (() => {
+    const table = createNameTable(['x-y', 'x_y']);
+    return table.names.get('x-y') === 'x_y' && table.names.get('x_y') === 'x_y_2' && table.reverse.get('x_y_2') === 'x_y';
+  })(),
+);
+
 console.log('');
 if (failures > 0) {
   console.log('结果：' + failures + ' 项失败');
