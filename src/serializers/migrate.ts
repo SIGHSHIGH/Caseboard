@@ -6,6 +6,7 @@ import type {
   CaseNode,
   EdgePath,
   Group,
+  ImageNode,
   LineStyle,
   NodeComment,
   NodeType,
@@ -41,6 +42,8 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const DEFAULT_NODE_W = 208;
 export const DEFAULT_NODE_H = 96;
+export const DEFAULT_IMAGE_W = 320;
+export const DEFAULT_IMAGE_H = 240;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -265,6 +268,43 @@ function normalizeGroup(raw: unknown, index: number): Group | null {
   return group;
 }
 
+const BORDER_STYLES = new Set<NonNullable<ImageNode['borderStyle']>>(['photo', 'plain', 'polaroid']);
+
+function normalizeImageNode(
+  raw: unknown,
+  index: number,
+  assetIds: ReadonlySet<string>,
+  nodeIds: ReadonlySet<string>,
+): ImageNode | null {
+  if (!isRecord(raw)) return null;
+  const id = str(raw.id);
+  const assetId = str(raw.assetId);
+  if (id.length === 0 || assetId.length === 0) return null;
+  // 素材不在库里的图片节点画不出来，直接丢弃（与悬空边同一原则）
+  if (!assetIds.has(assetId)) return null;
+  const rotation = num(raw.rotation, 0);
+  const wrapped = ((rotation % 360) + 360) % 360;
+  const zIndex = num(raw.zIndex, index + 1);
+  const node: ImageNode = {
+    id,
+    kind: 'freeImage',
+    assetId,
+    x: num(raw.x, 0),
+    y: num(raw.y, 0),
+    w: Math.max(40, num(raw.w, DEFAULT_IMAGE_W)),
+    h: Math.max(40, num(raw.h, DEFAULT_IMAGE_H)),
+    rotation: Math.round(wrapped * 10) / 10,
+    zIndex: Math.round(Number.isFinite(zIndex) ? zIndex : index + 1),
+  };
+  if (BORDER_STYLES.has(raw.borderStyle as NonNullable<ImageNode['borderStyle']>)) {
+    node.borderStyle = raw.borderStyle as NonNullable<ImageNode['borderStyle']>;
+  }
+  const linkedNodeId = str(raw.linkedNodeId);
+  if (linkedNodeId.length > 0 && nodeIds.has(linkedNodeId)) node.linkedNodeId = linkedNodeId;
+  if (raw.pinned === true) node.pinned = true;
+  return node;
+}
+
 function normalizeView(raw: unknown, index: number): View | null {
   if (!isRecord(raw)) return null;
   const kinds: View['kind'][] = ['board', 'timeline', 'map', 'chain', 'presentation', 'scenario'];
@@ -328,6 +368,16 @@ export function normalizeDoc(input: unknown): CaseDoc {
   const assets = (Array.isArray(input.assets) ? input.assets : [])
     .map((raw, index) => normalizeAsset(raw, index))
     .filter((item): item is Asset => item !== null);
+  const assetIds = new Set(assets.map((asset) => asset.id));
+  const imageNodes: ImageNode[] = [];
+  const seenImageIds = new Set<string>();
+  (Array.isArray(input.imageNodes) ? input.imageNodes : []).forEach((raw, index) => {
+    const image = normalizeImageNode(raw, index, assetIds, seenNodeIds);
+    if (!image || seenImageIds.has(image.id)) return;
+    seenImageIds.add(image.id);
+    imageNodes.push(image);
+  });
+
   const views = (Array.isArray(input.views) ? input.views : [])
     .map((raw, index) => normalizeView(raw, index))
     .filter((item): item is View => item !== null);
@@ -347,6 +397,7 @@ export function normalizeDoc(input: unknown): CaseDoc {
     edges,
     groups,
     assets,
+    imageNodes,
     views,
     settings: {
       theme: settings ? str(settings.theme, DEFAULT_SETTINGS.theme) : DEFAULT_SETTINGS.theme,

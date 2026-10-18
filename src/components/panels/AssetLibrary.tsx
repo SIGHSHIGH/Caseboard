@@ -6,6 +6,7 @@ import { fileService } from '../../services/file';
 import { thumbUrl } from '../../services/imageStore';
 import { startDirectoryWatch, supportsDirectoryWatch, type WatchHandle } from '../../services/watch';
 import { formatBytes } from '../../lib/assetMeta';
+import { ASSET_DND_TYPE } from '../../lib/dnd';
 import type { Asset } from '../../types';
 
 type Zone = Asset['zone'];
@@ -36,6 +37,11 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
       type="button"
       className={selected ? 'cb-asset cb-asset--selected' : 'cb-asset'}
       onClick={onSelect}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData(ASSET_DND_TYPE, asset.id);
+        event.dataTransfer.effectAllowed = 'copy';
+      }}
       title={`${asset.no ?? '未编号'} · ${asset.name ?? '未命名'} · ${formatBytes(asset.size)}`}
     >
       <span className="cb-asset__thumb">

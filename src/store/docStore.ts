@@ -26,7 +26,12 @@ interface DocStore {
 }
 
 function initialDoc(): CaseDoc {
-  return loadAutosave() ?? createDemoDoc();
+  const saved = loadAutosave();
+  if (saved) return saved;
+  // 验收脚本用 ?demo-image=1 打开带自由图片节点的演示文档（正常启动不带）
+  const withImage =
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('demo-image');
+  return createDemoDoc(withImage);
 }
 
 export const useDocStore = create<DocStore>((set, get) => ({

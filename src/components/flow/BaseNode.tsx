@@ -6,7 +6,7 @@ import { fieldEntriesOf } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import type { CaseNode } from '../../types';
 
-export type BaseNodeData = { node: CaseNode };
+export type BaseNodeData = { node: CaseNode; attachTarget?: boolean };
 export type BaseFlowNode = Node<BaseNodeData, 'base'>;
 
 const SIDES = [
@@ -18,6 +18,7 @@ const SIDES = [
 
 function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const node = data.node;
+  const attachTarget = data.attachTarget === true;
   const meta = NODE_TYPE_META[node.type];
   const status = STATUS_META[node.status];
   const dispatch = useDocStore((s) => s.dispatch);
@@ -46,7 +47,7 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
 
   return (
     <div
-      className={`cb-node${selected ? ' is-selected' : ''}`}
+      className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}`}
       style={{ width: node.w }}
       data-type={node.type}
     >

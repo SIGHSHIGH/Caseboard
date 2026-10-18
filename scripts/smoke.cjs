@@ -265,7 +265,28 @@ const { computeThumbSize, dedupeCandidates, formatAssetNo, formatBytes, nextAsse
   path.join(out, 'lib', 'assetMeta.js'),
 );
 const { normalizeExifDate, parseExif } = require(path.join(out, 'services', 'exif.js'));
-const { importAssets, updateAsset } = require(path.join(out, 'commands', 'assetCommands.js'));
+const { deleteAsset, importAssets, updateAsset } = require(path.join(out, 'commands', 'assetCommands.js'));
+const {
+  fitImageSize,
+  nextZIndex,
+  reorderLayers,
+  resizeImageRect,
+  snapImageRect,
+  snapRotation,
+  alignRects,
+  distributeRects,
+} = require(path.join(out, 'lib', 'imageNode.js'));
+const {
+  addImageNode,
+  attachImageNode,
+  deleteImageNode,
+  moveImageNode,
+  moveImageNodes,
+  resizeImageNode,
+  rotateImageNode,
+  setImageLayer,
+  updateImageNode,
+} = require(path.join(out, 'commands', 'imageNodeCommands.js'));
 
 console.log('[11] 素材编号与缩略图尺寸');
 check('编号格式 IMG-0001', formatAssetNo(1) === 'IMG-0001', formatAssetNo(1));
@@ -416,6 +437,96 @@ check('一次撤销回退素材/节点/附件', doc().assets.length === assetsBe
 state().redo();
 state().dispatch(updateAsset('a-smoke', { sourceLabel: '书证翻拍', no: 'IMG-0101' }));
 check('素材可改编号与来源', doc().assets.find((a) => a.id === 'a-smoke').no === 'IMG-0101' && doc().assets.find((a) => a.id === 'a-smoke').sourceLabel === '书证翻拍');
+
+console.log('[15] 图片纯函数（尺寸 / 旋转 / 缩放 / 层级 / 吸附 / 对齐）');
+const fit = fitImageSize(1200, 900);
+check('按素材比例缩到 320×240', fit.w === 320 && fit.h === 240, fit);
+const small = fitImageSize(100, 50);
+check('小图不放大', small.w === 100 && small.h === 50, small);
+const fallbackSize = fitImageSize(undefined, undefined);
+check('缺尺寸回落 320×240', fallbackSize.w === 320 && fallbackSize.h === 240, fallbackSize);
+check('旋转 14° 吸附到 15°', snapRotation(14) === 15, snapRotation(14));
+check('旋转 20° 不吸附', snapRotation(20) === 20, snapRotation(20));
+check('旋转 88° 吸附到 90°', snapRotation(88) === 90, snapRotation(88));
+check('旋转 359° 吸附回 0°', snapRotation(359) === 0, snapRotation(359));
+const east = resizeImageRect({ x: 0, y: 0, w: 200, h: 100 }, 'e', 40, 0);
+check('东侧手柄只改宽', east.w === 240 && east.h === 100 && east.x === 0, east);
+const corner = resizeImageRect({ x: 0, y: 0, w: 200, h: 100 }, 'se', 40, 20, { lockAspect: true });
+check('等比缩放保持 2:1', corner.w === 240 && corner.h === 120, corner);
+const center = resizeImageRect({ x: 100, y: 100, w: 100, h: 100 }, 'e', 20, 0, { fromCenter: true });
+check('从中心对称缩放', center.w === 140 && center.x === 80, center);
+const layers = reorderLayers([{ id: 'a', zIndex: 1 }, { id: 'b', zIndex: 2 }, { id: 'c', zIndex: 3 }], 'a', 'front');
+check('置顶后 a 最大', layers.a === 3 && layers.b === 1 && layers.c === 2, layers);
+const upLayers = reorderLayers([{ id: 'a', zIndex: 1 }, { id: 'b', zIndex: 2 }, { id: 'c', zIndex: 3 }], 'b', 'up');
+check('上移一层与 c 交换', upLayers.b === 3 && upLayers.c === 2, upLayers);
+check('nextZIndex 取最大值 +1', nextZIndex([{ zIndex: 3 }, { zIndex: 7 }]) === 8);
+const aligned = snapImageRect({ x: 100, y: 100, w: 50, h: 50 }, [{ x: 100, y: 300, w: 50, h: 50 }]);
+check('左边对齐吸附', aligned.rect.x === 100 && aligned.snap === 'align', aligned);
+check('对齐时产出竖向参考线', aligned.guides.length === 1 && aligned.guides[0].axis === 'x' && aligned.guides[0].pos === 100, aligned.guides);
+const gridSnap = snapImageRect({ x: 103, y: 101, w: 10, h: 10 }, []);
+check('无对齐目标时按 8px 网格吸附', gridSnap.snap === 'grid' && gridSnap.rect.x === 104 && gridSnap.rect.y === 104, gridSnap);
+const leftAligned = alignRects([{ x: 0, y: 0, w: 10, h: 10 }, { x: 50, y: 20, w: 20, h: 10 }], 'left');
+check('多选左对齐', leftAligned[0].x === 0 && leftAligned[1].x === 0, leftAligned);
+const distributed = distributeRects(
+  [{ x: 0, y: 0, w: 10, h: 10 }, { x: 15, y: 0, w: 10, h: 10 }, { x: 100, y: 0, w: 10, h: 10 }],
+  'x',
+);
+// 首尾固定，中间两张按相等间隙（gap = (110 - 30) / 2 = 40）摆放 → 0 / 50 / 100
+check('三张等距分布', distributed[0].x === 0 && distributed[1].x === 50 && distributed[2].x === 100, distributed);
+
+console.log('[16] 图片命令（增删改 / 层级 / 多选 / 吸附）');
+const imagesBefore = doc().imageNodes.length;
+state().dispatch(addImageNode({ id: 'img-a', assetId: 'a-smoke', x: 100, y: 100, assetWidth: 1200, assetHeight: 900 }));
+const imgA = doc().imageNodes.find((item) => item.id === 'img-a');
+check('新增图片节点', doc().imageNodes.length === imagesBefore + 1 && imgA.kind === 'freeImage');
+check('新增按素材比例定尺寸', imgA.w === 320 && imgA.h === 240 && imgA.zIndex === 1, imgA);
+state().dispatch(updateImageNode('img-a', { rotation: -90, borderStyle: 'polaroid', pinned: true }));
+const rotated = doc().imageNodes.find((item) => item.id === 'img-a');
+check('角度归一 + 边框 + 图钉', rotated.rotation === 270 && rotated.borderStyle === 'polaroid' && rotated.pinned === true, rotated);
+state().dispatch(resizeImageNode('img-a', { x: 120, y: 130, w: 400, h: 300 }));
+const resized = doc().imageNodes.find((item) => item.id === 'img-a');
+check('缩放与位置写入', resized.x === 120 && resized.w === 400 && resized.h === 300, resized);
+state().dispatch(addImageNode({ id: 'img-b', assetId: 'a-smoke', x: 600, y: 200, siblings: doc().imageNodes }));
+check('第二张图片层级递增', doc().imageNodes.find((item) => item.id === 'img-b').zIndex === 2, doc().imageNodes.map((i) => i.zIndex));
+state().dispatch(setImageLayer('img-a', 'front'));
+check('置顶后层级换序', doc().imageNodes.find((item) => item.id === 'img-a').zIndex === 2 && doc().imageNodes.find((item) => item.id === 'img-b').zIndex === 1);
+state().undo();
+check('撤销置顶恢复层级', doc().imageNodes.find((item) => item.id === 'img-a').zIndex === 1);
+state().dispatch(moveImageNodes([{ id: 'img-a', x: 10, y: 20 }, { id: 'img-b', x: 30, y: 40 }]));
+const movedBoth = doc().imageNodes.every((item) => (item.id === 'img-a' ? item.x === 10 && item.y === 20 : item.x === 30 && item.y === 40));
+check('多选移动一条命令改两张', movedBoth, doc().imageNodes.map((i) => [i.x, i.y]));
+state().undo();
+check('撤销多选移动整组回退', doc().imageNodes.find((item) => item.id === 'img-a').x === 120 && doc().imageNodes.find((item) => item.id === 'img-b').x === 600);
+const zhangPhotoBefore = doc().nodes.find((n) => n.id === 'zhang').photo;
+state().dispatch(attachImageNode('img-a', 'zhang'));
+check('吸附人物写头像照片', doc().nodes.find((n) => n.id === 'zhang').photo === 'a-smoke' && doc().imageNodes.find((i) => i.id === 'img-a').linkedNodeId === 'zhang');
+state().dispatch(attachImageNode('img-b', 'n-smoke'));
+check('吸附非人物并入附件', doc().nodes.find((n) => n.id === 'n-smoke').attachments.filter((id) => id === 'a-smoke').length >= 1);
+state().dispatch(attachImageNode('img-a', null));
+check('取消吸附清掉关联', doc().imageNodes.find((i) => i.id === 'img-a').linkedNodeId === undefined);
+void zhangPhotoBefore;
+const countBeforeDelete = doc().imageNodes.length;
+state().dispatch(deleteImageNode('img-b'));
+check('删除图片', doc().imageNodes.length === countBeforeDelete - 1);
+state().undo();
+check('撤销删除恢复图片', doc().imageNodes.length === countBeforeDelete);
+state().dispatch(deleteAsset('a-smoke'));
+check('删除素材级联删掉引用它的图片', doc().imageNodes.every((item) => item.assetId !== 'a-smoke'), doc().imageNodes.map((i) => i.assetId));
+check('删除素材同时摘掉头像', doc().nodes.find((n) => n.id === 'zhang').photo === undefined);
+state().undo();
+check('撤销级联恢复素材与图片', doc().imageNodes.length === countBeforeDelete && doc().assets.some((a) => a.id === 'a-smoke'));
+const dangling = normalizeDoc({
+  meta: { id: 'legacy-img', title: '旧存档', createdAt: 'now', updatedAt: 'now' },
+  nodes: [],
+  edges: [],
+  assets: [],
+  imageNodes: [{ id: 'img-ghost', assetId: 'a-gone', x: 0, y: 0, w: 100, h: 100 }],
+});
+check('迁移丢弃素材不存在的图片节点', dangling.imageNodes.length === 0, dangling.imageNodes.length);
+const noImages = normalizeDoc({ meta: { id: 'legacy-noimg', title: '旧存档2', createdAt: 'now', updatedAt: 'now' }, nodes: [], edges: [] });
+check('旧文档自动补空 imageNodes', Array.isArray(noImages.imageNodes) && noImages.imageNodes.length === 0);
+const roundTrip = fromJson(toJson(doc()));
+check('JSON 往返保留图片节点', roundTrip.imageNodes.length === doc().imageNodes.length, roundTrip.imageNodes.length);
 
 console.log('');
 if (failures > 0) {

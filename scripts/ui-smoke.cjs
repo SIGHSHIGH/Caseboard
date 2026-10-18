@@ -17,7 +17,8 @@ if (!bundle) {
 }
 
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
-  url: 'http://127.0.0.1:4173/',
+  // M2-4：带 ?demo-image=1 让演示文档多出一张自由图片节点（不出现在正常启动里）
+  url: 'http://127.0.0.1:4173/?demo-image=1',
   pretendToBeVisual: true,
 });
 const { window } = dom;
@@ -341,7 +342,8 @@ function check(name, condition, detail) {
   check('可切到素材标签', await clickByText('.cb-tabs .cb-tab', '素材'));
   check('素材库区块已渲染', doc.querySelector('.cb-assets') !== null);
   check('证据素材 / AI 生成 两分区', doc.querySelectorAll('.cb-assets__zones .cb-tab').length === 2, doc.querySelectorAll('.cb-assets__zones .cb-tab').length);
-  check('证据分区空态提示', (doc.querySelector('.cb-assets__empty')?.textContent || '').includes('尚无证据素材'), doc.querySelector('.cb-assets__empty')?.textContent);
+  check('证据分区显示 1 张素材', doc.querySelectorAll('.cb-asset').length === 1, doc.querySelectorAll('.cb-asset').length);
+  check('无 IndexedDB 时缩略图降级为占位', doc.querySelectorAll('.cb-asset__ph').length === 1, doc.querySelectorAll('.cb-asset__ph').length);
   check('导入图片按钮存在', [...doc.querySelectorAll('.cb-assets__actions .cb-btn')].some((b) => (b.textContent || '').includes('导入图片')));
   check('无 File System Access 时监视按钮禁用', (() => {
     const watch = [...doc.querySelectorAll('.cb-assets__actions .cb-btn')].find((b) => (b.textContent || '').includes('监视文件夹'));
@@ -357,6 +359,22 @@ function check(name, condition, detail) {
   check('可切回对象标签', await clickByText('.cb-tabs .cb-tab', '对象'));
   check('切回后类型按钮恢复 8 个', doc.querySelectorAll('.cb-type-btn').length === 8, doc.querySelectorAll('.cb-type-btn').length);
   check('粘贴导入不会破坏初始渲染', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
+
+  console.log('[UI] M2-4 自由图片节点');
+  check('画布渲染自由图片节点', doc.querySelectorAll('.cb-free-image').length === 1, doc.querySelectorAll('.cb-free-image').length);
+  check('默认照片白边样式', doc.querySelectorAll('.cb-free-image__frame--photo').length === 1);
+  check('无原件时显示占位说明', doc.querySelectorAll('.cb-free-image__ph').length === 1);
+  check('图钉装饰已渲染', doc.querySelectorAll('.cb-free-image__pin').length === 1);
+  check('旋转角度写进 transform', (() => {
+    const frame = doc.querySelector('.cb-free-image__frame');
+    return !!frame && /rotate\(\s*352/.test(frame.style.transform || '');
+  })(), doc.querySelector('.cb-free-image__frame')?.getAttribute('style'));
+
+  const imageEl = doc.querySelector('.cb-free-image');
+  if (imageEl) imageEl.click();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  check('点击图片后右栏切换为图片属性', (doc.querySelector('.cb-panel--right')?.textContent || '').includes('图片属性'));
+  check('图片属性含层级与边框设置', (doc.querySelector('.cb-panel--right')?.textContent || '').includes('层级') && doc.querySelectorAll('.cb-panel--right .cb-btn').length >= 5);
 
   console.log('');
   if (failures > 0) {

@@ -21,3 +21,17 @@ export {
 export type { AddGroupInput, GroupPatch } from './groupCommands';
 export { addAsset, addAssets, updateAsset, deleteAsset, importAssets } from './assetCommands';
 export type { AssetPatch, ImportBundle, EvidenceNodeDraft } from './assetCommands';
+export {
+  addImageNode,
+  updateImageNode,
+  moveImageNode,
+  moveImageNodes,
+  resizeImageNode,
+  rotateImageNode,
+  setImageLayer,
+  deleteImageNode,
+  deleteImageNodes,
+  attachImageNode,
+  applyImageLayout,
+} from './imageNodeCommands';
+export type { AddImageNodeInput, ImageNodePatch } from './imageNodeCommands';

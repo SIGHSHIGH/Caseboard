@@ -3,8 +3,9 @@ import type { CaseDoc } from '../types';
 /**
  * 预置演示案件（M1/M2 验收项）：6 个节点、6 条边，三种线型齐全，含一个分组（张建国 + 恒信财务）。
  * 首次打开自动加载；用户改动后由 localStorage 自动保存接管。
+ * withImage 只在验收脚本里打开（?demo-image=1），用于断言自由图片节点真的渲染在画布上。
  */
-export function createDemoDoc(): CaseDoc {
+export function createDemoDoc(withImage = false): CaseDoc {
   const now = new Date().toISOString();
   return {
     meta: {
@@ -209,7 +210,47 @@ export function createDemoDoc(): CaseDoc {
         collapsed: false,
       },
     ],
-    assets: [],
+    assets: withImage
+      ? [
+          {
+            id: 'a-demo-photo',
+            path: 'assets/a-demo-photo',
+            kind: 'image',
+            hash: 'demo-photo-hash-0001',
+            thumbnails: ['a-demo-photo:256', 'a-demo-photo:1024'],
+            source: 'import',
+            zone: 'evidence',
+            width: 1600,
+            height: 1200,
+            name: '现场照片-包厢.jpg',
+            no: 'IMG-0001',
+            size: 486000,
+            mimeType: 'image/jpeg',
+            sourceLabel: '现场照片',
+            capturedAt: '2026-09-03T20:12:00',
+            camera: 'DemoCam A1',
+            addedAt: now,
+            annotations: [],
+          },
+        ]
+      : [],
+    imageNodes: withImage
+      ? [
+          {
+            id: 'img-demo-photo',
+            kind: 'freeImage',
+            assetId: 'a-demo-photo',
+            x: 420,
+            y: 620,
+            w: 320,
+            h: 240,
+            rotation: 352,
+            zIndex: 3,
+            borderStyle: 'photo',
+            pinned: true,
+          },
+        ]
+      : [],
     views: [{ id: 'view-timeline', kind: 'timeline', name: '案发经过', filters: {} }],
     settings: {
       theme: 'whiteboard',

@@ -118,7 +118,7 @@ export function importAssets(bundle: ImportBundle): Command {
   };
 }
 
-/** 删素材：同时摘掉节点上的附件引用，避免悬空 id */
+/** 删素材：同时摘掉节点上的附件引用与引用它的自由图片节点，避免悬空 id */
 export function deleteAsset(assetId: string): Command {
   return {
     label: `删除素材 ${assetId}`,
@@ -128,7 +128,9 @@ export function deleteAsset(assetId: string): Command {
         if (node.attachments.includes(assetId)) {
           node.attachments = node.attachments.filter((id) => id !== assetId);
         }
+        if (node.photo === assetId) delete node.photo;
       }
+      draft.imageNodes = draft.imageNodes.filter((image) => image.assetId !== assetId);
     },
   };
 }

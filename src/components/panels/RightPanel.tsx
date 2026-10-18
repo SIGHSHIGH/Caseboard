@@ -8,6 +8,9 @@ import {
   deleteAsset,
   deleteComment,
   deleteGroup,
+  deleteImageNode,
+  setImageLayer,
+  updateImageNode,
   toggleGroupCollapsed,
   updateAsset,
   updateEdge,
@@ -20,7 +23,13 @@ import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { formatBytes } from '../../lib/assetMeta';
 import { imageStore, thumbUrl } from '../../services/imageStore';
-import type { Asset, CaseEdge, CaseNode, Group, LineStyle, NodeType, Status } from '../../types';
+import type { Asset, CaseEdge, CaseNode, Group, ImageNode, LineStyle, NodeType, Status } from '../../types';
+
+const BORDER_LABELS: Array<{ value: NonNullable<ImageNode['borderStyle']>; label: string }> = [
+  { value: 'photo', label: '照片白边' },
+  { value: 'plain', label: '无边框' },
+  { value: 'polaroid', label: '拍立得' },
+];
 
 const STATUSES: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
 const STYLES: LineStyle[] = ['solid', 'dashed', 'dotted'];
@@ -720,17 +729,170 @@ function AssetForm({ asset }: { asset: Asset }) {
   );
 }
 
+function ImageForm({ image }: { image: ImageNode }) {
+  const dispatch = useDocStore((s) => s.dispatch);
+  const doc = useDocStore((s) => s.doc);
+  const asset = doc.assets.find((item) => item.id === image.assetId) ?? null;
+  const linked = doc.nodes.find((item) => item.id === image.linkedNodeId) ?? null;
+  const [rotation, setRotation] = useState(image.rotation);
+  const [thumb, setThumb] = useState<string | null>(null);
+
+  useEffect(() => setRotation(image.rotation), [image.rotation]);
+
+  useEffect(() => {
+    let alive = true;
+    thumbUrl(image.assetId, 256)
+      .then((url) => {
+        if (alive) setThumb(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [image.assetId]);
+
+  const commitNumber = (key: 'x' | 'y' | 'w' | 'h', raw: string) => {
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return;
+    const next = key === 'w' || key === 'h' ? Math.max(40, Math.round(value)) : Math.round(value);
+    if (next === image[key]) return;
+    dispatch(updateImageNode(image.id, { [key]: next }));
+  };
+
+  return (
+    <div className="cb-form">
+      {thumb ? (
+        <img className="cb-form__preview" src={thumb} alt={asset?.name ?? '图片预览'} />
+      ) : (
+        <p className="cb-form__subtle">预览不可用：原件不在本机 IndexedDB，或缩略图尚未生成。</p>
+      )}
+
+      <div className="cb-fields">
+        {(['x', 'y', 'w', 'h'] as const).map((key) => (
+          <label key={key} className="cb-field">
+            <span>{key === 'x' ? 'X' : key === 'y' ? 'Y' : key === 'w' ? '宽度' : '高度'}</span>
+            <input
+              key={`${key}-${image[key]}`}
+              inputMode="numeric"
+              defaultValue={image[key]}
+              onBlur={(event) => commitNumber(key, event.target.value)}
+            />
+          </label>
+        ))}
+      </div>
+
+      <label className="cb-field">
+        <span>旋转 {rotation.toFixed(1)}°</span>
+        <input
+          type="range"
+          min={0}
+          max={360}
+          step={1}
+          value={rotation}
+          onChange={(event) => setRotation(Number(event.target.value))}
+          onMouseUp={() => dispatch(updateImageNode(image.id, { rotation: rotation }))}
+          onTouchEnd={() => dispatch(updateImageNode(image.id, { rotation: rotation }))}
+        />
+      </label>
+
+      <label className="cb-field">
+        <span>边框样式</span>
+        <select
+          value={image.borderStyle ?? 'photo'}
+          onChange={(event) =>
+            dispatch(updateImageNode(image.id, { borderStyle: event.target.value as NonNullable<ImageNode['borderStyle']> }))
+          }
+        >
+          {BORDER_LABELS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="cb-form__section">
+        <h3 className="cb-form__subtitle">层级（zIndex {image.zIndex}）</h3>
+        <div className="cb-assets__actions">
+          <button type="button" className="cb-btn" onClick={() => dispatch(setImageLayer(image.id, 'front'))}>
+            置顶
+          </button>
+          <button type="button" className="cb-btn" onClick={() => dispatch(setImageLayer(image.id, 'up'))}>
+            上移一层
+          </button>
+          <button type="button" className="cb-btn" onClick={() => dispatch(setImageLayer(image.id, 'down'))}>
+            下移一层
+          </button>
+          <button type="button" className="cb-btn" onClick={() => dispatch(setImageLayer(image.id, 'back'))}>
+            置底
+          </button>
+        </div>
+      </div>
+
+      <label className="cb-check">
+        <input
+          type="checkbox"
+          checked={image.pinned === true}
+          onChange={(event) => dispatch(updateImageNode(image.id, { pinned: event.target.checked }))}
+        />
+        <span>显示图钉</span>
+      </label>
+
+      <div className="cb-form__section">
+        <h3 className="cb-form__subtitle">吸附关联</h3>
+        {linked ? (
+          <ul className="cb-members">
+            <li className="cb-members__item">
+              <span className="cb-members__dot" style={{ background: NODE_TYPE_META[linked.type].color }} />
+              <span className="cb-members__title">{linked.title}</span>
+              <button
+                type="button"
+                className="cb-link-btn"
+                onClick={() => useUiStore.getState().selectNode(linked.id)}
+              >
+                查看
+              </button>
+              <button type="button" className="cb-link-btn" onClick={() => dispatch(updateImageNode(image.id, { linkedNodeId: null }))}>
+                取消吸附
+              </button>
+            </li>
+          </ul>
+        ) : (
+          <p className="cb-form__subtle">把图片拖到某张卡片上松手，即可吸附为该卡片的头像或附件。</p>
+        )}
+      </div>
+
+      <div className="cb-form__section">
+        <button
+          type="button"
+          className="cb-btn cb-btn--danger"
+          onClick={() => {
+            dispatch(deleteImageNode(image.id));
+            useUiStore.getState().selectImage(null);
+          }}
+        >
+          删除图片
+        </button>
+      </div>
+
+      <p className="cb-form__meta">图片 ID：{image.id} · 素材：{image.assetId}</p>
+    </div>
+  );
+}
+
 export function RightPanel() {
   const doc = useDocStore((s) => s.doc);
   const selectedNodeId = useUiStore((s) => s.selectedNodeId);
   const selectedEdgeId = useUiStore((s) => s.selectedEdgeId);
   const selectedGroupId = useUiStore((s) => s.selectedGroupId);
   const selectedAssetId = useUiStore((s) => s.selectedAssetId);
+  const selectedImageId = useUiStore((s) => s.selectedImageId);
 
   const node = doc.nodes.find((item) => item.id === selectedNodeId) ?? null;
   const edge = doc.edges.find((item) => item.id === selectedEdgeId) ?? null;
   const group = doc.groups.find((item) => item.id === selectedGroupId) ?? null;
   const asset = doc.assets.find((item) => item.id === selectedAssetId) ?? null;
+  const image = doc.imageNodes.find((item) => item.id === selectedImageId) ?? null;
 
   const titleOf = (id: string) => doc.nodes.find((item) => item.id === id)?.title ?? id;
 
@@ -775,6 +937,16 @@ export function RightPanel() {
             </span>
           </h2>
           <AssetForm key={asset.id} asset={asset} />
+        </>
+      ) : image ? (
+        <>
+          <h2 className="cb-panel__title">
+            图片属性
+            <span className="cb-panel__badge" style={{ background: '#8C7A2E' }}>
+              自由图片
+            </span>
+          </h2>
+          <ImageForm key={image.id} image={image} />
         </>
       ) : (
         <>

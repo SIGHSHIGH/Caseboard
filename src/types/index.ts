@@ -155,10 +155,14 @@ export interface ImageNode {
   y: number;
   w: number;
   h: number;
+  /** 旋转角度（度，0–360，逆时针为正） */
   rotation: number;
   zIndex: number;
   borderStyle?: 'photo' | 'plain' | 'polaroid';
+  /** 吸附为头像 / 证据附件时的归属节点 */
   linkedNodeId?: string;
+  /** 图钉装饰（白板照片质感） */
+  pinned?: boolean;
 }
 
 export interface View {
@@ -187,6 +191,8 @@ export interface CaseDoc {
   edges: CaseEdge[];
   groups: Group[];
   assets: Asset[];
+  /** 自由图片节点：不依附卡片、直接钉在画布上的图片（M2-4） */
+  imageNodes: ImageNode[];
   views: View[];
   settings: Settings;
 }
