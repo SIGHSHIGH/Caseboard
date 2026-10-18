@@ -535,6 +535,35 @@ button {
   font-size: 11px;
 }
 
+/* 关系曲率手柄（M4 人工验收 A3）：选中关系后出现在曲线中点 */
+.cb-curve-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--cb-accent);
+  box-shadow: 0 1px 3px rgba(43, 43, 43, 0.25);
+  cursor: grab;
+  pointer-events: all;
+  touch-action: none;
+  z-index: 7;
+}
+
+.cb-curve-handle::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--cb-accent);
+  opacity: 0.25;
+}
+
+.cb-curve-handle.is-dragging {
+  cursor: grabbing;
+  box-shadow: 0 0 0 4px rgba(192, 57, 43, 0.18);
+}
+
 /* ---------- 模态框 ---------- */
 .cb-modal__mask {
   position: fixed;
@@ -1344,7 +1373,8 @@ button {
 .cb-free-image__bar {
   position: absolute;
   left: 50%;
-  top: -30px;
+  /* 抬到旋转手柄之上：手柄压在工具栏下面时永远拖不到（M4 人工验收 A1） */
+  top: -60px;
   display: flex;
   gap: 2px;
   padding: 2px;
@@ -1393,10 +1423,10 @@ button {
 .cb-img-rotate {
   position: absolute;
   left: 50%;
-  top: -34px;
-  width: 16px;
-  height: 16px;
-  margin-left: -8px;
+  top: -36px;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
   background: #fff;
   border: 1.5px solid var(--cb-accent);
   border-radius: 50%;

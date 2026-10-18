@@ -6,6 +6,7 @@
  * 绘制顺序：背景 → 网格 → 标题块 → 组 → 边 → 图片节点 → 卡片 → 图例 → footer。
  */
 import type { Asset, CaseDoc, CaseEdge, CaseNode, Group, ImageNode } from '../types';
+import { curveGeometry, curveOffsetOf } from '../lib/edgeCurve';
 import { COLORS, LINE_STYLE_META, NODE_TYPE_META, STATUS_META, relColor, relLabel } from '../lib/theme';
 import { boardLayout, textWidth } from './svg';
 
@@ -68,7 +69,11 @@ function edgeGeometry(edge: CaseEdge, nodes: Map<string, CaseNode>, images: Map<
 }
 
 /** 三次贝塞尔的控制点与 svg.ts 完全一致，保证两种导出视觉相同。 */
-function controlPoints(s: Point, t: Point): [Point, Point] {
+function controlPoints(s: Point, t: Point, offset?: { x: number; y: number } | null): [Point, Point] {
+  if (offset) {
+    const geometry = curveGeometry(s, t, offset);
+    return [geometry.c1, geometry.c2];
+  }
   const dx = t.x - s.x;
   const dy = t.y - s.y;
   return [
@@ -120,7 +125,8 @@ function drawGroup(ctx: CanvasRenderingContext2D, group: Group): void {
 function drawEdge(ctx: CanvasRenderingContext2D, edge: CaseEdge, geometry: { s: Point; t: Point }): void {
   const color = edge.color ?? relColor(edge.relType);
   const width = edge.weight && edge.weight > 0 ? Math.min(4.5, Math.max(1.4, 1.4 + Math.log10(edge.weight) * 0.45)) : 1.6;
-  const [c1, c2] = controlPoints(geometry.s, geometry.t);
+  const offset = curveOffsetOf(edge);
+  const [c1, c2] = controlPoints(geometry.s, geometry.t, offset);
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
@@ -135,8 +141,8 @@ function drawEdge(ctx: CanvasRenderingContext2D, edge: CaseEdge, geometry: { s: 
   const label = edge.label && edge.label.trim().length > 0 ? edge.label : relLabel(edge.relType);
   if (!label) return;
   const fontSize = 11;
-  const lx = (geometry.s.x + geometry.t.x) / 2;
-  const ly = (geometry.s.y + geometry.t.y) / 2;
+  const lx = (geometry.s.x + geometry.t.x) / 2 + (offset ? offset.x : 0);
+  const ly = (geometry.s.y + geometry.t.y) / 2 + (offset ? offset.y : 0);
   const boxW = textWidth(label, fontSize) + 12;
   ctx.save();
   ctx.beginPath();

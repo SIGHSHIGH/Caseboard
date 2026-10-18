@@ -132,6 +132,8 @@ function check(name, condition, detail) {
   await new Promise((resolve) => setTimeout(resolve, 120));
   check('点击图片后右栏切换为图片属性', (doc.querySelector('.cb-panel--right')?.textContent || '').includes('图片属性'));
   check('图片属性含层级与边框设置', (doc.querySelector('.cb-panel--right')?.textContent || '').includes('层级') && doc.querySelectorAll('.cb-panel--right .cb-btn').length >= 5);
+  check('图片选中后出现八向缩放手柄', doc.querySelectorAll('.cb-img-handle').length === 8, doc.querySelectorAll('.cb-img-handle').length);
+  check('图片选中后出现旋转手柄', doc.querySelector('.cb-img-rotate') !== null);
 
   console.log('[UI] M2-5 标注层与 PDF/视频抽图');
   check('可回到素材标签', await clickByText('.cb-tabs .cb-tab', '素材'));
@@ -215,6 +217,25 @@ function check(name, condition, detail) {
   if (closeHistory) closeHistory.click();
   await new Promise((resolve) => setTimeout(resolve, 150));
   check('关闭后历史面板移除', doc.querySelector('.cb-history') === null);
+
+  console.log('[UI] 曲率手柄与工具栏层级（M4 人工验收 A1/A3 热修）');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const assetsDir = path.join(__dirname, '..', 'dist', 'assets');
+  const cssName = fs.readdirSync(assetsDir).find((name) => name.endsWith('.css'));
+  const cssText = cssName ? fs.readFileSync(path.join(assetsDir, cssName), 'utf8') : '';
+  const barRule = (cssText.match(/\.cb-free-image__bar\{[^}]*\}/) || [''])[0];
+  check('工具栏抬到旋转手柄之上（top:-60px）', barRule.includes('top:-60px'), barRule.slice(0, 120));
+  const curveRule = (cssText.match(/\.cb-curve-handle\{[^}]*\}/) || [''])[0];
+  check('曲率手柄样式已打包', curveRule.includes('z-index:7') && curveRule.includes('pointer-events:all'), curveRule.slice(0, 160));
+  const firstEdge = doc.querySelector('.react-flow__edge');
+  if (firstEdge) firstEdge.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('点击关系后出现曲率手柄', doc.querySelector('.cb-curve-handle') !== null, firstEdge ? firstEdge.getAttribute('class') : 'no-edge');
+  const curveHandle = doc.querySelector('.cb-curve-handle');
+  if (curveHandle) curveHandle.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  check('曲率手柄可双击复位（不残留控制点）', doc.querySelector('.cb-curve-handle') !== null);
 
   console.log('');
   if (failures > 0) {

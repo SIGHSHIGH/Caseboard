@@ -4,6 +4,15 @@
 
 ## [未发布] v0.4.0 · M4 Tauri + SQLite + 项目文件 + 导出
 
+### M4 人工验收热修（2026-10-19，第二轮回执 A1 旋转 / A3 曲率手柄）
+
+第二轮复验「其余通过」，只剩两项：
+
+- **A1 图片节点仍不能旋转**：旋转手柄是 frame 的子元素（`z-index:5`，`top:-36px`），而图层工具条 `.cb-free-image__bar` 是 frame 的**兄弟节点**（`z-index:4`，`top:-30px`）——frame 的 `transform` 形成独立层叠上下文，手柄的 z-index 只在 frame 内生效，工具条整体压住手柄下半部，按下实际点到工具条。改法：工具条 `top` 抬到 `-60px`；旋转手柄 16→18px；缩放/旋转不再依赖指针捕获冒泡，改为 `useEffect` 往 window 挂 `pointermove/pointerup/pointercancel`，松手只 dispatch 一条命令。
+- **A3 缺少贝塞尔曲率控件**（第一轮延期的 D37 项）：新增 `CaseEdge.controlPoints`（存曲线中点相对两端锚点中点的偏移，非绝对坐标）与 `src/lib/edgeCurve.ts`（`CURVE_GAIN=4/3` 让曲线中点正落手柄、`CURVE_MAX=1600`、`CURVE_MIN=2`）；选中关系显示 `.cb-curve-handle`，拖动实时预览、松手写回，双击复位；`BezierEdge`、`svg.ts`、`png.ts` 共用同一套几何，导出与画布一致；`migrate.ts` 迁移时规范化该字段，JSON 往返保留。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **359 条全绿**（新增 `[30]` 曲率几何/命令/JSON/SVG 一致性 13 条）、`pnpm ui-smoke` **90 条全绿**（新增 6 条：工具栏层级、八向手柄、旋转手柄、曲率手柄样式与出现/复位）、`pnpm build` 成功、`tauri build --no-bundle` 成功、`node scripts/run-selftest.cjs` **phase1 PASS 14 / phase2 PASS 15**（顺带修掉快照写库 `snapshots.nodes/edges NOT NULL`：`insertSnapshot` 补齐两列，快照从 2 份 → 3 份）。
+- **待确认**：复验回执末尾「视觉对齐」「折叠操作提示」没有对应验收项，不猜需求；当前对齐参考线只有自由图片节点，卡片拖动没有；折叠入口在右栏属性面板与组框按钮，`BaseNode` 有「已折叠」徽标但无说明文案。
+
 ### M4 人工验收热修（2026-10-19，第一轮回执 A1–A8）
 
 用户真机回执有六项不通过，逐条修完（A3 的曲率手柄延期至 M5）：

@@ -3,13 +3,15 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
+  useReactFlow,
   type Edge,
   type EdgeProps,
 } from '@xyflow/react';
 import { updateEdge } from '../../commands';
+import { CURVE_MIN, curveGeometry, curveOffsetFromHandle, curveOffsetOf, curvePath } from '../../lib/edgeCurve';
 import { LINE_STYLE_META, relColor } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
-import type { CaseEdge } from '../../types';
+import type { CaseEdge, XY } from '../../types';
 
 export type CaseEdgeData = { edge: CaseEdge };
 export type CaseFlowEdge = Edge<CaseEdgeData, 'bezier'>;
@@ -18,6 +20,10 @@ function weightToWidth(weight?: number): number {
   if (!weight || weight <= 0) return 1.6;
   const scaled = 1.4 + Math.log10(weight) * 0.45;
   return Math.max(1.4, Math.min(4.5, scaled));
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function BezierEdgeInner({
@@ -34,7 +40,16 @@ function BezierEdgeInner({
 }: EdgeProps<CaseFlowEdge>) {
   const edge = data?.edge;
   const dispatch = useDocStore((s) => s.dispatch);
-  const [path, labelX, labelY] = getBezierPath({
+  const { screenToFlowPosition } = useReactFlow();
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(edge?.label ?? '');
+  const [dragging, setDragging] = useState(false);
+  const [previewOffset, setPreviewOffset] = useState<XY | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  /** 默认走 React Flow 的贝塞尔；一旦有了曲率偏移就改用自绘三次贝塞尔 */
+  const [basePath, baseLabelX, baseLabelY] = getBezierPath({
     sourceX,
     sourceY,
     targetX,
@@ -42,14 +57,51 @@ function BezierEdgeInner({
     sourcePosition,
     targetPosition,
   });
+  const mid = { x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 };
+  const storedOffset = edge ? curveOffsetOf(edge) : null;
+  const offset = previewOffset ?? storedOffset;
+  const geometry = offset ? curveGeometry({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, offset) : null;
+  const path = geometry ? curvePath(geometry) : basePath;
+  const handleX = geometry ? geometry.handle.x : baseLabelX;
+  const handleY = geometry ? geometry.handle.y : baseLabelY;
 
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(edge?.label ?? '');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const midRef = useRef(mid);
+  const previewRef = useRef<XY | null>(previewOffset);
+  midRef.current = mid;
+  previewRef.current = previewOffset;
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
   }, [editing]);
+
+  /** 曲率手柄：按下后监听 window，拖到哪曲线就弯到哪；松手才压一次撤销 */
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (event: PointerEvent) => {
+      const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      setPreviewOffset(curveOffsetFromHandle(midRef.current, point));
+    };
+    const finish = () => {
+      const next = previewRef.current;
+      setDragging(false);
+      setPreviewOffset(null);
+      if (!next) return;
+      const tiny = Math.hypot(next.x, next.y) < CURVE_MIN;
+      dispatch(
+        updateEdge(id, {
+          controlPoints: tiny ? undefined : [{ x: round1(next.x), y: round1(next.y) }],
+        }),
+      );
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+    };
+  }, [dragging, dispatch, id, screenToFlowPosition]);
 
   if (!edge) return null;
 
@@ -90,7 +142,7 @@ function BezierEdgeInner({
         <div
           className={`cb-edge-label${selected ? ' is-selected' : ''}`}
           style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            transform: `translate(-50%, -50%) translate(${handleX}px, ${handleY}px)`,
             borderColor: stroke,
           }}
           onDoubleClick={(event) => {
@@ -122,6 +174,25 @@ function BezierEdgeInner({
           )}
         </div>
       </EdgeLabelRenderer>
+      {selected ? (
+        <EdgeLabelRenderer>
+          <div
+            className={`cb-curve-handle nodrag nopan${dragging ? ' is-dragging' : ''}`}
+            title="拖动调整曲线弧度（双击复位）"
+            style={{ transform: `translate(-50%, -50%) translate(${handleX}px, ${handleY}px)` }}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              event.preventDefault();
+              setPreviewOffset(offset ?? { x: 0, y: 0 });
+              setDragging(true);
+            }}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              dispatch(updateEdge(id, { controlPoints: undefined }));
+            }}
+          />
+        </EdgeLabelRenderer>
+      ) : null}
     </>
   );
 }

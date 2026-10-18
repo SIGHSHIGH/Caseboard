@@ -5,6 +5,7 @@
  * 而模型驱动的 SVG 是纯函数，可在 smoke 里逐字节断言，也保证「导出图与画布所见一致」不依赖窗口尺寸。
  */
 import type { Asset, CaseDoc, CaseEdge, CaseNode, Group, ImageNode } from '../types';
+import { curveGeometry, curveOffsetOf, curvePath } from '../lib/edgeCurve';
 import { COLORS, LINE_STYLE_META, NODE_TYPE_META, STATUS_META, relColor, relLabel } from '../lib/theme';
 
 export interface BoardSvgOptions {
@@ -121,7 +122,9 @@ function edgeGeometry(edge: CaseEdge, nodes: Map<string, CaseNode>, imageNodes: 
   return { sx: source.x, sy: source.y, tx: target.x, ty: target.y };
 }
 
-function bezierPath(sx: number, sy: number, tx: number, ty: number): string {
+function bezierPath(sx: number, sy: number, tx: number, ty: number, offset?: { x: number; y: number } | null): string {
+  // 画布上手调过弧度的关系：导出必须用同一套控制点语义（M4 人工验收 A3）
+  if (offset) return curvePath(curveGeometry({ x: sx, y: sy }, { x: tx, y: ty }, offset));
   const dx = tx - sx;
   const dy = ty - sy;
   const cx1 = sx + dx * 0.4;
@@ -244,7 +247,7 @@ function renderEdge(edge: CaseEdge, geometry: { sx: number; sy: number; tx: numb
   const parts: string[] = [];
   parts.push('  <g class="cb-svg-edge" data-edge-id="' + esc(edge.id) + '" data-edge-style="' + edge.style + '">');
   parts.push(
-    '    <path d="' + bezierPath(geometry.sx, geometry.sy, geometry.tx, geometry.ty) + '" fill="none" stroke="' + color + '" stroke-width="' + width.toFixed(2) + '"' +
+    '    <path d="' + bezierPath(geometry.sx, geometry.sy, geometry.tx, geometry.ty, curveOffsetOf(edge)) + '" fill="none" stroke="' + color + '" stroke-width="' + width.toFixed(2) + '"' +
       (dash ? ' stroke-dasharray="' + dash + '"' : '') +
       (edge.directed ? ' marker-end="url(#' + markerId + ')"' : '') +
       ' />',

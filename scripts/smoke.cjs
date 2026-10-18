@@ -1489,6 +1489,74 @@ async function main() {
     beforeMove.every((node) => doc().nodes.find((item) => item.id === node.id).x === node.x && doc().nodes.find((item) => item.id === node.id).y === node.y),
     doc().nodes.find((node) => node.id === 'zhang').x,
   );
+  console.log('[30] 关系曲率手柄（M4 人工验收 A3 热修）');
+  const {
+    CURVE_MAX,
+    clampCurveOffset,
+    curveGeometry,
+    curveOffsetFromHandle,
+    curveOffsetOf,
+    curvePath,
+    normalizeControlPoints,
+  } = require(path.join(out, 'lib', 'edgeCurve.js'));
+  const straight = curveGeometry({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 40 });
+  check('曲线中点落在手柄位置', straight.handle.x === 50 && straight.handle.y === 40, straight.handle);
+  check(
+    '控制点按 4/3 放大让曲线穿过手柄',
+    Math.abs(straight.c1.y - 160 / 3) < 0.001 && straight.c1.x === 50 && straight.c1.y === straight.c2.y,
+    straight.c1,
+  );
+  check('path 输出三次贝塞尔并保留两位小数', curvePath(straight) === 'M 0 0 C 50 53.33, 50 53.33, 100 0', curvePath(straight));
+  const bigOffset = clampCurveOffset({ x: 5000, y: 0 });
+  check('超限偏移被夹到 CURVE_MAX', bigOffset.x === CURVE_MAX && bigOffset.y === 0, bigOffset);
+  const backOffset = curveOffsetFromHandle({ x: 50, y: 0 }, { x: 50, y: 40 });
+  check('手柄位置反算回偏移', backOffset.x === 0 && backOffset.y === 40, backOffset);
+  check(
+    '没有曲率或抖动极小时视为直线',
+    curveOffsetOf({}) === null && curveOffsetOf({ controlPoints: [] }) === null && curveOffsetOf({ controlPoints: [{ x: 0.5, y: 0.5 }] }) === null,
+  );
+  const normalizedCurve = normalizeControlPoints([{ x: 12.345, y: -6.789 }, null, { x: 'a' }]);
+  check(
+    '导入时规范化曲率点',
+    JSON.stringify(normalizedCurve) === JSON.stringify([{ x: 12.3, y: -6.8 }]) && normalizeControlPoints('bad') === undefined,
+    normalizedCurve,
+  );
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const pastBeforeCurve = state().past.length;
+  state().dispatch(updateEdge('e-transfer', { controlPoints: [{ x: 0, y: 60 }] }));
+  const curveEdge = doc().edges.find((edge) => edge.id === 'e-transfer');
+  check(
+    '命令写入曲率偏移',
+    curveEdge.controlPoints.length === 1 && curveEdge.controlPoints[0].x === 0 && curveEdge.controlPoints[0].y === 60 && state().past.length - pastBeforeCurve === 1,
+    curveEdge.controlPoints,
+  );
+  state().undo();
+  check('撤销后曲率偏移消失', doc().edges.find((edge) => edge.id === 'e-transfer').controlPoints === undefined);
+  state().redo();
+  check('重做恢复曲率偏移', doc().edges.find((edge) => edge.id === 'e-transfer').controlPoints[0].y === 60);
+  const curvedJson = toJson(doc());
+  const curvedRoundTrip = fromJson(curvedJson).edges.find((edge) => edge.id === 'e-transfer');
+  check(
+    'JSON 往返保留曲率',
+    curvedRoundTrip.controlPoints !== undefined && curvedRoundTrip.controlPoints[0].y === 60,
+    curvedRoundTrip.controlPoints,
+  );
+  const withCurve = boardToSvg(doc());
+  const curvePaths = [...withCurve.svg.matchAll(/<path[^>]*d="M ([\d.-]+) ([\d.-]+) C ([\d.-]+) ([\d.-]+), ([\d.-]+) ([\d.-]+), ([\d.-]+) ([\d.-]+)"/g)];
+  const symmetric = curvePaths.find((match) => match[3] === match[5] && match[4] === match[6]);
+  let curveHandleDistance = 0;
+  if (symmetric) {
+    const midX = (Number(symmetric[1]) + Number(symmetric[7])) / 2;
+    const midY = (Number(symmetric[2]) + Number(symmetric[8])) / 2;
+    curveHandleDistance = Math.hypot(Number(symmetric[3]) - midX, Number(symmetric[4]) - midY);
+  }
+  check(
+    'SVG 导出使用同一套曲线（控制点对称且到中点 80）',
+    symmetric !== undefined && Math.abs(curveHandleDistance - 80) < 1.5,
+    { paths: curvePaths.length, distance: Math.round(curveHandleDistance * 10) / 10 },
+  );
+  const straightSvg = boardToSvg(createDemoDoc()).svg;
+  check('有曲率与无曲率的导出结果不同', withCurve.svg !== straightSvg);
   state().dispatch(replaceDocument(createDemoDoc()));
 
   console.log('');

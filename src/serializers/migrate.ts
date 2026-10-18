@@ -17,6 +17,7 @@ import type {
   View,
 } from '../types';
 import { ANNOTATION_SHAPES, DEFAULT_ANNOTATION_COLOR, normalizeGeom } from '../lib/annotation';
+import { normalizeControlPoints } from '../lib/edgeCurve';
 import { NODE_TYPE_ORDER } from '../lib/nodeTemplates';
 
 /**
@@ -161,6 +162,9 @@ function normalizeEdge(raw: unknown, index: number): CaseEdge | null {
   if (sourceHandle.length > 0) edge.sourceHandle = sourceHandle;
   const targetHandle = str(raw.targetHandle);
   if (targetHandle.length > 0) edge.targetHandle = targetHandle;
+  // 曲率偏移（M4 人工验收 A3）：旧存档里可能没有，非法值直接丢弃
+  const controlPoints = normalizeControlPoints(raw.controlPoints);
+  if (controlPoints) edge.controlPoints = controlPoints;
   const label = str(raw.label);
   if (label.length > 0) edge.label = label;
   const color = str(raw.color);

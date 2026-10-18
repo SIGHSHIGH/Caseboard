@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewport, type Node, type NodeProps } from '@xyflow/react';
 import {
   resizeImageNode,
@@ -27,6 +27,8 @@ interface ResizeDrag {
   startX: number;
   startY: number;
   origin: { x: number; y: number; w: number; h: number };
+  /** 起始旋转角：缩放过程中图片可能被旋转，位移要投到图片本地轴 */
+  rotation: number;
 }
 
 interface RotateDrag {
@@ -40,7 +42,7 @@ interface RotateDrag {
 type DragState = ResizeDrag | RotateDrag | null;
 
 /** 指针相对元素中心的极角（度，screen 坐标系，正方向为顺时针） */
-function pointerAngle(event: React.PointerEvent, center: { x: number; y: number }): number {
+function pointerAngle(event: { clientX: number; clientY: number }, center: { x: number; y: number }): number {
   return (Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180) / Math.PI;
 }
 
@@ -52,6 +54,11 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
   const [drag, setDrag] = useState<DragState>(null);
   const [preview, setPreview] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [previewRotation, setPreviewRotation] = useState<number | null>(null);
+
+  /** 拖动过程中的最新值：window 监听器读取 ref，避免闭包拿到旧状态 */
+  const dragRef = useRef<DragState>(null);
+  const previewRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const previewRotationRef = useRef<number | null>(null);
 
   const thumb = useAssetThumb(image.assetId, 1024);
   const rotation = previewRotation ?? image.rotation;
@@ -66,56 +73,86 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
     return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
   };
 
+  /**
+   * 缩放/旋转统一走 window 指针事件（M4 人工验收 A1/A2）：
+   * 手柄在 React Flow 节点内部，d3-drag 会抢 pointerdown，历史上只做到「拖动节点」。
+   * 现在手柄带 nodrag，并且按下后直接监听 window，指针移出手柄也跟手。
+   */
+  useEffect(() => {
+    if (!drag) return;
+    const move = (event: PointerEvent) => {
+      const current = dragRef.current;
+      if (!current) return;
+      if (current.mode === 'resize') {
+        const dx = (event.clientX - current.startX) / zoom;
+        const dy = (event.clientY - current.startY) / zoom;
+        const rad = (current.rotation * Math.PI) / 180;
+        const localDx = dx * Math.cos(rad) + dy * Math.sin(rad);
+        const localDy = -dx * Math.sin(rad) + dy * Math.cos(rad);
+        const next = resizeImageRect(current.origin, current.handle, localDx, localDy, { lockAspect: event.shiftKey });
+        previewRef.current = next;
+        setPreview(next);
+        return;
+      }
+      const delta = pointerAngle(event, centerOf()) - current.startAngle;
+      const next = snapRotation(current.origin + delta);
+      previewRotationRef.current = next;
+      setPreviewRotation(next);
+    };
+    const finish = () => {
+      const current = dragRef.current;
+      const box = previewRef.current;
+      const angle = previewRotationRef.current;
+      dragRef.current = null;
+      previewRef.current = null;
+      previewRotationRef.current = null;
+      setDrag(null);
+      setPreview(null);
+      setPreviewRotation(null);
+      if (current?.mode === 'resize' && box) dispatch(resizeImageNode(image.id, box));
+      if (current?.mode === 'rotate' && angle !== null) dispatch(rotateImageNode(image.id, angle));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+    };
+  }, [drag, dispatch, image.id, zoom]);
+
   const startResize = (handle: ResizeHandle) => (event: React.PointerEvent<HTMLElement>) => {
     event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDrag({
+    event.preventDefault();
+    const next: ResizeDrag = {
       mode: 'resize',
       handle,
       startX: event.clientX,
       startY: event.clientY,
       origin: { x: image.x, y: image.y, w: image.w, h: image.h },
-    });
-    setPreview({ x: image.x, y: image.y, w: image.w, h: image.h });
+      rotation: image.rotation,
+    };
+    dragRef.current = next;
+    previewRef.current = next.origin;
+    setDrag(next);
+    setPreview(next.origin);
   };
 
   const startRotate = (event: React.PointerEvent<HTMLElement>) => {
     event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDrag({
+    event.preventDefault();
+    const next: RotateDrag = {
       mode: 'rotate',
       startX: event.clientX,
       startY: event.clientY,
       startAngle: pointerAngle(event, centerOf()),
       origin: image.rotation,
-    });
+    };
+    dragRef.current = next;
+    previewRotationRef.current = image.rotation;
+    setDrag(next);
     setPreviewRotation(image.rotation);
-  };
-
-  const onMove = (event: React.PointerEvent<HTMLElement>) => {
-    if (!drag) return;
-    const dx = (event.clientX - drag.startX) / zoom;
-    const dy = (event.clientY - drag.startY) / zoom;
-    if (drag.mode === 'resize') {
-      // 旋转后的图片：把屏幕位移投到图片本地轴，再交给纯函数算新矩形
-      const rad = (image.rotation * Math.PI) / 180;
-      const localDx = dx * Math.cos(rad) + dy * Math.sin(rad);
-      const localDy = -dx * Math.sin(rad) + dy * Math.cos(rad);
-      setPreview(resizeImageRect(drag.origin, drag.handle, localDx, localDy, { lockAspect: event.shiftKey }));
-      return;
-    }
-    const delta = pointerAngle(event, centerOf()) - drag.startAngle;
-    setPreviewRotation(snapRotation(drag.origin + delta));
-  };
-
-  const endDrag = () => {
-    if (drag && preview) dispatch(resizeImageNode(image.id, preview));
-    if (drag && drag.mode === 'rotate' && previewRotation !== null) {
-      dispatch(rotateImageNode(image.id, previewRotation));
-    }
-    setDrag(null);
-    setPreview(null);
-    setPreviewRotation(null);
   };
 
   const offsetX = preview ? preview.x - image.x : 0;
@@ -134,9 +171,6 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
           height: rect.h,
           transform: `translate(${offsetX}px, ${offsetY}px) rotate(${rotation}deg)`,
         }}
-        onPointerMove={onMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
         title={title}
       >
         {thumb ? (
