@@ -430,6 +430,18 @@
 4. 时间游标可从头播放到尾，暂停/回退可用，区间条带正确显示。
 5. 演示模式可按步骤播放，退出后画布状态还原。
 
+**M5 拆步（计划，⬜ 待开工）**
+
+| 步骤 | 内容与涉及文件 | 验收抓手 | 状态 |
+|---|---|---|---|
+| M5-1 | 分析内核（纯函数，无 UI）：`src/lib/graph.ts`（`buildGraph` 邻接表、`shortestPath` 确定性 BFS/Dijkstra、`allPaths` 带上限截断与稳定排序、`degreeCentrality` / `betweennessCentrality`、`neighborsWithin(depth)`）、`src/lib/layout.ts`（`forceLayout`(d3-force) / `hierarchicalLayout`(dagre) / `radialLayout` / `circleLayout` / `gridLayout`，统一 `LayoutOptions{lockedIds}` 与 `separateOverlaps` 后处理）、`src/lib/timeline.ts`（时间范围归一化、泳道分组、游标切片） | smoke 新增段：验收 1（两节点最短路径 + 全部路径稳定复现）、验收 2（中心度前 3 稳定）、验收 3a（锁定坐标不变 / 无重叠 / 不穿组）、验收 4a（游标切片） | ⬜ |
+| M5-2 | 过滤器与聚焦：`src/store/viewStore.ts`（条件：类型/标签/状态/时间/置信度/关系类别；模式：显示·隐藏·淡化）、`src/components/panels/FilterPanel.tsx`（左栏新增「分析」页签）、`Board.tsx` 按视图状态做淡化与命中计数 | ui-smoke：面板控件存在、过滤后可见节点数变化、聚焦按钮文案与取消 | ⬜ |
+| M5-3 | 路径与中心度可视化：`src/services/graphAnalysis.ts`（调 M5-1）、`src/components/panels/PathPanel.tsx`（选源/汇、最短路径、全部路径列表、动线高亮）、中心度 Top3 排行与节点角标 | smoke（结论数据）+ ui-smoke（面板与高亮元素） | ⬜ |
+| M5-4 | 自动布局与一键整理：`src/commands/layoutCommands.ts`（一条 Command 改全部坐标 → 一次撤销）、顶栏/左栏布局菜单、过渡动画 | smoke：整理后锁定节点坐标不变、无重叠、不穿组、撤销一次全回 | ⬜ |
+| M5-5 | 时间线视图与演示模式：`src/components/views/TimelineView.tsx`（泳道、区间条带、游标播放/暂停/回退/倍速）、`src/components/views/PresentationView.tsx`（镜头路径 + 逐条连线亮起 + 全屏 + 退出还原）、`App.tsx` 视图切换 | smoke（游标与退出还原的纯逻辑）+ ui-smoke（DOM 与按钮）；真机视觉效果并入人工验收 | ⬜ |
+
+> 依赖顺序：M5-1 是其余四步的地基（纯函数先可测），M5-2 与 M5-3 可并行，M5-4/M5-5 依赖坐标与时间数据就绪。
+
 ---
 
 ### M6 · AI 文本能力（2–3 周）

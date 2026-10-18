@@ -1,0 +1,77 @@
+# M4 人工验收清单
+
+> 机器可验证的部分已由 `caseboard.exe --selftest` 覆盖（两轮 14 + 15 项全绿，见 docs/MILESTONES.md §3「M4 验收记录」）。
+> 本文件只列**必须由人在真机上看一眼**的三件事：拖拽手感、tauri dev 热重载、安装包安装运行。
+> 每条都给了「怎么做 / 应该看到什么」。做完把结果回给我，我写进 §3 与 §5。
+
+## A. 真机画布交互（release 版 exe）
+
+窗口若已由我启动，直接按下面操作；否则在仓库根目录执行：
+
+~~~powershell
+$env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP
+$env:CASEBOARD_DATA_DIR = "$PWD\.tmp-esbuild\manual-data"
+$env:WEBVIEW2_USER_DATA_FOLDER = "$PWD\.tmp-esbuild\webview2-manual"
+.\src-tauri\target\release\caseboard.exe
+~~~
+
+| # | 操作 | 应该看到 | 结果 |
+|---|---|---|---|
+| A1 | 从素材库把一张图片拖到画布 | 图片节点跟手移动，松手才落位；撤销一次即回原位 | ⬜ |
+| A2 | 拖动节点、缩放手柄、旋转图片节点 | 拖动无卡顿、无抖动；吸附到网格/参考线时有提示；旋转手柄跟手 | ⬜ |
+| A3 | 从节点锚点拖出连线到另一节点 | 出现连线预览，松手弹「关系」对话框；确认后线型默认为「待核实」点线 | ⬜ |
+| A4 | 框选多个节点一起拖 | 整体平移，相对位置不变，一次撤销全回 | ⬜ |
+| A5 | 双击画布空白处 | 新建一个「备注」节点，落在点击位置 | ⬜ |
+| A6 | 顶栏「历史」→ 立即快照 → 改标题 → 恢复此版本 | 恢复后画布回到快照时刻，且可 Ctrl+Z 撤回 | ⬜ |
+| A7 | 删除一个节点，打开「历史」→ 回收站 → 恢复 | 节点与它原来的关系一起回来，不是孤儿 | ⬜ |
+| A8 | 顶栏「导出」→ 整板 PNG / SVG / PDF / .caseboard | 保存对话框为系统原生；导出的 PNG/PDF 用系统看图、浏览器打开与画布一致 | ⬜ |
+| A9 | 关闭程序再打开 | 数据完整（SQLite 后端），顶栏无「浏览器本机存储」提示 | ⬜ |
+| A10 | 断网（关 Wi-Fi）重做 A1、A8 | 全部照常，无任何报错或等待 | ⬜ |
+
+不合格时请记：**哪一步**、**看到什么**、**是否稳定复现**（需要时截图并给路径）。
+
+## B. tauri dev 热重载
+
+可由我在后台启动，你只看窗口行为；自己跑则是两条命令：
+
+~~~powershell
+$env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP
+$env:CARGO_HOME = "$PWD\.rust\cargo"; $env:RUSTUP_HOME = "$PWD\.rust\rustup"
+$env:PATH = "$PWD\.rust\cargo\bin;" + $env:PATH
+$env:WEBVIEW2_USER_DATA_FOLDER = "$PWD\.tmp-esbuild\webview2-dev"
+
+# 终端 1：前端 dev server（端口 5273）
+node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs" dev
+
+# 终端 2：桌面壳
+node scripts\tauri-cli.cjs dev
+~~~
+
+| # | 操作 | 应该看到 | 结果 |
+|---|---|---|---|
+| B1 | 启动后窗口出现，标题「案情板 CaseBoard」，约 1440×900 | 窗口可缩放、最小尺寸生效、居中显示 | ⬜ |
+| B2 | 我改一行 CSS（主色/圆角），保存 | 1 秒内窗口内样式变化，**不需重启、不丢当前画布状态** | ⬜ |
+| B3 | 我改顶栏文案，保存 | 文案热更新，控制台无红错 | ⬜ |
+| B4 | 拖动窗口边缘缩放 | 画布自适应，无白边、无错位 | ⬜ |
+
+## C. 安装包（NSIS）
+
+安装包：src-tauri\target\release\bundle\nsis\CaseBoard_0.4.0_x64-setup.exe（3.35 MiB）。
+
+| # | 操作 | 应该看到 | 结果 |
+|---|---|---|---|
+| C1 | 双击安装包 | 中文安装向导、可选安装目录、无需额外运行库 | ⬜ |
+| C2 | 安装完成 → 开始菜单/桌面图标启动 | 应用正常起来，无缺 DLL、无 WebView2 缺失提示 | ⬜ |
+| C3 | 安装版里新建一个板并保存，关闭再打开 | 数据落在 %APPDATA%\app.caseboard.desktop，重开完整 | ⬜ |
+| C4 | 控制面板卸载 | 程序目录移除；用户数据是否保留按安装器实际行为记录 | ⬜ |
+| C5 | 签名检查 | **当前未签名**：SmartScreen 会提示「未知发布者」，属 M8 工作项 | ⬜ |
+
+## 回执模板（复制填写后发我）
+
+~~~text
+A1 通过 / 不通过  说明：
+A2 通过 / 不通过  说明：
+...（逐条写一句话即可）
+~~~
+
+收到后我把结论写入 docs/MILESTONES.md §3「M4 遗留与延期」与 §5，并据此决定是否先补 M4 的壳层缺项再进 M5。
