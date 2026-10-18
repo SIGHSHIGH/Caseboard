@@ -3,6 +3,7 @@ import { replaceDocument } from '../../commands';
 import { toJson } from '../../serializers/json';
 import { fromJson } from '../../serializers/json';
 import { fileService } from '../../services/file';
+import { closeCodeView, openCodeView, useCodeStore } from '../../store/codeStore';
 import { useDocStore } from '../../store/docStore';
 import { LINE_STYLE_META } from '../../lib/theme';
 import type { LineStyle } from '../../types';
@@ -22,6 +23,7 @@ export function TopBar() {
   const canRedo = useDocStore((s) => s.future.length > 0);
   const lastLabel = useDocStore((s) => s.past[s.past.length - 1]?.label ?? '');
   const nextLabel = useDocStore((s) => s.future[0]?.label ?? '');
+  const codeOpen = useCodeStore((s) => s.open);
   const importing = useRef(false);
 
   const handleExport = () => {
@@ -99,6 +101,17 @@ export function TopBar() {
         </button>
         <button type="button" className="cb-btn" onClick={handleImport}>
           导入 JSON
+        </button>
+        <button
+          type="button"
+          className={`cb-btn${codeOpen ? ' is-active' : ''}`}
+          title="代码视图：与画布渲染同一份数据（在代码视图内 Ctrl+Shift+F 格式化）"
+          onClick={() => {
+            if (codeOpen) closeCodeView();
+            else openCodeView();
+          }}
+        >
+          {'</>'} 代码视图
         </button>
       </div>
     </header>

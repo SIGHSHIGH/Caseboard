@@ -4,6 +4,16 @@
 
 ## [未发布] v0.3.0 · M3 DSL + 双向同步
 
+### M3-4 分屏代码视图（2026-10-19）
+
+- **分屏**：`App.tsx` 把画布与 `CodePanel` 并列放进 `.cb-work`，中间 `.cb-splitter` 指针拖拽调宽（clamp 28–72%）；顶栏「`</>` 代码视图」切换显示，`CodePanel` 用 `React.lazy` 单独分包（主包 892 → 546 kB，代码视图 chunk 345.79 kB）。
+- **CodeMirror 6**（`src/dsl/{language,highlight}.ts`）：用生成的 Lezer 解析器 `LRLanguage.define` 建语言，`styleTags` + `HighlightStyle` 高亮（关键字、字符串、数字、箭头、注释）、`foldNodeProp` 折叠块、括号匹配、自动补全（8 类实体词 + 组/视图关键字 + 名字表 id + `status`/`style`/`path`/`rel`/`kind` 枚举）、悬停卡片、`Mod-Shift-f` 格式化。
+- **五态同步状态机**（`src/store/codeStore.ts`）：`idle | graphEditing | codeEditing | conflict | error`；图形→代码 200ms 防抖；用户正在编辑时**不抢光标**，改为横幅「图形有更新，点击合并」；`isApplyingCode()` 单向闸门防止代码写入被回灌成新改动。
+- **光标与滚动保护**（`CodeEditor.replacePreservingView`）：外部写入只 dispatch 最小差异 `changes`，前后保存/还原 `scrollTop`/`scrollLeft`，不重建 `EditorState` → 光标、选区、折叠区间由事务映射自动搬移。
+- **错误容错**：解析失败时模型保持不变、画布切换为只读（拖拽/连线/删除/选中全部关闭 + 覆盖层「代码有语法错误，图形暂为只读」），CodeMirror 波浪线 + 行号 + 中文修复建议；修好后自动恢复。
+- **双侧选中联动**（`src/dsl/locate.ts`）：按真实语法树定位声明（跳过 `WS`/注释、解包 `Statement`、读 `id:` 覆盖行）；画布选中 → 代码滚动居中 + 红色标记，代码光标落在声明内 → 反查模型 id → 画布 `setCenter` 居中。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **296 条全绿**（新增 34 条 `[23] DSL 代码视图同步（M3-4）`）、`pnpm ui-smoke` **62 条全绿**（新增 11 条 `[UI] M3-4 分屏代码视图`）、`pnpm build` 269 modules。
+
 ### M3-1 DSL 序列化器（2026-10-19）
 
 - **Model → 文本**（`src/dsl/serialize.ts`）：`serializeDoc(doc)` 输出规格 §4 形状的文本视图——`case "标题" caseNo "编号" {` 头、`// ===== 实体 / 组 / 关系 / 视图 =====` 分节、`person zhang "张建国" { … }` 实体块、`group … color="#C0392B" { nodes: [...] }` 组块、`zhang --转账 50 万--> li { … }` 三种线型边、`view timeline "案发经过" { … }` 视图块。

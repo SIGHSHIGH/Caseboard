@@ -1104,6 +1104,92 @@ check(
   doc().nodes.length,
 );
 
+console.log('[23] DSL 代码视图同步（M3-4）');
+const locate = require(path.join(out, 'dsl', 'locate.js'));
+const codeMod = require(path.join(out, 'store', 'codeStore.js'));
+const codeState = () => codeMod.useCodeStore.getState();
+
+// 回到干净演示案（前面的分段改动过模型）
+state().dispatch(replaceDocument(createDemoDoc()));
+const viewDoc = doc();
+const code0 = serializeDoc(viewDoc);
+const decls = locate.locateDeclarations(code0);
+check('定位出 6 个实体声明', decls.filter((item) => item.kind === 'node').length === 6, decls.filter((item) => item.kind === 'node').length);
+check('定位出 6 条关系声明', decls.filter((item) => item.kind === 'edge').length === 6, decls.filter((item) => item.kind === 'edge').length);
+check('定位出 1 个组与 1 个视图', decls.filter((item) => item.kind === 'group').length === 1 && decls.filter((item) => item.kind === 'view').length === 1);
+check('定位是纯函数（同文本同结果）', JSON.stringify(locate.locateDeclarations(code0)) === JSON.stringify(decls));
+
+const nodeRange = locate.findDeclRange(code0, viewDoc, 'zhang');
+check('node 声明带名字范围', !!nodeRange && nodeRange.kind === 'node' && nodeRange.name === 'zhang' && code0.slice(nodeRange.from, nodeRange.to).startsWith('person zhang'), nodeRange);
+const groupRange = locate.findDeclRange(code0, viewDoc, 'g-suspect');
+check('group 用名字表对应声明', !!groupRange && groupRange.kind === 'group' && groupRange.name === 'g_suspect' && code0.slice(groupRange.from, groupRange.to).includes('group g_suspect'), groupRange);
+const edgeRange = locate.findDeclRange(code0, viewDoc, 'e-transfer');
+check('edge 按块内 id 定位', !!edgeRange && edgeRange.kind === 'edge' && code0.slice(edgeRange.from, edgeRange.to).includes('--转账 50 万-->'), edgeRange);
+const viewRange = locate.findDeclRange(code0, viewDoc, 'view-timeline');
+check('view 按块内 id 定位', !!viewRange && viewRange.kind === 'view' && code0.slice(viewRange.from, viewRange.to).startsWith('view timeline'), viewRange);
+check('未出现在文本里的 id 返回 null', locate.findDeclRange(code0, viewDoc, 'nope') === null);
+
+const nodeAt = locate.declIdAtPosition(code0, viewDoc, nodeRange.nameFrom + 1);
+check('光标在实体声明内 → 反查模型 id', !!nodeAt && nodeAt.kind === 'node' && nodeAt.id === 'zhang', nodeAt);
+const edgeAt = locate.declIdAtPosition(code0, viewDoc, edgeRange.nameFrom + 1);
+check('光标在关系语句内 → 得到关系 id', !!edgeAt && edgeAt.kind === 'edge' && edgeAt.id === 'e-transfer', edgeAt);
+const groupAt = locate.declIdAtPosition(code0, viewDoc, groupRange.nameFrom + 1);
+check('光标在组声明内 → 反查组 id', !!groupAt && groupAt.kind === 'group' && groupAt.id === 'g-suspect', groupAt);
+check('光标在块外 → null', locate.declIdAtPosition(code0, viewDoc, 0) === null);
+
+codeMod.closeCodeView();
+codeMod.openCodeView();
+check('打开代码视图：open + idle', codeState().open === true && codeState().state === 'idle');
+check('打开时代码是模型序列化', codeState().text === code0);
+check('演示文本解析无错误诊断', !codeState().diagnostics.some((item) => item.severity === 'error'));
+
+const pastBefore = state().past.length;
+const retitledText = codeState().text.replace('"张建国"', '"张建国（改）"');
+codeMod.syncCodeText(retitledText);
+check('代码改标题写回模型', doc().nodes.find((node) => node.id === 'zhang').title === '张建国（改）', doc().nodes.find((node) => node.id === 'zhang').title);
+check('代码编辑只占一条撤销记录', state().past.length === pastBefore + 1, { before: pastBefore, after: state().past.length });
+check('状态进入 codeEditing', codeState().state === 'codeEditing');
+check('代码编辑期间未误置 applyingCode', codeMod.isApplyingCode() === false);
+state().undo();
+check('一次撤销回滚代码改动', doc().nodes.find((node) => node.id === 'zhang').title === '张建国');
+
+// 解析失败：模型不变、进入 error、图形只读（Board 读 state==='error'）
+codeMod.closeCodeView();
+state().dispatch(replaceDocument(createDemoDoc()));
+codeMod.openCodeView();
+const beforeBad = JSON.stringify(doc());
+codeMod.syncCodeText('person a "A" {\n  status: suspect\n}');
+check('非法枚举 → error', codeState().state === 'error');
+check('解析失败不清空模型', JSON.stringify(doc()) === beforeBad);
+check('诊断指出非法枚举', codeState().diagnostics.some((item) => item.message.includes('status')), codeState().diagnostics);
+check('错误期间格式化返回 false', codeMod.formatCode() === false);
+
+// 恢复合法文本后格式化：等价于按模型重新排版，不占撤销栈
+codeMod.syncCodeText(code0);
+check('修好后回到非错误状态', codeState().state !== 'error');
+const pastFormat = state().past.length;
+check('格式化成功返回 true', codeMod.formatCode() === true);
+check('格式化不改模型、不占撤销栈', state().past.length === pastFormat && codeState().text === serializeDoc(doc()));
+
+// 代码编辑中图形变化：不抢光标，只亮「点击合并」
+codeMod.syncCodeText(code0);
+codeState().setFocused(true);
+state().dispatch(moveNode('zhang', 444, 555));
+codeMod.noteGraphChange();
+check('编辑中图形变化 → graphEditing 待合并', codeState().state === 'graphEditing' && codeState().pendingGraph === true);
+codeMod.mergeGraphChanges();
+check('合并后文本包含新坐标', codeState().state === 'idle' && codeState().text.includes('at(444, 555)'));
+check('合并后 baseline 与模型一致', JSON.stringify(codeState().baseline) === JSON.stringify(doc()));
+
+// 失焦且有待合并 → 自动刷新（光标保护只在聚焦时生效）
+state().dispatch(moveNode('li', 321, 654));
+codeMod.noteGraphChange();
+check('聚焦时再次变化仍待合并', codeState().pendingGraph === true);
+codeState().setFocused(false);
+check('失焦后自动刷新代码', codeState().state === 'idle' && codeState().text.includes('at(321, 654)'));
+codeMod.closeCodeView();
+check('关闭代码视图复位', codeState().open === false && codeState().focused === false);
+
 console.log('');
 if (failures > 0) {
   console.log('结果：' + failures + ' 项失败');

@@ -32,6 +32,7 @@ import { buildRenderModel, descendantGroupIdsOf, nodeIdsInRect, parseBoardNodeId
 import { newId } from '../../lib/id';
 import { fitImageSize, snapImageRect, type AlignGuide } from '../../lib/imageNode';
 import { NODE_TYPE_META } from '../../lib/theme';
+import { useCodeStore } from '../../store/codeStore';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import type { CaseNode, Group, ImageNode, XY } from '../../types';
@@ -123,8 +124,12 @@ export function Board() {
   const selectGroup = useUiStore((s) => s.selectGroup);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const setDragPos = useUiStore((s) => s.setDragPos);
-  const { screenToFlowPosition } = useReactFlow();
+  const focusRequest = useUiStore((s) => s.focusRequest);
+  const graphLocked = useCodeStore((s) => s.state === 'error');
+  const { screenToFlowPosition, setCenter } = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // 代码侧请求居中时用 nonce 去重：文档后续变化不该把视口抢回去
+  const lastFocusNonce = useRef(0);
   const [pending, setPending] = useState<Connection | null>(null);
 
   // 折叠 / 聚合后的渲染模型（单一数据源的派生视图，不写回 doc）
@@ -451,6 +456,35 @@ export function Board() {
     consumeAdd();
   }, [addRequest, consumeAdd, dispatch, screenToFlowPosition]);
 
+  // 代码侧点击声明 → 画布居中到对应实体（同一 nonce 只消费一次）
+  useEffect(() => {
+    if (!focusRequest) return;
+    if (lastFocusNonce.current === focusRequest.nonce) return;
+    lastFocusNonce.current = focusRequest.nonce;
+    let cx = 0;
+    let cy = 0;
+    if (focusRequest.kind === 'node') {
+      const node = doc.nodes.find((item) => item.id === focusRequest.id);
+      if (!node) return;
+      cx = node.x + node.w / 2;
+      cy = node.y + node.h / 2;
+    } else if (focusRequest.kind === 'group') {
+      const group = doc.groups.find((item) => item.id === focusRequest.id);
+      if (!group) return;
+      cx = group.bounds.x + group.bounds.w / 2;
+      cy = group.bounds.y + group.bounds.h / 2;
+    } else {
+      const edge = doc.edges.find((item) => item.id === focusRequest.id);
+      if (!edge) return;
+      const source = doc.nodes.find((item) => item.id === edge.source);
+      const target = doc.nodes.find((item) => item.id === edge.target);
+      if (!source || !target) return;
+      cx = (source.x + source.w / 2 + target.x + target.w / 2) / 2;
+      cy = (source.y + source.h / 2 + target.y + target.h / 2) / 2;
+    }
+    setCenter(cx, cy, { zoom: 1, duration: 300 });
+  }, [doc, focusRequest, setCenter]);
+
   // 左栏「新建矩形组 / 圈选成组」→ 需要视口信息，所以在这里消费
   useEffect(() => {
     if (!groupRequest) return;
@@ -537,7 +571,11 @@ export function Board() {
         onPaneClick={onPaneClick}
         onConnect={onConnect}
         connectionMode={ConnectionMode.Loose}
-        deleteKeyCode={['Delete', 'Backspace']}
+        nodesDraggable={!graphLocked}
+        nodesConnectable={!graphLocked}
+        nodesFocusable={!graphLocked}
+        edgesFocusable={!graphLocked}
+        deleteKeyCode={graphLocked ? null : ['Delete', 'Backspace']}
         defaultEdgeOptions={{ type: 'bezier', markerEnd: DEFAULT_MARKER }}
         connectionLineStyle={{ stroke: '#C0392B', strokeWidth: 1.6, strokeDasharray: '4 4' }}
         minZoom={0.25}
@@ -567,6 +605,12 @@ export function Board() {
           style={{ background: '#FBFAF7', border: '1px solid #E2DED5' }}
         />
       </ReactFlow>
+
+      {graphLocked ? (
+        <div className="cb-canvas__lock" role="status">
+          代码有语法错误，图形暂为只读
+        </div>
+      ) : null}
 
       <GuideOverlay guides={guides} />
 

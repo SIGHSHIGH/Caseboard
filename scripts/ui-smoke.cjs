@@ -214,6 +214,20 @@ const offsetGetter = (axis) => function offsetGet() {
 Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', { configurable: true, get: offsetGetter('w') });
 Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', { configurable: true, get: offsetGetter('h') });
 
+// CodeMirror 6 在 jsdom 里会向 Range/Text 要行盒位置（getClientRects），补空实现避免 measure 抛错。
+const emptyRect = () => ({
+  x: 0, y: 0, left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0,
+  toJSON() { return this; },
+});
+if (typeof window.Range === 'function') {
+  window.Range.prototype.getBoundingClientRect = emptyRect;
+  window.Range.prototype.getClientRects = () => [];
+}
+if (window.Text) {
+  window.Text.prototype.getBoundingClientRect = emptyRect;
+  window.Text.prototype.getClientRects = () => [];
+}
+
 const overrides = {
   DOMMatrix: DOMMatrixReadOnlyPolyfill,
   DOMMatrixReadOnly: DOMMatrixReadOnlyPolyfill,
@@ -394,6 +408,32 @@ function check(name, condition, detail) {
   check('原件缺失时标注画布给出说明', (doc.querySelector('.cb-annot__missing')?.textContent || '').includes('原件不在本机'), doc.querySelector('.cb-annot__missing')?.textContent);
   check('导出标注图按钮存在', [...doc.querySelectorAll('.cb-annot .cb-btn')].some((b) => (b.textContent || '').includes('导出标注图')));
 
+  console.log('[UI] M3-4 分屏代码视图');
+  const codeBtn = [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((b) => (b.textContent || '').includes('代码视图'));
+  check('顶栏有代码视图按钮', !!codeBtn);
+  if (codeBtn) codeBtn.click();
+  // 代码视图是按需 chunk，等它加载并挂载 CodeMirror
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  check('分屏出现代码面板', doc.querySelector('.cb-code') !== null);
+  check('同步徽标显示已同步', (doc.querySelector('.cb-code__badge')?.textContent || '').includes('已同步'), doc.querySelector('.cb-code__badge')?.textContent);
+  check('分栏把手存在', doc.querySelector('.cb-splitter') !== null);
+  check('CodeMirror 编辑器已挂载', doc.querySelector('.cm-editor') !== null);
+  check('代码文本含实体声明', (doc.querySelector('.cm-content')?.textContent || '').includes('张建国'), (doc.querySelector('.cm-content')?.textContent || '').slice(0, 40));
+  check('代码视图渲染多行声明', doc.querySelectorAll('.cm-line').length >= 3, doc.querySelectorAll('.cm-line').length);
+  check('代码首行是文本视图说明', (doc.querySelector('.cm-line')?.textContent || '').includes('案情板'), doc.querySelector('.cm-line')?.textContent);
+  const closeCode = [...doc.querySelectorAll('.cb-code__head .cb-btn')].find((b) => (b.textContent || '').includes('关闭'));
+  if (closeCode) closeCode.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check('关闭后代码面板移除', doc.querySelector('.cb-code') === null);
+  // 验收 6：画布选中 → 代码侧定位并高亮
+  const reopen = [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((b) => (b.textContent || '').includes('代码视图'));
+  if (reopen) reopen.click();
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  check('可以再次打开代码视图', doc.querySelector('.cb-code') !== null);
+  const firstNode = doc.querySelector('.cb-node');
+  if (firstNode) firstNode.click();
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  check('画布选中后代码侧高亮对应声明', doc.querySelectorAll('.cb-code-target').length >= 1, doc.querySelectorAll('.cb-code-target').length);
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

@@ -25,6 +25,8 @@ interface UiStore {
   dragPos: Record<string, XY>;
   /** 左栏点类型按钮后置位，由 Board 换算成画布坐标后消费 */
   addRequest: string | null;
+  /** 代码视图选中实体 → 请求画布把它滚动到视野中心（nonce 保证重复点同一对象也能触发） */
+  focusRequest: { id: string; kind: 'node' | 'edge' | 'group'; nonce: number } | null;
   /** 左栏「新建矩形组 / 圈选成组」请求，由 Board 消费（需要视口信息） */
   groupRequest: 'rect' | 'lasso' | null;
   /** 画布交互模式：默认选择，圈选时临时进入 lasso */
@@ -32,6 +34,7 @@ interface UiStore {
   leftTab: LeftTab;
   setLeftTab: (tab: LeftTab) => void;
   requestAdd: (type: string) => void;
+  focusEntity: (id: string, kind: 'node' | 'edge' | 'group') => void;
   consumeAdd: () => void;
   requestGroup: (kind: 'rect' | 'lasso') => void;
   consumeGroup: () => void;
@@ -59,6 +62,7 @@ export const useUiStore = create<UiStore>((set) => ({
   attachTargetId: null,
   dragPos: {},
   addRequest: null,
+  focusRequest: null,
   groupRequest: null,
   mode: 'select',
   leftTab: 'nodes',
@@ -66,6 +70,7 @@ export const useUiStore = create<UiStore>((set) => ({
   setGuides: (guides) => set({ guides }),
   setAttachTarget: (attachTargetId) => set({ attachTargetId }),
   requestAdd: (type) => set({ addRequest: type }),
+  focusEntity: (id, kind) => set((state) => ({ focusRequest: { id, kind, nonce: (state.focusRequest?.nonce ?? 0) + 1 } })),
   consumeAdd: () => set({ addRequest: null }),
   requestGroup: (kind) => set({ groupRequest: kind }),
   consumeGroup: () => set({ groupRequest: null }),

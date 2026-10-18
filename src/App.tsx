@@ -1,13 +1,18 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
+import { useCodeSyncBridge } from './components/code/useCodeSyncBridge';
 import { Board } from './components/flow/Board';
 import { ImportWizard } from './components/panels/ImportWizard';
 import { LeftPanel } from './components/panels/LeftPanel';
 import { RightPanel } from './components/panels/RightPanel';
 import { TopBar } from './components/panels/TopBar';
+import { useCodeStore } from './store/codeStore';
 import { useDocStore } from './store/docStore';
 import { useImportStore } from './store/importStore';
 import { useUiStore } from './store/uiStore';
+
+// 代码视图带着 CodeMirror 6，按需加载，避免拖慢画布首屏
+const CodePanel = lazy(() => import('./components/code/CodePanel').then((mod) => ({ default: mod.CodePanel })));
 
 function imagesOf(list: FileList | null | undefined): File[] {
   if (!list) return [];
@@ -18,6 +23,10 @@ export default function App() {
   const undo = useDocStore((s) => s.undo);
   const redo = useDocStore((s) => s.redo);
   const startImport = useImportStore((s) => s.startImport);
+  const codeOpen = useCodeStore((s) => s.open);
+  const [splitPct, setSplitPct] = useState(44);
+  const workRef = useRef<HTMLDivElement>(null);
+  useCodeSyncBridge();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -75,9 +84,43 @@ export default function App() {
         onDrop={onDrop}
       >
         <LeftPanel />
-        <ReactFlowProvider>
-          <Board />
-        </ReactFlowProvider>
+        <div className="cb-work" ref={workRef}>
+          <div className="cb-work__canvas">
+            <ReactFlowProvider>
+              <Board />
+            </ReactFlowProvider>
+          </div>
+          {codeOpen ? (
+            <>
+              <div
+                className="cb-splitter"
+                title="拖动调整代码视图宽度"
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  const rect = workRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  const startX = event.clientX;
+                  const startPct = splitPct;
+                  const onMove = (moveEvent: PointerEvent) => {
+                    const next = startPct - ((moveEvent.clientX - startX) / rect.width) * 100;
+                    setSplitPct(Math.min(72, Math.max(28, next)));
+                  };
+                  const onUp = () => {
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                  };
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                }}
+              />
+              <div className="cb-work__code" style={{ width: `${splitPct}%` }}>
+                <Suspense fallback={<div className="cb-code__loading">代码视图加载中…</div>}>
+                  <CodePanel />
+                </Suspense>
+              </div>
+            </>
+          ) : null}
+        </div>
         <RightPanel />
       </div>
       <ImportWizard />
