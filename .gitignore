@@ -24,3 +24,6 @@ src-tauri/target/
 *.cbd.bak
 .rust/
 src-tauri/gen/
+
+# 用户手工验收截图（不随仓库分发）
+test project/
