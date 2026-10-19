@@ -36,7 +36,7 @@
 | M4 | Tauri + SQLite + 项目文件 + 导出 | 3–4 周 | Tauri 2 外壳、SQLite、`.caseboard` 单文件、图片/整板导出、脱敏导出 | `.caseboard` 可拷机打开；离线可用；PDF 报告可交付 | ✅ 2026-10-19 |
 | M5 | 分析视图 | 2–3 周 | 过滤、聚焦、路径/中心度、自动布局、时间线回放、演示模式 | 路径高亮可复现；时间游标可播放；一键整理保留锁定节点 | ✅ 2026-10-19 |
 | M6 | AI 文本能力 | 2–3 周 | 抽取建图（P4）、自然语言编辑（P6）、矛盾检测/证据链（P5）、报告（P7）、本地模型 | 采纳率 ≥ 70%；AI 永不直接改 Model，只进待确认队列 | ✅ 2026-10-19 |
-| M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ⬜ |
+| M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ✅ 2026-10-19 |
 | M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ⬜ |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
@@ -580,6 +580,45 @@
 7. 换脸类提示词被拒绝并给出合理解释。
 8. 拔网线状态下本地生图全流程可用。
 
+#### M7 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 | 状态 |
+|---|---|---|---|
+| M7-1 | 多假设画布：`src/types/index.ts`（`EvidenceStance` / `HypothesisStance` / `Hypothesis`，`CaseDoc.hypotheses`）、`src/lib/hypothesis.ts`（`hypothesisScore`：支持权重取实体/关系置信度、反驳 ×0.6、`clamp(-100..100)`；`rankHypotheses`；`compareHypotheses` 并排矩阵含 `divergent`）、`src/commands/hypothesisCommands.ts`（add/update/delete/`setStance`/`clearStance`）、`src/components/panels/HypothesisPanel.tsx`（排行榜 + 立场标注 + 比较表「分歧」徽标） | smoke [42]：计分可复现、排名、分歧证据、立场增删改与撤销 | ✅ |
+| M7-2 | 证据链模板：`src/lib/evidenceChain.ts`（`CHAIN6_STAGES` 动机→预谋→准备→实施→逃离→销赃 + 关键词匹配 + 证据来源 = 相邻关系 `evidenceIds` ∪ 节点附件；输出 `gaps/covered/total/coverage`），面板内「证据链」页签纵向排列并标断点 | smoke [42]：六阶段顺序、构造缺口得 `gaps=['escape']`、weak 判定 | ✅ |
+| M7-3 | 区域锚点增强：`src/lib/annotation.ts` 追加 `annotationsForNode` / `countAnchorsForNode` / `anchoredAnnotationsOf`；`src/components/flow/FreeImageNode.tsx` 渲染 `.cb-free-image__anchor`（按 `geom` 百分比定位，悬停/选中绑定实体时高亮 `is-hlit`）；`BaseNode.tsx` 悬停写 `uiStore.hoverNodeId`；面板里点锚点跳素材库并 `setAnchorFocus` | ui-smoke：锚点数量、title 含实体名、悬停高亮类 | ✅ |
+| M7-4 | OCR：`src/lib/ocr.ts`（全角归一化 + 金额/时间/账号/对方户名四个 parser + `maskAccount` + `receiptToNodeFields`）、`src/services/ocr.ts`（`ocrEngineStatus` / `recognizeAssetText`）、Rust `ocr_available` / `ocr_image`（调用 `tesseract <path> stdout -l chi_sim+eng --psm 6`）、右栏 OCR 区块（识别→解析→人工修正四个输入→写入素材/生成证据卡） | smoke [43] 解析矩阵；桌面自检「OCR 字段抽取」+ 引擎缺失时给出安装指引 | ✅ |
+| M7-5 | AI 生图：`src/lib/aiImage.ts`（四预设 sketch/scene/item/enhance、`inspectAiPrompt` 七类红线、`buildComfyWorkflow` 七标准节点、`watermarkPlan`、`inspectAiAsset`、`blocksConfirmed`）、`src/services/aiImage.ts`（builtin 程序化绘制 / ComfyUI 轮询 / OpenAI 兼容，全部在像素上重盖角标；`commitAiImage` 落素材 + 图片节点一条命令）、`AiImagePanel.tsx`（预览后才插入）、`updateNode` 拦截 AI 图改已证实 | smoke [43]：换脸拒绝、四预设笔触、水印几何、命令层拦截；桌面自检「AI 模拟图」复核角标像素 3901 点 | ✅ |
+| M7-6 | 地图视图：`src/lib/map.ts`（`parseGeo` 只认右栏「经纬度/坐标/geo/位置坐标」、`projectGeo` 线性映射且北在上、单点留 0.002 最小跨度）、`src/components/views/MapView.tsx`（离线示意网格，无任何瓦片请求，明确标注「未加载瓦片」）、`viewModeStore` 增 `'map'`、演示数据两条坐标 | smoke [44] 7 条；ui-smoke 7 条 | ✅ |
+
+#### M7 验收记录（2026-10-19，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| 类型检查 | `tsc --noEmit` 0 error |
+| 逻辑层 | `pnpm smoke` **573 PASS / 0 FAIL**（M7 新增 61：[42] 多假设与证据链 23、[43] OCR 与生图 31、[44] 地图 7） |
+| 打包层 | `pnpm ui-smoke` **234 PASS / 0 FAIL**（M7 新增 41：锚点/假设/生图/OCR/地图）；`pnpm build` **834 modules**，主包 868.39 kB（gzip 295.69）、CSS 69.32 kB |
+| 桌面产物 | `tauri build --no-bundle` 2m46s → `caseboard.exe` v0.7.0；`run-selftest.cjs` 两轮 **PASS 17 / 18**（新增 AI 模拟图与 OCR 两条） |
+| 验收 1 多假设 | 同一证据可分别标支持/反驳；`hypothesisScore` 纯函数、同数据同分数；`compareHypotheses` 并排矩阵标出分歧（smoke [42] + ui-smoke 比较表） |
+| 验收 2 区域锚点 | 框选可绑定实体（`linkedNodeId`），悬停实体在图片内高亮对应框（`.is-hlit`），点锚点跳到素材库对应框 |
+| 验收 3 OCR | 转账截图文本抽出金额 `500000` / 时间 `2026-09-04T10:30:00` / 账号 `6222020200001234`，四个字段全部可人工改写后再写入 |
+| 验收 4 生图落库 | 生成结果先进预览，点「插入画布」才落素材库 `zone:'ai'` 分区；画布上带虚线边框与角标；**ComfyUI 本机未安装**，机器验收走内置通道（见偏离表） |
+| 验收 5 导出角标 | 角标写入像素（顶部窄带 + 右下角两处）、`aiMeta` 含提示词/负向/模型/种子/参数/时间；界面无任何移除开关 |
+| 验收 6 永不「已证实」 | `blocksConfirmed` + `updateNode` 命令层拦截：挂 AI 素材的实体改 `confirmed` 会被静默拒绝；摘掉素材后可改（smoke 两条断言正反面） |
+| 验收 7 换脸拦截 | 七类红线（换脸/换头/用真实照片合成/生成真人肖像/证件号等）返回中文解释，界面同时禁用「生成」 |
+| 验收 8 断网生图 | 内置通道零网络请求，桌面自检「零外呼」通过；`--selftest` 全程无任何非本机请求 |
+
+#### M7 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 本地 ComfyUI / SD WebUI 生图 | 本机未安装 ComfyUI（`C:\ComfyUI`、`%USERPROFILE%\ComfyUI` 均不存在）；已实现 `/prompt` + `/history` + `/view` 的完整客户端与七标准节点工作流 | 默认通道为**内置程序化绘制**（离线、确定性、承担机器验收），ComfyUI 通道可用但需用户安装并填模型文件；`--selftest` 只验内置通道 |
+| PaddleOCR / Tesseract 侧车 | 本机无 tesseract，`Store` 也没有可用入口 | Rust 侧车已实现（`ocr_available` / `ocr_image`），界面在引擎缺失时显示安装指引；字段解析与人工修正不依赖引擎，可用手工粘贴文本验收 |
+| 图生图（以已有素材为基准） | 未实现，只做文生图 | 记入 M8 之后；ComfyUI 工作流已预留 `LoadImage` 位置，接入时复用 `inspectAiPrompt` 与角标流程 |
+| 生成历史可复用与审计 | 只把 `aiMeta` 随素材保存，无独立生成日志表 | 审计报告与日志落在 M8「AI 合规审计」一并做（素材 `aiMeta` 已是审计的原始数据） |
+| 地图：离线/自配瓦片 | 做成**离线示意地图**（坐标只用于相对位置，明确标注未加载瓦片），不引入瓦片包与投影库 | 自配瓦片需要确定的瓦片来源与许可，留待用户明确版权后接；当前先保证断网可用与相对位置可读 |
+| 多假设「AI 统计支持度」 | 用确定性加权计分（置信度加权、反驳 ×0.6）而非模型打分 | 与 D40/D41 一致：门禁必须可复现，模型打分不能当验收 |
+
 ---
 
 ### M8 · 安全与打磨（2–3 周）
@@ -746,6 +785,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D42 | AI 草稿**采纳才落 Model**：`acceptAiDrafts` 是唯一写入口，按标题/别名合并既有节点，新建实体固定 `status:'todo'`，不写 `confirmed`；`acceptAll` 合成一条 Command，整批一次撤销 | Gate 0-4「AI 产出只进待确认队列」；合并而非复制避免同一人重复建卡；新实体不自动已证实，线型/置信度保留 AI 的保守值 | `src/commands/aiCommands.ts`、`src/store/aiStore.ts`、smoke [36] |
 | D43 | 报告 Word 用 **fflate 手写最小 OOXML**，PDF 用 **canvas + pdf-lib embedPng**（与整板 PDF 同路线）；两者共用同一份 Markdown，引用标记不因导出格式丢失 | 不新增 `docx` 依赖（离线、包体小、可控）；node 无 canvas，PDF 只能桌面/人工确认，Word 可机器解压断言 | `src/serializers/reportDocx.ts`、`src/serializers/reportPdf.ts`、smoke [39] |
 | D44 | 自然语言编辑**默认不吃「已证实」**：无证据措辞生成点线 40 / 虚线 55，只有明确「已证实/确认」才实线；删除必须 `hasDelete` + 勾选确认 + `applyNl` 二次校验 | 与 Gate 0-3 线型语义一致；AI/指令都不能凭一句话把推测升格为已证实；删除是不可逆高风险操作 | `src/lib/nlEdit.ts`、`src/store/aiStore.ts`、smoke [38]、ui-smoke |
+| D45 | AI 生图以**内置程序化绘制**为默认通道并承担全部机器验收；ComfyUI 与 OpenAI 兼容图像接口是可选增强，需用户自行安装/授权 | 本机没有 ComfyUI，验收 4/8 不能挂在一个没装的服务上；程序化绘制是纯函数 + canvas，同种子同结果，角标与像素可复核 | 内置通道画的是示意性笔触（非写实），`aiMeta.params.simulated = true`，界面文案一律「模拟图」；接 ComfyUI 时只换 `generateAiImage` 的分支 |
+| D46 | AI 图合规三道闸：角标**写进像素**（顶部窄带 + 右下角）、`aiGenerated` + 完整 `aiMeta`、`blocksConfirmed` 在 `updateNode` 命令层拦截「改成已证实」；界面不提供任何移除开关 | Gate 0-5 要求「不可关闭」，所以只能在生成与落库环节写死；拦截放在命令层而不是表单层，才能覆盖导入、DSL、AI 指令等所有写路径 | `src/lib/aiImage.ts`（`watermarkPlan` / `inspectAiAsset` / `blocksConfirmed`）、`src/services/aiImage.ts`（`stampWatermark` / `stampRemote`）、smoke [43]、自检角标 3901 点 |
+| D47 | 地图做成**离线示意地图**：只认右栏坐标字段做相对摆放，不请求瓦片、不引入投影库，界面常驻「未加载瓦片」声明 | 自配瓦片需要确定的来源与许可，且真实底图会让「坐标精确」变成隐含承诺；示意地图能立刻支撑「两地相距多远、谁在附近」这类案情判断，且断网可用 | `src/lib/map.ts`、`src/components/views/MapView.tsx`、`viewModeStore` 的 `'map'`；演示数据两条坐标 |
+| D48 | OCR 用 **Tesseract 侧车**（Rust 直接调 `tesseract --version` / `tesseract <path> stdout -l chi_sim+eng --psm 6`），字段抽取是独立纯函数层，可脱离引擎手工粘贴文本验证 | 侧车只负责「图片→文字」，金额/时间/账号的结构化与人工修正不该绑定某一家 OCR；换引擎时上层完全不动 | `src/services/ocr.ts`、`src-tauri/src/lib.rs` 的 `ocr_available` / `ocr_image`、`src/lib/ocr.ts`、smoke [43]、自检「OCR 字段抽取」 |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -769,4 +812,5 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M4 整体验收通过**（✅ 打 tag `ms/M4`）：Tauri 2 外壳 + SQLite/FTS5 + `.caseboard` 单文件 + 整板 PNG/SVG/PDF + 案件图片包 + 脱敏导出 + 自动保存/版本快照/回收站/历史面板落地；`caseboard.exe --selftest` 两轮 **14 + 15 项全绿**（数据跨进程完整、跨目录打开、零外呼、PDF 回读 2 页、脱敏 1024 像素可验证抹平）；§1 总表 M4 置 ✅、§3 写入 M4 拆步表与验收记录（含遗留与延期表），新增 D25–D33（Rust 装进工作区 / 二进制 base64 过 IPC / Rust 只做 IO / 模型驱动出图 / `--selftest` 通道 / 绝对路径存素材 / 数据目录可覆盖 + 建表提前 / PDF 关对象流 / 删除进回收站）；`pnpm smoke` **337 条**、`pnpm ui-smoke` 84 条、`pnpm bench` 75.7ms、`pnpm build` 469 modules。 |
 | 2026-10-19 | **M4 人工验收第二轮回执热修（A1 旋转 / A3 曲率手柄）**：旋转手柄被图层工具条压住（层级上下文）→ 工具条 `top:-60px` + window 指针监听；新增 `CaseEdge.controlPoints` 与 `src/lib/edgeCurve.ts`，选中关系可拖曲率手柄、双击复位，SVG/PNG 与画布共用曲线（D37 由延期改为已实现）；§3 增第二轮回执表并致谢「其余通过」；机器验收 smoke **359 条**、ui-smoke **90 条**、自检 14 + 15 全绿；「视觉对齐 / 折叠操作提示」语义待用户确认。 |
 | 2026-10-19 | **M6 整体验收通过**（✅ 打 tag `ms/M6`）：AI 文本能力五步落地——三通道与 P4–P7 提示词、内置抽取器待确认队列、矛盾与证据链审查、自然语言编辑 diff、七节报告与 Word/PDF 导出；`pnpm smoke` **513 条**（M6 新增 53）、`pnpm ui-smoke` **193 条**（新增 51）、桌面自检 **15/16**、版本 **0.6.0**；§3 拆步表与验收记录落地，新增 D41–D44。 |
+| 2026-10-19 | **M7 整体验收通过**（✅ 打 tag `ms/M7`）：多假设画布（支持/反驳计分与并排比较）、六段证据链与断点、区域锚点悬停高亮、OCR 四字段与人工修正、四预设 AI 生图（强制角标写像素 + AI 分区 + 永不已证实 + 换脸拦截）、离线示意地图六步落地；`pnpm smoke` **573 条**（新增 61）、`pnpm ui-smoke` **234 条**（新增 41）、桌面自检 **17/18**、版本 **0.7.0**；§1 M7 置 ✅、§3 写入拆步/验收/偏离三表，新增 D45–D48（内置生图兜底、生图三道闸、离线示意地图、Tesseract 侧车）。 |
 | 2026-10-19 | **M5 整体验收通过**（✅ 打 tag `ms/M5`）：分析视图五步落地——图内核（路径/中心度/五种布局/时间线）、过滤与聚焦、路径与中心度可视化、一键整理、时间线回放与演示模式；`pnpm smoke` **460 条**（M5 新增 101）、`pnpm ui-smoke` **142 条**（新增 52）、`pnpm build` 811 modules；§1 总表 M5 置 ✅，§3 写入 M5 拆步与验收记录（含与计划的五项偏离），新增 D38（演示模式先做逐步讲解）、D39（1× = 60 秒、UTC 口径）、D40（自写确定性 BFS/Brandes）。 |

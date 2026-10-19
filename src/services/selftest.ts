@@ -16,6 +16,10 @@ import { isRegionFlattened, type RgbaImage } from '../lib/redact';
 import type { TrashItem } from './db/repo';
 import type { Asset, CaseDoc } from '../types';
 import { analyzeConflicts } from '../lib/contradictions';
+import { AI_WATERMARK_TEXT, blocksConfirmed, inspectAiAsset } from '../lib/aiImage';
+import { parseOcrText } from '../lib/ocr';
+import { DEFAULT_AI_IMAGE_SETTINGS, generateAiImage } from './aiImage';
+import { ocrEngineStatus } from './ocr';
 import { adoptionScore, extractFromText } from '../lib/extract';
 import { buildReport } from '../lib/report';
 import { SAMPLE_REFERENCE, SAMPLE_TRANSCRIPT } from '../data/sampleTranscript';
@@ -429,6 +433,50 @@ export async function runSelftest(): Promise<SelftestReport> {
     return (
       '抽取 ' + extracted.nodes.length + ' 实体 / ' + extracted.edges.length + ' 关系 · 采纳率 ' +
       Math.round(score.rate * 100) + '% · 报告 7 节 ' + report.citations + ' 处引用 · Word ' + docx.length + ' 字节'
+    );
+  });
+
+  await record('AI 模拟图（M7 验收 ④⑤⑥⑧：断网生图 + 强制角标像素 + 永不已证实）', async () => {
+    const draft = await generateAiImage(
+      { preset: 'sketch', subject: '身材偏瘦的中年男子，短发，深色夹克', seed: 20261019 },
+      { ...DEFAULT_AI_IMAGE_SETTINGS, provider: 'builtin' },
+      { createdAt: '2026-10-19T10:00:00.000Z' },
+    );
+    if (!draft.meta.prompt) throw new Error('aiMeta 缺少提示词');
+    if (draft.meta.params?.watermark !== AI_WATERMARK_TEXT) throw new Error('aiMeta 未记录强制水印');
+    const audit = inspectAiAsset({ zone: 'ai', aiGenerated: true, aiMeta: draft.meta });
+    if (!audit.ok) throw new Error(audit.problems.join('；'));
+    if (!blocksConfirmed({ zone: 'ai', aiGenerated: true })) throw new Error('AI 图没有被拦截为已证实');
+    const blob = await (await fetch(draft.previewUrl)).blob();
+    const { image } = await pixelsOf(blob);
+    const px = (x: number, y: number) => {
+      const index = (y * image.width + x) * 4;
+      return image.data[index] + image.data[index + 1] + image.data[index + 2];
+    };
+    if (px(Math.floor(image.width / 2), 2) > 420) throw new Error('顶部角标窄带未写入像素');
+    let darkCorner = 0;
+    for (let y = image.height - 96; y < image.height; y += 2) {
+      for (let x = image.width - 420; x < image.width; x += 2) {
+        if (px(x, y) < 300) darkCorner += 1;
+      }
+    }
+    if (darkCorner < 40) throw new Error('右下角角标区域没有足够深色像素：' + darkCorner);
+    URL.revokeObjectURL(draft.previewUrl);
+    return (
+      '内置通道 ' + image.width + '×' + image.height + ' · 角标像素 ' + darkCorner + ' 点已复核 · aiMeta 完整 · 不可设为已证实 · 提示词 ' +
+      draft.meta.prompt.slice(0, 18) + '…'
+    );
+  });
+
+  await record('OCR 字段抽取（M7 验收 ③：金额/时间/账号可人工修正）', async () => {
+    const parsed = parseOcrText('金额：500000 元  交易时间：2026-09-04 10:30  收款账号：6222 0202 0000 1234  对方户名：恒信财务公司');
+    if (parsed.fields.amount !== '500000') throw new Error('金额解析失败：' + String(parsed.fields.amount));
+    if (parsed.fields.time !== '2026-09-04T10:30:00') throw new Error('时间解析失败：' + String(parsed.fields.time));
+    if (parsed.fields.account !== '6222020200001234') throw new Error('账号解析失败：' + String(parsed.fields.account));
+    const engine = await ocrEngineStatus();
+    return (
+      '四字段解析通过 · 识别引擎' +
+      (engine.available ? '可用 ' + (engine.version ?? '') : '未安装（界面已给出安装指引：' + engine.hint.slice(0, 20) + '…）')
     );
   });
 

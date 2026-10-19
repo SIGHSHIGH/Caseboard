@@ -2421,6 +2421,268 @@ async function main() {
     })(),
   );
 
+
+  console.log('[42] 多假设与证据链（M7-1 / M7-2）');
+  const {
+    addHypothesis,
+    updateHypothesis,
+    deleteHypothesis,
+    setStance,
+    clearStance,
+  } = require(path.join(out, 'commands', 'hypothesisCommands.js'));
+  const { hypothesisScore, rankHypotheses, compareHypotheses } = require(path.join(out, 'lib', 'hypothesis.js'));
+  const { CHAIN6_STAGES, buildEvidenceChain } = require(path.join(out, 'lib', 'evidenceChain.js'));
+  const { annotationsForNode, countAnchorsForNode } = require(path.join(out, 'lib', 'annotation.js'));
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m7Doc = doc();
+  check('演示数据带两个平行假设', m7Doc.hypotheses.length === 2 && m7Doc.hypotheses.every((item) => item.stances.length >= 3), m7Doc.hypotheses.map((item) => item.stances.length));
+  const m7Zhang = m7Doc.hypotheses.find((item) => item.id === 'hyp-zhang');
+  const m7ScoreA = hypothesisScore(m7Doc, m7Zhang);
+  const m7ScoreB = hypothesisScore(JSON.parse(JSON.stringify(m7Doc)), m7Zhang);
+  check(
+    '支持度计分可复现（同一文档两次同分）',
+    m7ScoreA.score === m7ScoreB.score && m7ScoreA.supportCount === 3 && m7ScoreA.refuteCount === 1,
+    [m7ScoreA.score, m7ScoreB.score],
+  );
+  const m7Rank = rankHypotheses(m7Doc);
+  check(
+    '假设按支持度降序排名，张建国主导假设领先',
+    m7Rank.length === 2 && m7Rank[0].hypothesis.id === 'hyp-zhang' && m7Rank[0].score.score >= m7Rank[1].score.score,
+    m7Rank.map((item) => [item.hypothesis.id, item.score.score]),
+  );
+  const m7Compare = compareHypotheses(m7Doc);
+  check(
+    '并排对比标出立场冲突的证据（张建国、疑似同伙）',
+    m7Compare.divergent.length >= 2 && m7Compare.divergent.some((row) => row.targetId === 'zhang') && m7Compare.divergent.some((row) => row.targetId === 'e-accomplice'),
+    m7Compare.divergent.map((row) => row.targetId),
+  );
+  const m7BeforeAdd = doc().hypotheses.length;
+  state().dispatch(addHypothesis({ title: '第三种解释', summary: '测试假设' }));
+  check('新增假设命令入栈', doc().hypotheses.length === m7BeforeAdd + 1 && doc().hypotheses[doc().hypotheses.length - 1].title === '第三种解释');
+  state().undo();
+  check('撤销新增假设后回到两条', doc().hypotheses.length === m7BeforeAdd);
+  state().dispatch(updateHypothesis('hyp-li', { title: '李梅独立走账' }));
+  check('修改假设标题生效', doc().hypotheses.find((item) => item.id === 'hyp-li').title === '李梅独立走账');
+  state().undo();
+  check('撤销修改后标题回原样', doc().hypotheses.find((item) => item.id === 'hyp-li').title === '李梅明知并参与走账');
+  const m7ScoreBefore = hypothesisScore(doc(), doc().hypotheses.find((item) => item.id === 'hyp-zhang')).refuteCount;
+  state().dispatch(setStance({ hypothesisId: 'hyp-zhang', targetId: 'li', targetKind: 'node', stance: 'refute' }));
+  const m7AfterStance = hypothesisScore(doc(), doc().hypotheses.find((item) => item.id === 'hyp-zhang'));
+  check(
+    '同一证据可以在假设里改标反驳，支持度立即变化',
+    m7AfterStance.refuteCount === m7ScoreBefore + 1 && m7AfterStance.score < m7ScoreA.score,
+    [m7ScoreA.score, m7AfterStance.score],
+  );
+  state().undo();
+  check('撤销立场后计分复原', hypothesisScore(doc(), doc().hypotheses.find((item) => item.id === 'hyp-zhang')).score === m7ScoreA.score);
+  state().dispatch(clearStance('hyp-zhang', 'zhang', 'node'));
+  check('清除立场后该证据不再参与计分', hypothesisScore(doc(), doc().hypotheses.find((item) => item.id === 'hyp-zhang')).supportCount === 2);
+  state().undo();
+  check('撤销清除立场后证据回到支持列表', hypothesisScore(doc(), doc().hypotheses.find((item) => item.id === 'hyp-zhang')).supportCount === 3);
+  state().dispatch(setStance({ hypothesisId: 'hyp-zhang', targetId: 'nobody', targetKind: 'node', stance: 'support' }));
+  check('不存在的目标不会写进立场表', doc().hypotheses.find((item) => item.id === 'hyp-zhang').stances.every((item) => item.targetId !== 'nobody'));
+  state().dispatch(deleteHypothesis('hyp-li'));
+  check('删除假设后只剩一条', doc().hypotheses.length === 1);
+  state().undo();
+  check('撤销删除假设后两条都在', doc().hypotheses.length === 2);
+  const m7Chain = buildEvidenceChain(doc());
+  check(
+    '证据链按「动机→预谋→准备→实施→逃离→销赃」固定六阶段排列',
+    m7Chain.stages.length === 6 && m7Chain.stages.map((stage) => stage.label).join('') === '动机预谋准备实施逃离销赃',
+    m7Chain.stages.map((stage) => stage.label),
+  );
+  const m7ChainDoc = JSON.parse(JSON.stringify(createDemoDoc()));
+  const m7Template = m7ChainDoc.nodes[0];
+  const m7StageNodes = [
+    ['m7-motive', '欠债动机', '因欠下大量债务而图财'],
+    ['m7-plan', '预谋商量', '与同伙事先商量并踩点'],
+    ['m7-prepare', '准备工具', '事先购买工具并准备银行卡'],
+    ['m7-act', '实施转账', '持刀威胁后实施转账'],
+    ['m7-launder', '销赃变现', '通过空壳公司洗钱套现'],
+  ];
+  m7StageNodes.forEach(([id, title, note], index) => {
+    const node = JSON.parse(JSON.stringify(m7Template));
+    node.id = id;
+    node.title = title;
+    node.type = 'event';
+    node.notes = note;
+    node.attachments = index === 3 ? ['ev1'] : [];
+    m7ChainDoc.nodes.push(node);
+  });
+  const m7FilledChain = buildEvidenceChain(m7ChainDoc);
+  check(
+    '阶段归类命中动机/预谋/准备/实施/销赃五段，逃离留空',
+    m7FilledChain.stages.filter((stage) => stage.items.length > 0).length === 5 && m7FilledChain.gaps.length === 1 && m7FilledChain.gaps[0] === 'escape',
+    m7FilledChain.gaps,
+  );
+  check(
+    '条目的证据支撑来自附件，缺证据的条目标为 weak',
+    m7FilledChain.stages.find((stage) => stage.id === 'act').items[0].weak === false && m7FilledChain.stages.find((stage) => stage.id === 'motive').items[0].weak === true,
+  );
+  check('演示数据的证据链存在断点，覆盖率低于 100%', m7Chain.gaps.length >= 1 && m7Chain.coverage < 100, [m7Chain.gaps, m7Chain.coverage]);
+  const m7AnchorDoc = createDemoDoc(true);
+  const m7Anchors = annotationsForNode(m7AnchorDoc, 'zhang');
+  check(
+    '区域锚点按节点查到素材与框，含素材编号',
+    m7Anchors.length === 1 && m7Anchors[0].assetId === 'a-demo-photo' && m7Anchors[0].shape === 'anchor' && Boolean(m7Anchors[0].assetNo),
+    m7Anchors,
+  );
+  check('没有绑定区域的节点返回空列表', annotationsForNode(m7AnchorDoc, 'li').length === 0 && countAnchorsForNode(m7AnchorDoc, 'zhang') === 1);
+  const m7Legacy = JSON.parse(JSON.stringify(createDemoDoc()));
+  delete m7Legacy.hypotheses;
+  check('旧存档没有 hypotheses 字段时迁移为空数组', normalizeDoc(m7Legacy).hypotheses.length === 0);
+  const m7Round = fromJson(toJson(createDemoDoc()));
+  check('JSON 往返保留假设与立场', m7Round.hypotheses.length === 2 && m7Round.hypotheses[0].stances.length === m7Doc.hypotheses[0].stances.length);
+
+
+  console.log('[43] OCR 结构化与 AI 生图红线（M7-3 / M7-4）');
+  const {
+    normalizeOcrText,
+    parseOcrText,
+    parseOcrAmount,
+    parseOcrTime,
+    parseOcrAccount,
+    maskAccount,
+    receiptToNodeFields,
+    ocrSummary,
+  } = require(path.join(out, 'lib', 'ocr.js'));
+  const {
+    AI_PRESETS,
+    AI_WATERMARK_TEXT,
+    buildAiMeta,
+    buildAiPrompt,
+    buildComfyWorkflow,
+    defaultAiSeed,
+    inspectAiAsset,
+    inspectAiPrompt,
+    proceduralSketch,
+    watermarkPlan,
+    blocksConfirmed,
+  } = require(path.join(out, 'lib', 'aiImage.js'));
+  const m7OcrText = '转账成功\n金额：￥５００，０００.００\n收款方：恒信财务公司\n账号：6222 0202 0000 1234\n时间：2026年9月4日 9时12分';
+  const m7Ocr = parseOcrText(m7OcrText);
+  check(
+    'OCR 归一化全角数字与标点',
+    normalizeOcrText('金额：１２３．４５，元') === '金额:123.45,元' && normalizeOcrText('２０２６年９月４日') === '2026年9月4日',
+  );
+  check(
+    '转账截图抽出金额 500000',
+    m7Ocr.fields.amount === '500000',
+    m7Ocr.fields.amount,
+  );
+  check('抽出交易时间并按 ISO 墙上时间归一', m7Ocr.fields.time === '2026-09-04T09:12:00', m7Ocr.fields.time);
+  check('抽出账号并去掉空格', m7Ocr.fields.account === '6222020200001234', m7Ocr.fields.account);
+  check('抽出对方户名', m7Ocr.fields.counterparty === '恒信财务公司', m7Ocr.fields.counterparty);
+  check('四项齐全时没有缺失项且置信度 ≥90', m7Ocr.missing.length === 0 && m7Ocr.confidence >= 90, m7Ocr);
+  check('空文本四项全缺、置信度回落到 40', parseOcrText('').missing.length === 4 && parseOcrText('').confidence === 40);
+  check('万元按万换算：3.5 万元 → 35000', parseOcrAmount('转账金额：3.5万元') === '35000', parseOcrAmount('转账金额：3.5万元'));
+  check('无标签的 ¥ 金额也能抽', parseOcrAmount('实付 ¥1,280.00') === '1280', parseOcrAmount('实付 ¥1,280.00'));
+  check('非法日期不被当成时间', parseOcrTime('2026年13月40日') === null && parseOcrTime('2026-09-04') === '2026-09-04T00:00:00');
+  check('16 位以下数字不算账号', parseOcrAccount('订单号 1234567890') === null && parseOcrAccount('卡号 6222 0202 0000 1234') === '6222020200001234');
+  check('账号脱敏只露前四后四', maskAccount('6222020200001234') === '6222 **** **** 1234', maskAccount('6222020200001234'));
+  const m7OcrFields = receiptToNodeFields(m7Ocr);
+  check(
+    '字段映射到节点属性（金额带单位、时间原样）',
+    m7OcrFields['金额'] === '500000 元' && m7OcrFields['交易时间'] === '2026-09-04T09:12:00' && m7OcrFields['对方户名'] === '恒信财务公司',
+    m7OcrFields,
+  );
+  check('OCR 摘要一行点出关键字段', ocrSummary(m7Ocr).includes('金额 500000 元') && ocrSummary(m7Ocr).includes('账号 6222 **** **** 1234'), ocrSummary(m7Ocr));
+  const m7GuardFace = inspectAiPrompt('把李梅的照片换脸到张建国身上');
+  check('换脸类提示词被拒并说明原因', m7GuardFace.ok === false && m7GuardFace.message.includes('换脸') && m7GuardFace.reasons.length >= 1, m7GuardFace);
+  check('用真实照片合成/生成特定真人照片也被拒', inspectAiPrompt('用张三的证件照合成一个嫌疑人正面照').ok === false && inspectAiPrompt('生成王五的肖像').ok === false);
+  check('正常示意图描述通过红线检查', inspectAiPrompt('五十岁左右男性，圆脸，短发，穿深色夹克').ok === true);
+  const m7Spec = { preset: 'sketch', subject: '五十岁左右男性，圆脸短发', seed: 20261019 };
+  const m7Pack = buildAiPrompt(m7Spec);
+  check(
+    '提示词包含预设风格、主体、水印要求与模拟声明',
+    m7Pack.prompt.includes('模拟画像') && m7Pack.prompt.includes('圆脸短发') && m7Pack.prompt.includes(AI_WATERMARK_TEXT) && m7Pack.prompt.includes('不是真实照片'),
+  );
+  check('负向提示词包含真实照片与换脸', m7Pack.negativePrompt.includes('真实照片') && m7Pack.negativePrompt.includes('换脸'));
+  check('四个预设齐全且都有中文名与尺寸', ['sketch', 'scene', 'item', 'enhance'].every((key) => Boolean(AI_PRESETS[key].label) && AI_PRESETS[key].width > 0));
+  const m7Meta = buildAiMeta({ spec: m7Spec, provider: 'builtin', model: 'builtin-procedural', seed: 20261019, createdAt: '2026-10-19T00:00:00.000Z' });
+  check(
+    'aiMeta 完整：预设/正负提示词/模型/种子/水印/模拟声明',
+    m7Meta.preset === 'sketch' && m7Meta.seed === 20261019 && m7Meta.params.watermark === AI_WATERMARK_TEXT && m7Meta.params.simulated === true && m7Meta.params.provider === 'builtin' && m7Meta.createdAt === '2026-10-19T00:00:00.000Z',
+    m7Meta,
+  );
+  check(
+    'AI 素材四项硬校验：分区 / aiGenerated / aiMeta / 水印记录',
+    inspectAiAsset({ zone: 'ai', aiGenerated: true, aiMeta: m7Meta }).ok === true &&
+      inspectAiAsset({ zone: 'evidence', aiGenerated: true, aiMeta: m7Meta }).ok === false &&
+      inspectAiAsset({ zone: 'ai', aiGenerated: true }).ok === false,
+  );
+  check('AI 素材永远不能算已证实', blocksConfirmed({ zone: 'ai', aiGenerated: true }) === true && blocksConfirmed({ zone: 'evidence', aiGenerated: false }) === false);
+  check(
+    '同一描述与日期得到同一种子，不同描述不同种子',
+    defaultAiSeed('圆脸短发') === defaultAiSeed('圆脸短发') && defaultAiSeed('圆脸短发') !== defaultAiSeed('长发女性'),
+  );
+  const m7OpsA = proceduralSketch('sketch', 20261019, 640, 480);
+  const m7OpsB = proceduralSketch('sketch', 20261019, 640, 480);
+  const m7OpsC = proceduralSketch('sketch', 20261020, 640, 480);
+  check(
+    '内置生成器同种子同笔触、换种子不同（断网可复现）',
+    JSON.stringify(m7OpsA) === JSON.stringify(m7OpsB) && JSON.stringify(m7OpsA) !== JSON.stringify(m7OpsC) && m7OpsA.length >= 20,
+    m7OpsA.length,
+  );
+  check('四种预设都能规划笔触', ['sketch', 'scene', 'item', 'enhance'].every((preset) => proceduralSketch(preset, 7, 640, 480).length >= 4));
+  const m7Plan = watermarkPlan(768, 960);
+  check(
+    '水印几何在右下角内缩，字号随图缩放',
+    m7Plan.text === AI_WATERMARK_TEXT && m7Plan.x < 768 && m7Plan.y < 960 && m7Plan.fontSize >= 12 && watermarkPlan(320, 240).fontSize === 12,
+    m7Plan,
+  );
+  const m7Workflow = buildComfyWorkflow(m7Pack, { checkpoint: 'sd_xl_base_1.0.safetensors', width: 768, height: 960, seed: -5 });
+  check(
+    'ComfyUI 工作流含标准文生图七节点且种子夹成正数',
+    Object.keys(m7Workflow).length === 7 && m7Workflow['1'].class_type === 'CheckpointLoaderSimple' && m7Workflow['7'].class_type === 'SaveImage' && m7Workflow['5'].inputs.seed === 5,
+  );
+  // 命令层兜底：挂了 AI 素材的实体被强制拦截「已证实」
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m7AiAsset = { id: 'a-ai-test', path: '/tmp/a.png', kind: 'image', hash: 'h', thumbnails: [], zone: 'ai', aiGenerated: true, aiMeta: m7Meta, annotations: [] };
+  const { addAsset, updateNode } = require(path.join(out, 'commands', 'index.js'));
+  state().dispatch(addAsset(m7AiAsset));
+  state().dispatch(updateNode('zhang', { status: 'checking' }));
+  state().dispatch(updateNode('zhang', { attachments: ['a-ai-test'] }));
+  state().dispatch(updateNode('zhang', { status: 'confirmed' }));
+  check('挂了 AI 模拟图的实体无法改成已证实（命令层拦截）', doc().nodes.find((node) => node.id === 'zhang').status === 'checking', doc().nodes.find((node) => node.id === 'zhang').status);
+  state().dispatch(updateNode('zhang', { attachments: [] }));
+  state().dispatch(updateNode('zhang', { status: 'confirmed' }));
+  check('摘掉 AI 素材后可以正常改成已证实', doc().nodes.find((node) => node.id === 'zhang').status === 'confirmed');
+
+
+  console.log('[44] 地图视图坐标解析（M7）');
+  {
+    const { parseGeo, geoPoints, projectGeo } = require(path.join(out, 'lib', 'map.js'));
+    check('解析右栏经纬度字段', (() => {
+      const p = parseGeo({ 经纬度: '31.2304,121.4737' });
+      return !!p && Math.abs(p.lat - 31.2304) < 1e-9 && Math.abs(p.lng - 121.4737) < 1e-9;
+    })());
+    check('支持全角逗号与空格', (() => {
+      const p = parseGeo({ 经纬度: ' 31.2304 ， 121.4737 ' });
+      return !!p && Math.abs(p.lat - 31.2304) < 1e-9 && Math.abs(p.lng - 121.4737) < 1e-9;
+    })());
+    check('越界或缺失坐标被拒绝', parseGeo({ 经纬度: '91,200' }) === null && parseGeo({ 经纬度: 'abc' }) === null && parseGeo({}) === null);
+    check('只把带坐标的实体放上地图', (() => {
+      const pts = geoPoints(createDemoDoc().nodes);
+      return pts.length === 2 && pts.every((p) => typeof p.lat === 'number' && !!p.node.id);
+    })());
+    check('没有经纬度字段时不产点', geoPoints([{ ...createDemoDoc().nodes[0], fields: {} }]).length === 0);
+    check('投影到示意图坐标系且北在上', (() => {
+      const pts = geoPoints(createDemoDoc().nodes);
+      const pos = projectGeo(pts);
+      const a = pos.get(pts[0].node.id);
+      const b = pos.get(pts[1].node.id);
+      if (!a || !b) return false;
+      const north = pts[0].lat >= pts[1].lat ? a : b;
+      const south = pts[0].lat >= pts[1].lat ? b : a;
+      return north.y < south.y && [a.x, a.y, b.x, b.y].every((v) => v >= 0 && v <= 1000);
+    })());
+    check('单点也能落在画布内', (() => {
+      const pos = projectGeo([{ node: createDemoDoc().nodes[0], lat: 31.2, lng: 121.4 }]);
+      const p = pos.get(createDemoDoc().nodes[0].id);
+      return !!p && p.x > 0 && p.x < 1000 && p.y > 0 && p.y < 620;
+    })());
+  }
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

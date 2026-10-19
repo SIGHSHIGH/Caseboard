@@ -1,4 +1,5 @@
 import type { CaseNode, NodeComment, NodeType, Status } from '../types';
+import { blocksConfirmed } from '../lib/aiImage';
 import { newId } from '../lib/id';
 import { NODE_TYPE_META } from '../lib/theme';
 import type { Command } from './types';
@@ -53,7 +54,14 @@ export function updateNode(id: string, patch: Partial<Omit<CaseNode, 'id'>>): Co
     apply(draft) {
       const node = draft.nodes.find((n) => n.id === id);
       if (!node) return;
-      Object.assign(node, patch);
+      const next: Partial<Omit<CaseNode, 'id'>> = { ...patch };
+      // Gate 0-5：挂了 AI 模拟图的实体永远不能标「已证实」，命令层兜底（界面也会禁用）
+      if (next.status === 'confirmed') {
+        const linked = [node.photo, ...node.attachments].filter((item): item is string => Boolean(item));
+        const hasAi = linked.some((assetId) => blocksConfirmed(draft.assets.find((asset) => asset.id === assetId)));
+        if (hasAi) delete next.status;
+      }
+      Object.assign(node, next);
       draft.meta.updatedAt = new Date().toISOString();
     },
   };

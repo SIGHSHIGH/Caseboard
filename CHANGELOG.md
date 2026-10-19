@@ -2,6 +2,18 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.7.0 · M7 高级功能 + AI 生图
+
+### M7 整体验收通过（2026-10-19，tag ms/M7）
+
+- **多假设画布**（`src/lib/hypothesis.ts` + `src/commands/hypothesisCommands.ts` + `HypothesisPanel.tsx`）：同一证据可分别标支持/反驳，支持度按置信度加权、反驳 ×0.6 折算，-100..100 可复现；排行榜与并排比较表标出「分歧」证据。
+- **六段证据链**（`src/lib/evidenceChain.ts`）：动机→预谋→准备→实施→逃离→销赃纵向排列，证据来源取相邻关系的 `evidenceIds` 与节点附件，自动标断点（missing）与弱证据（weak）。
+- **区域锚点增强**（`src/lib/annotation.ts` 的 `annotationsForNode` 等 + `FreeImageNode` 的 `.cb-free-image__anchor`）：框选区域可绑定实体，悬停或选中实体时在图片中高亮对应框，点锚点跳到素材库。
+- **OCR 结构化**（`src/lib/ocr.ts` + `src/services/ocr.ts` + Rust `ocr_available`/`ocr_image`）：全角归一化后抽金额/时间/账号/对方户名，四个字段全部可人工改写；右栏可一键「写入素材」或「生成证据卡」；引擎缺失时给出 Tesseract 安装指引。
+- **AI 生图**（`src/lib/aiImage.ts` + `src/services/aiImage.ts` + `AiImagePanel.tsx`）：四预设（模拟画像/场景复原/物品示意/图像增强），三通道（内置程序化绘制默认、ComfyUI、OpenAI 兼容图像接口）；七类换脸/伪造红线在输入时即拒绝并解释；角标写进像素（顶部窄带 + 右下角）且界面无移除开关；`aiMeta` 记全提示词/负向/模型/种子/参数/时间；落素材库 `zone:'ai'` 分区，画布上虚线边框；`updateNode` 命令层拦截「AI 图改已证实」。
+- **离线示意地图**（`src/lib/map.ts` + `MapView.tsx`）：按右栏「经纬度」字段相对摆放实体，不请求任何瓦片，常驻「未加载瓦片」声明。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **573 条全绿**（M7 新增 61：[42] 23 / [43] 31 / [44] 7）、`pnpm ui-smoke` **234 条全绿**（新增 41）、`pnpm build` 834 modules、`tauri build --no-bundle` 2m46s、`run-selftest.cjs` 两轮 **PASS 17 / 18**（新增 AI 模拟图角标像素复核与 OCR 字段抽取）。
+- **文档**：`docs/MILESTONES.md` §1 M7 置 ✅、§3 拆步表 + 验收记录 + 偏离表（ComfyUI/PaddleOCR 未安装、图生图与生成日志延期、地图无瓦片）、§6 新增 D45–D48、§7 一行；`docs/MANUAL-ACCEPTANCE.md` 新增 G 节；版本三处升 0.7.0。
 ## [未发布] v0.6.0 · M6 AI 文本能力
 
 ### M6 整体验收通过（2026-10-19，tag ms/M6）

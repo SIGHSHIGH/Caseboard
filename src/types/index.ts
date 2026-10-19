@@ -199,6 +199,45 @@ export interface Settings {
   lineLegend: Record<string, { label: string; style: LineStyle; color: string }>;
 }
 
+/** 多假设里的证据立场（M7）：同一证据在不同假设中可支持或反驳 */
+export type EvidenceStance = 'support' | 'refute';
+
+export interface HypothesisStance {
+  targetId: string;
+  targetKind: 'node' | 'edge' | 'asset';
+  stance: EvidenceStance;
+  note?: string;
+}
+
+/**
+ * 平行假设：节点/关系/素材只有一份（Gate 0-1），每个假设记录自己的立场表。
+ * 支持度由 src/lib/hypothesis.ts 按置信度确定性地算出（D45）。
+ */
+export interface Hypothesis {
+  id: string;
+  title: string;
+  summary?: string;
+  stances: HypothesisStance[];
+  status: 'active' | 'archived';
+  createdAt: string;
+}
+
+/** OCR 结构化结果（M7-3）：四项关键字段 + 缺失清单 + 置信度 */
+export interface OcrFields {
+  amount?: string;
+  time?: string;
+  account?: string;
+  counterparty?: string;
+}
+
+export interface OcrParseResult {
+  fields: OcrFields;
+  missing: string[];
+  confidence: number;
+  /** 归一化后的全文，供人工修正时回填 */
+  text: string;
+}
+
 export interface CaseDoc {
   meta: {
     id: string;
@@ -214,5 +253,7 @@ export interface CaseDoc {
   /** 自由图片节点：不依附卡片、直接钉在画布上的图片（M2-4） */
   imageNodes: ImageNode[];
   views: View[];
+  /** 多假设（M7）：共享同一份节点与素材，立场按假设分别记录 */
+  hypotheses: Hypothesis[];
   settings: Settings;
 }

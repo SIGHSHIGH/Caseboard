@@ -58,7 +58,7 @@ export function createDemoDoc(withImage = false): CaseDoc {
         w: 208,
         h: 96,
         groupId: 'g-suspect',
-        fields: { 性质: '空壳公司', 注册地: '常州' },
+        fields: { 性质: '空壳公司', 注册地: '常州', 经纬度: '31.2243,121.4768' },
         tags: ['涉案组织'],
         status: 'checking',
         confidence: 60,
@@ -72,7 +72,7 @@ export function createDemoDoc(withImage = false): CaseDoc {
         y: 420,
         w: 208,
         h: 96,
-        fields: { 地点类型: '商业', 地址: '钟楼区XX路12号', 是否现场: '是' },
+        fields: { 地点类型: '商业', 地址: '钟楼区XX路12号', 是否现场: '是', 经纬度: '31.2304,121.4737' },
         tags: ['现场'],
         status: 'todo',
         confidence: 55,
@@ -267,6 +267,34 @@ export function createDemoDoc(withImage = false): CaseDoc {
           },
         ]
       : [],
+    hypotheses: [
+      {
+        id: 'hyp-zhang',
+        title: '张建国主导的诈骗',
+        summary: '张建国虚构工程身份取得李梅信任，指示其把涉案资金转入空壳公司。',
+        status: 'active',
+        createdAt: '2026-09-20T09:00:00.000Z',
+        stances: [
+          { targetId: 'zhang', targetKind: 'node', stance: 'support' },
+          { targetId: 'li', targetKind: 'node', stance: 'support', note: '受骗方' },
+          { targetId: 'e-transfer', targetKind: 'edge', stance: 'support' },
+          { targetId: 'e-accomplice', targetKind: 'edge', stance: 'refute', note: '尚无双人共谋的书证' },
+        ],
+      },
+      {
+        id: 'hyp-li',
+        title: '李梅明知并参与走账',
+        summary: '李梅对资金性质知情，独立完成转账并收取好处。',
+        status: 'active',
+        createdAt: '2026-09-20T09:30:00.000Z',
+        stances: [
+          { targetId: 'li', targetKind: 'node', stance: 'support' },
+          { targetId: 'zhang', targetKind: 'node', stance: 'refute', note: '无直接指使证据' },
+          { targetId: 'e-transfer', targetKind: 'edge', stance: 'support' },
+          { targetId: 'e-accomplice', targetKind: 'edge', stance: 'support' },
+        ],
+      },
+    ],
     views: [{ id: 'view-timeline', kind: 'timeline', name: '案发经过', filters: {} }],
     settings: {
       theme: 'whiteboard',

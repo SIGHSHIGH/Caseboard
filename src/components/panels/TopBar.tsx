@@ -11,6 +11,8 @@ import type { LineStyle } from '../../types';
 import { ExportDialog } from './ExportDialog';
 import { HistoryDialog } from './HistoryDialog';
 import { AiPanel } from './AiPanel';
+import { AiImagePanel } from './AiImagePanel';
+import { HypothesisPanel } from './HypothesisPanel';
 
 const LEGEND: LineStyle[] = ['solid', 'dashed', 'dotted'];
 
@@ -18,6 +20,7 @@ const VIEW_TABS: Array<{ id: ViewMode; label: string; hint: string }> = [
   { id: 'board', label: '画布', hint: '图形视图：拖拽、连线、分组' },
   { id: 'timeline', label: '时间线', hint: '按时间播放案件经过' },
   { id: 'present', label: '演示', hint: '逐项讲解实体与关联' },
+  { id: 'map', label: '地图', hint: '按经纬度摆放到离线示意地图' },
 ];
 
 function errorText(error: unknown): string {
@@ -42,6 +45,8 @@ export function TopBar() {
   const [exportOpen, setExportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [hypOpen, setHypOpen] = useState(false);
+  const [aiImageOpen, setAiImageOpen] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
 
   const handleSaveProject = async () => {
@@ -164,7 +169,23 @@ export function TopBar() {
         </button>
         <button
           type="button"
-          className={`cb-btn${aiOpen ? ' is-active' : ''}`}
+          className={'cb-btn' + (hypOpen ? ' is-active' : '')}
+          title="假设与证据链：多假设并排比较、支持/反驳标注、六阶段断点"
+          onClick={() => setHypOpen(true)}
+        >
+          假设
+        </button>
+        <button
+          type="button"
+          className={'cb-btn' + (aiImageOpen ? ' is-active' : '')}
+          title="AI 生图：四预设示意图，角标写入像素，只进 AI 分区"
+          onClick={() => setAiImageOpen(true)}
+        >
+          生图
+        </button>
+        <button
+          type="button"
+          className={'cb-btn' + (aiOpen ? ' is-active' : '')}
           title="AI 助手：抽取建图 / 矛盾审查 / 自然语言编辑 / 报告（本地优先）"
           onClick={() => setAiOpen(true)}
         >
@@ -197,6 +218,8 @@ export function TopBar() {
       {exportOpen ? <ExportDialog onClose={() => setExportOpen(false)} /> : null}
       {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
       {aiOpen ? <AiPanel onClose={() => setAiOpen(false)} /> : null}
+      {hypOpen ? <HypothesisPanel onClose={() => setHypOpen(false)} /> : null}
+      {aiImageOpen ? <AiImagePanel onClose={() => setAiImageOpen(false)} /> : null}
     </header>
   );
 }

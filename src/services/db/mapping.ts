@@ -244,6 +244,7 @@ export function rowsToDoc(rows: {
     assets: (rows.assetRows ?? []).map(rowToAsset),
     imageNodes: [],
     views: (rows.viewRows ?? []).map(rowToView),
+    hypotheses: [],
     settings: { theme: 'board', lineLegend: {} },
   };
 }

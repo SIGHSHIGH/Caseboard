@@ -224,10 +224,10 @@ function check(name, condition, detail) {
   const assetsDir = path.join(__dirname, '..', 'dist', 'assets');
   const cssName = fs.readdirSync(assetsDir).find((name) => name.endsWith('.css'));
   const cssText = cssName ? fs.readFileSync(path.join(assetsDir, cssName), 'utf8') : '';
-  const barRule = (cssText.match(/\.cb-free-image__bar\{[^}]*\}/) || [''])[0];
-  check('工具栏抬到旋转手柄之上（top:-60px）', barRule.includes('top:-60px'), barRule.slice(0, 120));
-  const curveRule = (cssText.match(/\.cb-curve-handle\{[^}]*\}/) || [''])[0];
-  check('曲率手柄样式已打包', curveRule.includes('z-index:7') && curveRule.includes('pointer-events:all'), curveRule.slice(0, 160));
+  const barRule = (cssText.match(/\.cb-free-image__bar\s*\{[^}]*\}/) || [''])[0];
+  check('工具栏抬到旋转手柄之上（top:-60px）', /top:\s*-60px/.test(barRule), barRule.slice(0, 120));
+  const curveRule = (cssText.match(/\.cb-curve-handle\s*\{[^}]*\}/) || [''])[0];
+  check('曲率手柄样式已打包', /z-index:\s*7/.test(curveRule) && /pointer-events:\s*all/.test(curveRule), curveRule.slice(0, 160));
   const firstEdge = doc.querySelector('.react-flow__edge');
   if (firstEdge) firstEdge.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
   await new Promise((resolve) => setTimeout(resolve, 250));
@@ -339,7 +339,7 @@ function check(name, condition, detail) {
 
   console.log('[UI] M5-5 时间线与演示视图');
   const viewTabs = [...doc.querySelectorAll('.cb-viewtab')];
-  check('顶栏有三个视图切换按钮', viewTabs.length === 3, viewTabs.map((tab) => tab.textContent));
+  check('顶栏有四个视图切换按钮', viewTabs.length === 4 && viewTabs.some((tab) => tab.textContent === '地图'), viewTabs.map((tab) => tab.textContent));
   const timelineTab = viewTabs.find((tab) => (tab.textContent || '') === '时间线');
   check('视图按钮含「时间线」', !!timelineTab);
   if (timelineTab) timelineTab.click();
@@ -354,8 +354,8 @@ function check(name, condition, detail) {
     doc.querySelectorAll('.cb-timeline__track').length === doc.querySelectorAll('.cb-timeline__lane').length,
     [doc.querySelectorAll('.cb-timeline__track').length, doc.querySelectorAll('.cb-timeline__lane').length],
   );
-  const bandRule = (cssText.match(/\.cb-timeline__band\{[^}]*\}/) || [''])[0];
-  check('区间条带样式已打包（绝对定位 + 不挡点击）', bandRule.includes('position:absolute') && bandRule.includes('pointer-events:none'), bandRule.slice(0, 160));
+  const bandRule = (cssText.match(/\.cb-timeline__band\s*\{[^}]*\}/) || [''])[0];
+  check('区间条带样式已打包（绝对定位 + 不挡点击）', /position:\s*absolute/.test(bandRule) && /pointer-events:\s*none/.test(bandRule), bandRule.slice(0, 160));
   const presentTab = [...doc.querySelectorAll('.cb-viewtab')].find((tab) => (tab.textContent || '') === '演示');
   check('视图按钮含「演示」', !!presentTab);
   if (presentTab) presentTab.click();
@@ -490,6 +490,65 @@ function check(name, condition, detail) {
   check('关闭后 AI 面板移除', doc.querySelector('.cb-ai') === null);
   check('采纳的实体留在画布上', doc.querySelectorAll('.cb-node').length > aiNodesBefore, [aiNodesBefore, doc.querySelectorAll('.cb-node').length]);
 
+
+  console.log('[UI] M7 区域锚点 / 假设比较 / AI 生图 / OCR');
+  check('图片节点渲染区域锚点', doc.querySelectorAll('.cb-free-image__anchor').length >= 1, doc.querySelectorAll('.cb-free-image__anchor').length);
+  const anchorEl = doc.querySelector('.cb-free-image__anchor');
+  check('锚点提示绑定到实体', (anchorEl?.getAttribute('title') || '').includes('张建国'), anchorEl?.getAttribute('title'));
+  check('顶栏有「假设」按钮', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').trim() === '假设'));
+  check('可打开假设面板', await clickByText('.cb-topbar__io .cb-btn', '假设'));
+  check('假设面板已渲染', doc.querySelector('.cb-hyp') !== null);
+  check('列出演示数据的两条假设', doc.querySelectorAll('.cb-hyp__item').length === 2, doc.querySelectorAll('.cb-hyp__item').length);
+  check('两条假设都有支持度分数', doc.querySelectorAll('.cb-hyp__score').length === 2, doc.querySelectorAll('.cb-hyp__score').length);
+  check('并排比较表已渲染', doc.querySelectorAll('.cb-hyp__table tbody tr').length >= 3, doc.querySelectorAll('.cb-hyp__table tbody tr').length);
+  check('标出存在分歧的证据', doc.querySelectorAll('.cb-hyp__diff').length >= 1, doc.querySelectorAll('.cb-hyp__diff').length);
+  check('有支持 / 反驳按钮', (doc.querySelector('.cb-hyp__stance-ops')?.textContent || '').includes('支持') && (doc.querySelector('.cb-hyp__stance-ops')?.textContent || '').includes('反驳'));
+  check('可切到证据链页', await clickByText('.cb-hyp__tabs .cb-btn', '证据链'));
+  check('证据链六阶段', doc.querySelectorAll('.cb-hyp__stage').length === 6, doc.querySelectorAll('.cb-hyp__stage').length);
+  check('证据链标出断点', doc.querySelectorAll('.cb-hyp__badge').length === 6, doc.querySelectorAll('.cb-hyp__badge').length);
+  check('可关闭假设面板', await clickByText('.cb-hyp__head .cb-btn', '关闭'));
+  check('假设面板已移除', doc.querySelector('.cb-hyp') === null);
+
+  check('顶栏有「生图」按钮', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').trim() === '生图'));
+  check('可打开生图面板', await clickByText('.cb-topbar__io .cb-btn', '生图'));
+  check('生图面板已渲染', doc.querySelector('.cb-aiimg') !== null);
+  check('四个生图预设', doc.querySelectorAll('.cb-aiimg__presets .cb-btn').length === 4, doc.querySelectorAll('.cb-aiimg__presets .cb-btn').length);
+  check('生图面板声明强制角标', (doc.querySelector('.cb-aiimg__sub')?.textContent || '').includes('AI 生成 · 模拟图'), doc.querySelector('.cb-aiimg__sub')?.textContent?.slice(0, 50));
+  check('三个生图通道', doc.querySelectorAll('.cb-aiimg__provider').length === 3, doc.querySelectorAll('.cb-aiimg__provider').length);
+  const aiImageInput = doc.querySelector('.cb-aiimg__input');
+  await setInputValue(aiImageInput, '把张三的脸换到李四身上');
+  check('换脸提示词被界面拒绝', (doc.querySelector('.cb-aiimg__blocked')?.textContent || '').includes('拒绝生成'), doc.querySelector('.cb-aiimg__blocked')?.textContent);
+  check('拦截时不显示「插入画布」', ![...doc.querySelectorAll('.cb-aiimg .cb-btn')].some((b) => (b.textContent || '').includes('插入画布')));
+  await setInputValue(aiImageInput, '身材偏瘦的中年男子，短发，深色夹克');
+  check('正常描述解除拦截', doc.querySelector('.cb-aiimg__blocked') === null);
+  check('可关闭生图面板', await clickByText('.cb-aiimg__head .cb-btn', '关闭'));
+
+  check('可回到素材标签（OCR）', await clickByText('.cb-tabs .cb-tab', '素材'));
+  const ocrTile = doc.querySelector('.cb-asset');
+  if (ocrTile) ocrTile.click();
+  await sleep(150);
+  check('素材面板有 OCR 区块', (doc.querySelector('.cb-panel--right')?.textContent || '').includes('文字识别与字段抽取'));
+  const ocrInput = doc.querySelector('.cb-ocr__text');
+  await setInputValue(ocrInput, '金额：500000 元  交易时间：2026-09-04 10:30  收款账号：6222 0202 0000 1234  对方户名：恒信财务公司');
+  check('可解析 OCR 字段', await clickByText('.cb-ocr .cb-btn', '解析金额'));
+  check('解析出四个字段', doc.querySelectorAll('.cb-ocr__fields input').length === 4, doc.querySelectorAll('.cb-ocr__fields input').length);
+  const ocrValues = [...doc.querySelectorAll('.cb-ocr__fields input')].map((el) => el.value);
+  check('金额与时间解析正确', ocrValues[0] === '500000' && ocrValues[1] === '2026-09-04T10:30:00', ocrValues);
+  check('账号解析为 16 位以上数字', ocrValues[2] === '6222020200001234', ocrValues[2]);
+  check('账号脱敏显示', (doc.querySelector('.cb-ocr__fields')?.textContent || '').includes('6222 **** **** 1234'));
+  const ocrNodesBefore = doc.querySelectorAll('.cb-node').length;
+  check('可生成证据卡', await clickByText('.cb-ocr .cb-btn', '生成证据卡'));
+  await sleep(250);
+  check('证据卡已落到画布', doc.querySelectorAll('.cb-node').length === ocrNodesBefore + 1, [ocrNodesBefore, doc.querySelectorAll('.cb-node').length]);
+
+  console.log('[UI] M7 离线地图视图');
+  check('可切到地图视图', await clickByText('.cb-viewtab', '地图'));
+  check('地图视图已渲染', doc.querySelector('.cb-map') !== null);
+  check('两个带坐标的实体已上图', doc.querySelectorAll('.cb-map__pin').length === 2, doc.querySelectorAll('.cb-map__pin').length);
+  check('图例声明离线无瓦片', (doc.querySelector('.cb-map__legend')?.textContent || '').includes('未加载瓦片'), doc.querySelector('.cb-map__legend')?.textContent);
+  check('坐标标签可读', (doc.querySelector('.cb-map__coord')?.textContent || '').includes('31.'), doc.querySelector('.cb-map__coord')?.textContent);
+  check('可切回画布视图', await clickByText('.cb-viewtab', '画布'));
+  check('切回后地图移除', doc.querySelector('.cb-map') === null);
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

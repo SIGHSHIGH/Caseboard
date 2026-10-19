@@ -47,3 +47,11 @@ export {
   clearAnnotations,
 } from './annotationCommands';
 export type { AnnotationPatch } from './annotationCommands';
+export {
+  addHypothesis,
+  updateHypothesis,
+  deleteHypothesis,
+  setStance,
+  clearStance,
+} from './hypothesisCommands';
+export type { AddHypothesisInput, HypothesisPatch, SetStanceInput } from './hypothesisCommands';

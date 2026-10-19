@@ -4,7 +4,7 @@
  * 约定（D17）：所有几何都用**归一化坐标**（0–1，相对素材宽高）。
  * 缩略图 256、预览 1024、导出原图三者共用同一份数据，换尺寸不重算。
  */
-import type { Annotation, AnnotationGeom, AnnotationShape, XY } from '../types';
+import type { Annotation, AnnotationGeom, AnnotationShape, Asset, CaseDoc, XY } from '../types';
 import { newId } from './id';
 
 export const ANNOTATION_SHAPES: AnnotationShape[] = ['rect', 'arrow', 'pen', 'text', 'anchor', 'mosaic'];
@@ -170,6 +170,55 @@ export function toPixelRect(geom: NormBBox, width: number, height: number): Norm
 /** 归一化点集 → 像素点集 */
 export function toPixelPoints(points: readonly XY[], width: number, height: number): XY[] {
   return points.map((point) => ({ x: point.x * width, y: point.y * height }));
+}
+
+/**
+ * 区域锚点增强（M7-2，验收 2）：找出绑定到某个节点的所有图片区域。
+ * 悬停/选中节点时，素材库与右栏据此高亮对应框；返回按素材编号、标注顺序稳定排序。
+ */
+export interface NodeAnchorRef {
+  assetId: string;
+  assetName: string;
+  assetNo?: string;
+  annotationId: string;
+  shape: AnnotationShape;
+  color: string;
+  text?: string;
+}
+
+export function annotationsForNode(doc: CaseDoc, nodeId: string): NodeAnchorRef[] {
+  const refs: NodeAnchorRef[] = [];
+  for (const asset of doc.assets) {
+    asset.annotations.forEach((annotation) => {
+      if (annotation.linkedNodeId !== nodeId) return;
+      const ref: NodeAnchorRef = {
+        assetId: asset.id,
+        assetName: asset.name ?? asset.no ?? asset.id,
+        annotationId: annotation.id,
+        shape: annotation.shape,
+        color: annotation.color ?? DEFAULT_ANNOTATION_COLOR,
+      };
+      if (asset.no) ref.assetNo = asset.no;
+      if (annotation.text) ref.text = annotation.text;
+      refs.push(ref);
+    });
+  }
+  return refs.sort((a, b) =>
+    (a.assetNo ?? a.assetName).localeCompare(b.assetNo ?? b.assetName, 'zh') || a.annotationId.localeCompare(b.annotationId),
+  );
+}
+
+export function countAnchorsForNode(doc: CaseDoc, nodeId: string): number {
+  let count = 0;
+  for (const asset of doc.assets) {
+    for (const annotation of asset.annotations) if (annotation.linkedNodeId === nodeId) count += 1;
+  }
+  return count;
+}
+
+/** 某素材上被锚定到节点的框（素材详情高亮用） */
+export function anchoredAnnotationsOf(asset: Asset): Annotation[] {
+  return asset.annotations.filter((annotation) => Boolean(annotation.linkedNodeId));
 }
 
 /** 标注摘要文案：右栏与素材库共用（如「矩形框 · 2 处标注」由调用方拼） */

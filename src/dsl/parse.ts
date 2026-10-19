@@ -249,6 +249,7 @@ class Builder {
       assets: [],
       imageNodes: [],
       views: this.views,
+      hypotheses: [],
       settings: DEFAULT_SETTINGS,
     };
 
@@ -947,6 +948,7 @@ export function parseDsl(text: string): ParseResult {
       assets: [],
       imageNodes: [],
       views: [],
+      hypotheses: [],
       settings: DEFAULT_SETTINGS,
     };
     return {

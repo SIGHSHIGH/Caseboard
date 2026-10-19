@@ -3,6 +3,7 @@ import {
   GROUP_COLORS,
   DEFAULT_GROUP_OPACITY,
   addComment,
+  addNode,
   assignNodesToGroup,
   canParentGroup,
   deleteAsset,
@@ -24,6 +25,8 @@ import { useUiStore } from '../../store/uiStore';
 import { formatBytes } from '../../lib/assetMeta';
 import { imageStore, thumbUrl } from '../../services/imageStore';
 import { AnnotationEditor } from './AnnotationEditor';
+import { maskAccount, parseOcrText } from '../../lib/ocr';
+import { recognizeAssetText } from '../../services/ocr';
 import type { Asset, CaseEdge, CaseNode, Group, ImageNode, LineStyle, NodeType, Status } from '../../types';
 
 const BORDER_LABELS: Array<{ value: NonNullable<ImageNode['borderStyle']>; label: string }> = [
@@ -606,6 +609,15 @@ function AssetForm({ asset }: { asset: Asset }) {
   const [label, setLabel] = useState(asset.sourceLabel ?? '');
   const [thumb, setThumb] = useState<string | null>(null);
   const [annotateOpen, setAnnotateOpen] = useState(false);
+  const [ocrText, setOcrText] = useState(asset.ocrText ?? '');
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrError, setOcrError] = useState('');
+  const [ocrNotice, setOcrNotice] = useState('');
+  const [parsed, setParsed] = useState<ReturnType<typeof parseOcrText> | null>(null);
+  const [amount, setAmount] = useState('');
+  const [time, setTime] = useState('');
+  const [account, setAccount] = useState('');
+  const [counterparty, setCounterparty] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -700,6 +712,125 @@ function AssetForm({ asset }: { asset: Asset }) {
         <p className="cb-form__subtle" style={{ marginTop: 6 }}>
           矩形框 / 箭头 / 手绘 / 文字 / 区域锚点 / 马赛克，标注随素材保存，可导出带标注的图片。
         </p>
+      </div>
+
+      <div className="cb-form__section cb-ocr">
+        <h3 className="cb-form__subtitle">文字识别与字段抽取</h3>
+        <textarea
+          className="cb-ocr__text"
+          rows={4}
+          value={ocrText}
+          placeholder="识别出的文字会显示在这里；也可以手动粘贴或修正"
+          onChange={(event) => setOcrText(event.target.value)}
+        />
+        <div className="cb-ocr__ops">
+          <button
+            type="button"
+            className="cb-btn"
+            disabled={ocrBusy}
+            title="调用本机 Tesseract（需安装 chi_sim 语言包）；未安装时可用手工粘贴"
+            onClick={() => {
+              setOcrBusy(true);
+              setOcrError('');
+              setOcrNotice('');
+              recognizeAssetText(asset)
+                .then((text) => {
+                  setOcrText(text);
+                  setOcrNotice('识别完成：共 ' + text.length + ' 字，核对后写入素材。');
+                })
+                .catch((error: unknown) => {
+                  setOcrError(error instanceof Error ? error.message : '识别失败');
+                })
+                .finally(() => setOcrBusy(false));
+            }}
+          >
+            {ocrBusy ? '识别中…' : '识别文字'}
+          </button>
+          <button
+            type="button"
+            className="cb-btn"
+            onClick={() => {
+              const result = parseOcrText(ocrText);
+              setParsed(result);
+              setAmount(result.fields.amount ?? '');
+              setTime(result.fields.time ?? '');
+              setAccount(result.fields.account ?? '');
+              setCounterparty(result.fields.counterparty ?? '');
+              setOcrError('');
+            }}
+          >
+            解析金额 / 时间 / 账号
+          </button>
+          <button
+            type="button"
+            className="cb-btn cb-btn--primary"
+            onClick={() => {
+              dispatch(updateAsset(asset.id, { ocrText: ocrText.trim() }));
+              setOcrNotice('OCR 文本已写入素材，可随案件检索。');
+            }}
+          >
+            写入素材
+          </button>
+        </div>
+        {ocrError ? <p className="cb-ocr__error">{ocrError}</p> : null}
+        {ocrNotice ? <p className="cb-form__subtle">{ocrNotice}</p> : null}
+        {parsed ? (
+          <div className="cb-ocr__fields">
+            <p className="cb-form__subtle">
+              置信度 {parsed.confidence}
+              {parsed.missing.length > 0 ? ' · 缺失：' + parsed.missing.join('、') : ' · 四项齐全'}
+              　（可人工修正后生成证据卡）
+            </p>
+            <label className="cb-field">
+              <span>金额</span>
+              <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="500000" />
+            </label>
+            <label className="cb-field">
+              <span>交易时间</span>
+              <input value={time} onChange={(event) => setTime(event.target.value)} placeholder="2026-09-04T10:30:00" />
+            </label>
+            <label className="cb-field">
+              <span>账号</span>
+              <input
+                value={account}
+                onChange={(event) => setAccount(event.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="6222020200001234"
+              />
+            </label>
+            {account ? <p className="cb-form__subtle">脱敏显示：{maskAccount(account)}</p> : null}
+            <label className="cb-field">
+              <span>对方户名</span>
+              <input value={counterparty} onChange={(event) => setCounterparty(event.target.value)} />
+            </label>
+            <button
+              type="button"
+              className="cb-btn cb-btn--primary"
+              onClick={() => {
+                const fields: Record<string, string> = {};
+                if (amount) fields['金额'] = amount + ' 元';
+                if (time) fields['交易时间'] = time;
+                if (account) fields['账号'] = maskAccount(account);
+                if (counterparty) fields['对方户名'] = counterparty;
+                const right = doc.nodes.reduce((max, node) => Math.max(max, node.x + node.w), 40);
+                dispatch(
+                  addNode({
+                    type: 'evidence',
+                    title: (asset.no ?? '截图') + ' 转账凭证',
+                    x: right + 64,
+                    y: 120,
+                    fields,
+                    status: 'checking',
+                    confidence: parsed.confidence,
+                    notes: '由 OCR 字段生成，请与原件核对。',
+                  }),
+                );
+                setOcrNotice('已生成证据卡（待核实）。');
+              }}
+            >
+              生成证据卡
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="cb-form__section">

@@ -13,6 +13,7 @@ import { useUiStore } from './store/uiStore';
 import { useViewModeStore } from './store/viewModeStore';
 import { PresentationView } from './components/views/PresentationView';
 import { TimelineView } from './components/views/TimelineView';
+import { MapView } from './components/views/MapView';
 
 // 代码视图带着 CodeMirror 6，按需加载，避免拖慢画布首屏
 const CodePanel = lazy(() => import('./components/code/CodePanel').then((mod) => ({ default: mod.CodePanel })));
@@ -100,6 +101,7 @@ export default function App() {
         <div className={viewMode === 'board' ? 'cb-work' : 'cb-work cb-work--stage'} ref={workRef}>
           {viewMode === 'timeline' ? <TimelineView /> : null}
           {viewMode === 'present' ? <PresentationView /> : null}
+          {viewMode === 'map' ? <MapView /> : null}
           {viewMode === 'board' ? (
             <div className="cb-work__canvas">
               <ReactFlowProvider>

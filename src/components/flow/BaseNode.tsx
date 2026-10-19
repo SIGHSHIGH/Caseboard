@@ -4,6 +4,7 @@ import { updateNode } from '../../commands';
 import { NODE_TYPE_META, STATUS_META } from '../../lib/theme';
 import { fieldEntriesOf } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
+import { useUiStore } from '../../store/uiStore';
 import type { CaseNode } from '../../types';
 
 export type BaseNodeData = {
@@ -32,6 +33,7 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const meta = NODE_TYPE_META[node.type];
   const status = STATUS_META[node.status];
   const dispatch = useDocStore((s) => s.dispatch);
+  const setHoverNode = useUiStore((s) => s.setHoverNode);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.title);
@@ -59,6 +61,8 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
     <div
       className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}${data.dimmed ? ' is-dim' : ''}${onPath ? ' is-path' : ''}`}
       data-heat={heat > 0 ? heat.toFixed(2) : undefined}
+      onMouseEnter={() => setHoverNode(node.id)}
+      onMouseLeave={() => setHoverNode(null)}
       style={{ width: node.w }}
       data-type={node.type}
     >

@@ -306,6 +306,50 @@ fn debug_log(app: tauri::AppHandle, line: String) -> Result<(), String> {
     Ok(())
 }
 
+// ------------------------------------------------------------------ OCR ----
+
+fn run_tesseract(args: &[&str]) -> std::io::Result<std::process::Output> {
+    let mut command = std::process::Command::new("tesseract");
+    for arg in args {
+        command.arg(arg);
+    }
+    command.output()
+}
+
+/// 探测本机 OCR 侧车：返回版本行，未安装返回 None（不报错，界面据此回退手工录入）。
+#[tauri::command]
+fn ocr_available() -> Result<Option<String>, String> {
+    match run_tesseract(&["--version"]) {
+        Ok(output) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let first = text.lines().next().unwrap_or("tesseract").trim().to_string();
+            Ok(Some(first))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// 用本机 Tesseract 识别图片文字（M7-3）。只读本地文件，不上传任何数据。
+#[tauri::command]
+fn ocr_image(path: String) -> Result<String, String> {
+    let file = std::path::Path::new(&path);
+    if !file.exists() {
+        return Err(format!("原件不存在：{path}"));
+    }
+    let output = run_tesseract(&[&path, "stdout", "-l", "chi_sim+eng", "--psm", "6"]).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "未找到本地 OCR 引擎（Tesseract）：请安装后重启应用。".to_string()
+        } else {
+            format!("无法启动 OCR 引擎：{error}")
+        }
+    })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("OCR 引擎返回错误：{}", stderr.trim()));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 // ------------------------------------------------------------------ 自检 ----
 
 /// 前端自检结束：把报告写到 <data_dir>/selftest.json 并退出应用（供 CI/验收脚本读取）。
@@ -369,6 +413,8 @@ pub fn run() {
             hash_file,
             debug_log,
             ensure_db_file,
+            ocr_available,
+            ocr_image,
             selftest_report
         ])
         .run(tauri::generate_context!())

@@ -20,6 +20,12 @@ interface UiStore {
   guides: AlignGuide[];
   /** 正在被拖到卡片上的图片所指向的目标节点，用于高亮吸附 */
   attachTargetId: string | null;
+  /** 悬停的实体：用于高亮它在图片里的区域锚点（M7-2） */
+  hoverNodeId: string | null;
+  /** 从右栏「关联图片区域」跳转到素材库时要聚焦的框 */
+  anchorFocus: { assetId: string; annotationId: string } | null;
+  setHoverNode: (id: string | null) => void;
+  setAnchorFocus: (focus: { assetId: string; annotationId: string } | null) => void;
   setGuides: (guides: AlignGuide[]) => void;
   setAttachTarget: (id: string | null) => void;
   selectImage: (id: string | null, additive?: boolean) => void;
@@ -67,6 +73,8 @@ export const useUiStore = create<UiStore>((set) => ({
   ...NO_SELECTION,
   guides: [],
   attachTargetId: null,
+  hoverNodeId: null,
+  anchorFocus: null,
   dragPos: {},
   addRequest: null,
   focusRequest: null,
@@ -76,6 +84,8 @@ export const useUiStore = create<UiStore>((set) => ({
   setLeftTab: (leftTab) => set({ leftTab }),
   setGuides: (guides) => set({ guides }),
   setAttachTarget: (attachTargetId) => set({ attachTargetId }),
+  setHoverNode: (hoverNodeId) => set({ hoverNodeId }),
+  setAnchorFocus: (anchorFocus) => set({ anchorFocus }),
   requestAdd: (type) => set({ addRequest: type }),
   focusEntity: (id, kind) => set((state) => ({ focusRequest: { id, kind, nonce: (state.focusRequest?.nonce ?? 0) + 1 } })),
   consumeAdd: () => set({ addRequest: null }),

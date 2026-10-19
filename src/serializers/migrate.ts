@@ -7,6 +7,8 @@ import type {
   CaseNode,
   EdgePath,
   Group,
+  Hypothesis,
+  HypothesisStance,
   ImageNode,
   LineStyle,
   NodeComment,
@@ -339,6 +341,44 @@ function normalizeView(raw: unknown, index: number): View | null {
  * 把任意可疑输入整理成合法 CaseDoc。
  * 抛错只在「连案件骨架都没有」时发生（meta/nodes/edges），其余一律兜底。
  */
+function normalizeStances(raw: unknown): HypothesisStance[] {
+  const stances: HypothesisStance[] = [];
+  const seen = new Set<string>();
+  (Array.isArray(raw) ? raw : []).forEach((item) => {
+    if (!isRecord(item)) return;
+    const targetId = str(item.targetId);
+    const targetKind: HypothesisStance['targetKind'] =
+      item.targetKind === 'edge' ? 'edge' : item.targetKind === 'asset' ? 'asset' : 'node';
+    const stance: HypothesisStance['stance'] | null =
+      item.stance === 'refute' ? 'refute' : item.stance === 'support' ? 'support' : null;
+    if (!targetId || !stance) return;
+    const key = targetKind + ':' + targetId;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const entry: HypothesisStance = { targetId, targetKind, stance };
+    const note = str(item.note);
+    if (note) entry.note = note;
+    stances.push(entry);
+  });
+  return stances;
+}
+
+function normalizeHypothesis(raw: unknown, index: number): Hypothesis | null {
+  if (!isRecord(raw)) return null;
+  const title = str(raw.title) || '假设 ' + (index + 1);
+  const status: Hypothesis['status'] = raw.status === 'archived' ? 'archived' : 'active';
+  const hypothesis: Hypothesis = {
+    id: str(raw.id) || 'hyp-' + (index + 1),
+    title,
+    stances: normalizeStances(raw.stances),
+    status,
+    createdAt: str(raw.createdAt, new Date().toISOString()),
+  };
+  const summary = str(raw.summary);
+  if (summary) hypothesis.summary = summary;
+  return hypothesis;
+}
+
 export function normalizeDoc(input: unknown): CaseDoc {
   if (!isRecord(input)) throw new DocMigrateError('文档根节点不是对象');
   if (!isRecord(input.meta)) throw new DocMigrateError('缺少 meta 字段');
@@ -387,6 +427,10 @@ export function normalizeDoc(input: unknown): CaseDoc {
     imageNodes.push(image);
   });
 
+  const hypotheses = (Array.isArray(input.hypotheses) ? input.hypotheses : [])
+    .map((raw, index) => normalizeHypothesis(raw, index))
+    .filter((item): item is Hypothesis => item !== null);
+
   const views = (Array.isArray(input.views) ? input.views : [])
     .map((raw, index) => normalizeView(raw, index))
     .filter((item): item is View => item !== null);
@@ -408,6 +452,7 @@ export function normalizeDoc(input: unknown): CaseDoc {
     assets,
     imageNodes,
     views,
+    hypotheses,
     settings: {
       theme: settings ? str(settings.theme, DEFAULT_SETTINGS.theme) : DEFAULT_SETTINGS.theme,
       lineLegend: lineLegend

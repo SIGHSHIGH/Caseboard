@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type ViewMode = 'board' | 'timeline' | 'present';
+export type ViewMode = 'board' | 'timeline' | 'present' | 'map';
 
 interface ViewModeStore {
   mode: ViewMode;

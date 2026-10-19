@@ -8,6 +8,7 @@ import {
 } from '../../commands';
 import { resizeImageRect, snapRotation, type ResizeHandle } from '../../lib/imageNode';
 import { useDocStore } from '../../store/docStore';
+import { useUiStore } from '../../store/uiStore';
 import type { Asset, ImageNode } from '../../types';
 import { useAssetThumb } from '../hooks/useAssetThumb';
 
@@ -66,6 +67,16 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
   const rect = preview ?? { x: image.x, y: image.y, w: image.w, h: image.h };
   const title = useMemo(() => asset?.name ?? asset?.no ?? '图片', [asset]);
   const isAi = asset?.zone === 'ai' || asset?.aiGenerated === true;
+  const hoverNodeId = useUiStore((s) => s.hoverNodeId);
+  const selectedNodeId = useUiStore((s) => s.selectedNodeId);
+  const nodes = useDocStore((s) => s.doc.nodes);
+  /** 区域锚点（M7-2）：照片里框出的区域绑定到实体，悬停/选中该实体时高亮 */
+  const anchors = useMemo(
+    () => (asset?.annotations ?? []).filter((item) => item.shape === 'anchor' && item.linkedNodeId),
+    [asset],
+  );
+  const focusNodeId = hoverNodeId ?? selectedNodeId;
+  const titleOfNode = (id: string) => nodes.find((node) => node.id === id)?.title ?? '已删除的实体';
 
   const centerOf = () => {
     const box = frameRef.current?.getBoundingClientRect();
@@ -165,7 +176,7 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
     >
       <div
         ref={frameRef}
-        className={`cb-free-image__frame cb-free-image__frame--${border}`}
+        className={`cb-free-image__frame cb-free-image__frame--${border}${isAi ? ' is-ai' : ''}`}
         style={{
           width: rect.w,
           height: rect.h,
@@ -181,6 +192,25 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
             <small>{asset?.no ?? '素材不在本机'}</small>
           </div>
         )}
+
+        {anchors.map((anchor) => {
+          const linked = anchor.linkedNodeId as string;
+          const highlight = focusNodeId === linked;
+          return (
+            <span
+              key={anchor.id}
+              className={'cb-free-image__anchor' + (highlight ? ' is-hlit' : '')}
+              style={{
+                left: anchor.geom.x * 100 + '%',
+                top: anchor.geom.y * 100 + '%',
+                width: anchor.geom.w * 100 + '%',
+                height: anchor.geom.h * 100 + '%',
+                borderColor: anchor.color ?? '#C0392B',
+              }}
+              title={'区域锚点：' + titleOfNode(linked) + (anchor.text ? ' · ' + anchor.text : '')}
+            />
+          );
+        })}
 
         {image.pinned ? <span className="cb-free-image__pin" title="图钉装饰" /> : null}
         {image.linkedNodeId ? <span className="cb-free-image__linked">已吸附</span> : null}
