@@ -4,6 +4,7 @@ import type {
   Asset,
   AssetFolder,
   CaseDoc,
+  ChainDef,
   CaseEdge,
   CaseNode,
   DockCorner,
@@ -26,6 +27,7 @@ import type {
   View,
 } from '../types';
 import { ANNOTATION_SHAPES, DEFAULT_ANNOTATION_COLOR, normalizeGeom } from '../lib/annotation';
+import { isChainStageId } from '../lib/chains';
 import { normalizeControlPoints } from '../lib/edgeCurve';
 import { NODE_TYPE_ORDER } from '../lib/nodeTemplates';
 
@@ -474,6 +476,27 @@ export function normalizeTimeline(raw: unknown): TimelineConfig {
   };
 }
 
+/** 自定义证据链（M12 / K14c）：未知阶段、未知实体、重复条目一律丢掉 */
+function normalizeChain(raw: unknown, index: number, nodeIds: ReadonlySet<string>): ChainDef | null {
+  if (!isRecord(raw)) return null;
+  const title = str(raw.title).trim() || '证据链 ' + (index + 1);
+  const id = str(raw.id) || 'chain-' + index;
+  const entries: ChainDef['entries'] = [];
+  const seen = new Set<string>();
+  for (const item of Array.isArray(raw.entries) ? raw.entries : []) {
+    if (!isRecord(item)) continue;
+    const nodeId = str(item.nodeId);
+    if (!nodeId || !nodeIds.has(nodeId) || !isChainStageId(item.stageId)) continue;
+    if (seen.has(nodeId)) continue;
+    seen.add(nodeId);
+    entries.push({ nodeId, stageId: item.stageId });
+  }
+  const chain: ChainDef = { id, title, entries };
+  const note = str(raw.note).trim();
+  if (note) chain.note = note;
+  return chain;
+}
+
 /** 地图底图（M10）：素材 id 必须存在（由调用方用 assetIds 过滤） */
 function normalizeMapBackground(raw: unknown, assetIds: ReadonlySet<string>): MapBackground | null {
   if (!isRecord(raw)) return null;
@@ -574,6 +597,13 @@ export function normalizeDoc(input: unknown): CaseDoc {
 
   const timeline = normalizeTimeline(input.timeline);
 
+  // 自定义证据链（M12）：丢掉未知阶段、未知实体与重复条目，避免脏链让界面报错
+  const nodeIdSet = new Set(nodes.map((node) => node.id));
+  const chains = (Array.isArray(input.chains) ? input.chains : [])
+    .map((raw, index) => normalizeChain(raw, index, nodeIdSet))
+    .filter((item): item is ChainDef => item !== null)
+    .filter((chain, index, list) => list.findIndex((item) => item.id === chain.id) === index);
+
   const settings = isRecord(input.settings) ? input.settings : null;
   const lineLegend = settings && isRecord(settings.lineLegend) ? settings.lineLegend : null;
   const mapBackground = settings ? normalizeMapBackground(settings.mapBackground, assetIds) : null;
@@ -594,6 +624,7 @@ export function normalizeDoc(input: unknown): CaseDoc {
     imageNodes,
     views,
     hypotheses,
+    ...(chains.length > 0 ? { chains } : {}),
     timeline,
     settings: {
       theme: settings ? str(settings.theme, DEFAULT_SETTINGS.theme) : DEFAULT_SETTINGS.theme,

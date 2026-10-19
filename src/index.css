@@ -3179,7 +3179,7 @@ button.cb-members__title--link:hover {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 6px 0;
+  padding: 6px 18px;
   scrollbar-width: thin;
 }
 
@@ -3244,7 +3244,7 @@ button.cb-members__title--link:hover {
 .cb-timeline__chip {
   position: absolute;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-8px, -50%);
   max-width: 168px;
   padding: 4px 8px;
   border: 1px solid var(--cb-border);
@@ -4700,10 +4700,9 @@ button.cb-members__title--link:hover {
   flex: 1 1 auto;
 }
 /* 数轴略短一点：宽屏时不再无限拉长，视觉上更像一条时间轴 */
+/* M12（K8）：时间线占满可用宽度；标题靠错行而不是靠裁切来避让 */
 .cb-timeline__lanes {
   width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
 }
 .cb-timeline__lane-edit {
   flex: 0 0 auto;
@@ -4800,4 +4799,162 @@ button.cb-members__title--link:hover {
   font-size: 10px;
   color: var(--cb-muted);
   line-height: 1.5;
+}
+/* M12（K8）：靠右端的时间片往左展开，避免被泳道右边界裁掉 */
+.cb-timeline__chip.is-end {
+  transform: translate(calc(-100% + 8px), -50%);
+}
+/* ===== M12（K14a/K14b/K14c）：假设面板窄列不出框、自动构建草案、自定义证据链 ===== */
+.cb-hyp__add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.cb-hyp__add input {
+  width: 100%;
+  min-width: 0;
+}
+
+.cb-hyp__add button {
+  white-space: nowrap;
+}
+
+.cb-hyp__item-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.cb-hyp__item-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cb-hyp__score {
+  flex: 0 0 auto;
+}
+
+.cb-hyp__table th {
+  max-width: 200px;
+}
+
+.cb-hyp__proposebar {
+  margin-top: 8px;
+}
+
+.cb-hyp__propose {
+  border: 1px dashed var(--cb-border-strong);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cb-hyp__propose-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.cb-hyp__propose-item {
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--cb-surface);
+}
+
+.cb-hyp__propose-label {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cb-hyp__propose-label input {
+  accent-color: var(--cb-accent);
+  margin-top: 2px;
+}
+
+.cb-hyp__propose-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cb-hyp__propose-ops {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.cb-hyp__chains {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--cb-border);
+}
+
+.cb-hyp__chainchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--cb-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+  background: var(--cb-surface);
+  color: var(--cb-text);
+  cursor: pointer;
+}
+
+.cb-hyp__chainchip.is-active {
+  border-color: var(--cb-accent);
+  color: var(--cb-accent);
+  background: var(--cb-accent-soft);
+}
+
+.cb-hyp__chainchip-btn {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 1px 2px;
+}
+
+.cb-hyp__chainchip-del {
+  border: 0;
+  background: none;
+  color: var(--cb-accent);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.cb-hyp__chain-new {
+  width: 180px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  background: var(--cb-surface);
+  color: var(--cb-text);
+  font: inherit;
+  font-size: 12px;
 }

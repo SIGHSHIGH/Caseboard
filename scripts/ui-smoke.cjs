@@ -728,7 +728,68 @@ function check(name, condition, detail) {
   await clickByText('.cb-viewtab', '画布');
   await sleep(150);
   check('样式表含 M11 新增区块', ['.cb-collapse', '.cb-gtree__row', '.cb-img-dot', '.cb-timeline__cursor', '.cb-timeline__zoombar', '.cb-timeline__laneedit', '.cb-map__edit', '.cb-hyp__assign'].every((sel) => srcCss.includes(sel)), ['.cb-collapse', '.cb-gtree__row', '.cb-img-dot', '.cb-timeline__cursor', '.cb-timeline__zoombar', '.cb-timeline__laneedit', '.cb-map__edit', '.cb-hyp__assign'].filter((sel) => !srcCss.includes(sel)));
-  console.log('');
+  console.log('[UI] M12 复验修订：假设自动构建 / 自定义证据链 / 时间线错行');
+  check(
+    '样式表含 M12 新增区块',
+    ['.cb-hyp__propose', '.cb-hyp__chains', '.cb-hyp__chainchip', '.cb-hyp__chain-new', '.cb-timeline__chip.is-end'].every((sel) => srcCss.includes(sel)),
+    ['.cb-hyp__propose', '.cb-hyp__chains', '.cb-hyp__chainchip', '.cb-hyp__chain-new', '.cb-timeline__chip.is-end'].filter((sel) => !srcCss.includes(sel)),
+  );
+  check('假设面板新增输入改成网格布局（K14a 不再出框）', /\.cb-hyp__add\s*\{[^}]*display:\s*grid/.test(srcCss));
+  check('时间线时间片有右端左展开规则', /\.cb-timeline__chip\.is-end\s*\{/.test(srcCss));
+  check('圈选框按容器相对定位（K1 不再整体偏移）', /\.cb-lasso\s*\{[^}]*position:\s*absolute/.test(srcCss) && /\.cb-lasso__box\s*\{[^}]*position:\s*absolute/.test(srcCss));
+
+  check('可打开假设面板', await clickByText('.cb-topbar__io .cb-btn', '假设'));
+  await sleep(150);
+  check('假设面板已渲染', doc.querySelector('.cb-modal__mask .cb-hyp') !== null);
+  {
+    const proposeToggle = doc.querySelector('.cb-hyp__proposebar .cb-btn');
+    check('有「按关系与 tag 自动构建」入口', proposeToggle !== null, proposeToggle && proposeToggle.textContent);
+    if (proposeToggle) {
+      proposeToggle.click();
+      await sleep(150);
+      const items = doc.querySelectorAll('.cb-hyp__propose-item');
+      check('草案面板列出条目', items.length >= 1, items.length);
+      const selectAll = [...doc.querySelectorAll('.cb-hyp__propose-ops .cb-btn')].find((b) => (b.textContent || '').includes('全选'));
+      check('草案面板有全选按钮', Boolean(selectAll));
+      if (selectAll) {
+        selectAll.click();
+        await sleep(120);
+      }
+      const before = doc.querySelectorAll('.cb-hyp__list .cb-hyp__item').length;
+      const build = [...doc.querySelectorAll('.cb-hyp__propose-ops .cb-btn')].find((b) => (b.textContent || '').includes('构建'));
+      check('草案面板有构建按钮', Boolean(build), build && build.textContent);
+      if (build) {
+        build.click();
+        await sleep(180);
+        const after = doc.querySelectorAll('.cb-hyp__list .cb-hyp__item').length;
+        check('确认后假设真的落库（列表变长）', after > before, before + ' → ' + after);
+        check('构建完成后草案面板收起', doc.querySelector('.cb-hyp__propose') === null);
+      }
+    }
+    check('可切到证据链页签', await clickByText('.cb-hyp__tabs .cb-btn', '证据链'));
+    await sleep(150);
+    check('证据链上方有链选择条', doc.querySelector('.cb-hyp__chains') !== null);
+    const autoChip = doc.querySelector('.cb-hyp__chains .cb-hyp__chainchip');
+    check('默认选中「自动（字段 + 关键词）」', !!(autoChip && (autoChip.textContent || '').includes('自动')), autoChip && autoChip.textContent);
+    await setInputValue(doc.querySelector('.cb-hyp__chain-new'), 'M12 自建链');
+    check('可新建自定义证据链', await clickByText('.cb-hyp__chains .cb-btn', '新建证据链'));
+    await sleep(150);
+    const chips = [...doc.querySelectorAll('.cb-hyp__chainchip')];
+    check('新建后链选择条多一条', chips.length >= 2, chips.map((chip) => (chip.textContent || '').trim()).join(' | '));
+    const activeChip = doc.querySelector('.cb-hyp__chainchip.is-active');
+    check('新建的链自动切为当前链', !!(activeChip && (activeChip.textContent || '').includes('M12 自建链')), activeChip && activeChip.textContent);
+    const stageCount = doc.querySelectorAll('.cb-hyp__stages .cb-hyp__stage').length;
+    check('自定义链照样按六阶段展示', stageCount === 6, stageCount);
+    const del = doc.querySelector('.cb-hyp__chainchip-del');
+    check('当前链有删除按钮', del !== null);
+    if (del) {
+      del.click();
+      await sleep(150);
+      check('删除后回到自动链', doc.querySelectorAll('.cb-hyp__chainchip').length === 1, doc.querySelectorAll('.cb-hyp__chainchip').length);
+    }
+    check('关闭假设面板', await clickByText('.cb-hyp__head .cb-btn', '关闭'));
+    await sleep(150);
+  }  console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');
     process.exit(1);

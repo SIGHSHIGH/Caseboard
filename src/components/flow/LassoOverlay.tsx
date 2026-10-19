@@ -21,16 +21,19 @@ interface ScreenBox {
  */
 export function LassoOverlay({ onFinish, onCancel }: Props) {
   const { screenToFlowPosition } = useReactFlow();
+  // M12（K1）：框选矩形必须以「圈选层自身」为坐标原点。之前直接拿 clientX/clientY 当 left/top，
+  // 圈选层是绝对定位在画布容器里的，于是整个框被左栏宽度 + 顶栏高度整体偏移，看起来就是「框和指针不重合」。
+  const [origin, setOrigin] = useState<{ left: number; top: number } | null>(null);
   const [start, setStart] = useState<{ x: number; y: number } | null>(null);
   const [current, setCurrent] = useState<{ x: number; y: number } | null>(null);
 
   const toWorld = (clientX: number, clientY: number) => screenToFlowPosition({ x: clientX, y: clientY });
 
   const box: ScreenBox | null =
-    start && current
+    start && current && origin
       ? {
-          left: Math.min(start.x, current.x),
-          top: Math.min(start.y, current.y),
+          left: Math.min(start.x, current.x) - origin.left,
+          top: Math.min(start.y, current.y) - origin.top,
           width: Math.abs(current.x - start.x),
           height: Math.abs(current.y - start.y),
         }
@@ -57,6 +60,8 @@ export function LassoOverlay({ onFinish, onCancel }: Props) {
       className="cb-lasso"
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
+        const rect = event.currentTarget.getBoundingClientRect();
+        setOrigin({ left: rect.left, top: rect.top });
         setStart({ x: event.clientX, y: event.clientY });
         setCurrent({ x: event.clientX, y: event.clientY });
       }}
@@ -68,6 +73,7 @@ export function LassoOverlay({ onFinish, onCancel }: Props) {
       onPointerCancel={() => {
         setStart(null);
         setCurrent(null);
+        setOrigin(null);
         onCancel();
       }}
     >

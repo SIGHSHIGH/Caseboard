@@ -50,6 +50,7 @@
 | M9 | 交互修订与安全精简 | 1 周 | 图片工具条竖排、混合拖动命令合成、组尺寸与成员清单、双击新建对话框、模态居中、地图取点、布局换锚点、时间线回退、演示联动编辑、tag 自动连线、素材库分组、导入 OCR；**删除启动密码/整库加密**；NSIS 归档 `release\` | 十条验收全部通过；全仓库 `vault` 零命中；`smoke` 658 / `ui-smoke` 296 全绿 | ✅ 2026-10-20 |
 | M10 | 交互打磨与内置能力 | 1 周 | 顶栏删 logo 与常驻图例、八端口连线与连接点放大、图片层级与吸附随动、多轨时间线与比例、地图底图与拖动改坐标、素材文件夹、证据链可编辑、演示 tag 编辑、**内置 OCR 引擎随包分发**；NSIS 归档 `release\` | 十项验收全部通过；`smoke` 713 / `ui-smoke` 298 全绿；`dist/ocr` 随包 | ✅ 2026-10-20 |
 | M11 | 用户复验修订（I/J 反馈） | 1 周 | 左右栏折叠箭头、连接点常驻隐藏、组标题栏可拖动 + 左栏组树、图片小圆点与拖动实时跟随、时间线手工挑选条目 + 公用指针 + 缩放移到底部、地图双击手填经纬度、导入直接进当前文件夹、证据链人工归类、地点字段关联已有对象、素材拖拽不再误触导入、安全面板删本机存储段 | I1–I15 / J1–J15 逐条通过；`smoke` 729 / `ui-smoke` 314 全绿 | ✅ 2026-10-20 |
+| M12 | 复验修订（K 反馈） | 1 周 | 圈选框改容器相对坐标、框选改 Partial、时间线满宽 + 时间片错行、假设面板出框修复、按关系与 tag 自动构建假设草案、自定义证据链与链选择条、地点字段自动成虚线关系 | K1/K8/K13/K14/K15 通过；`smoke` 770 / `ui-smoke` 354 全绿 | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -929,6 +930,75 @@
 | 左右栏折叠 | 原设计无折叠，宽度固定 | 用 `App` 级两个布尔 + `.cb-collapse` 竖条，未引入可拖拽分栏 |
 | J14「安装目录里没有 ocr 文件夹」 | OCR 资源被 Tauri 内嵌进 exe，安装目录本来不该有独立文件 | 在文档与自检说明里写清「引擎内嵌」，不改打包方式 |
 
+### M12 · 复验修订（K 反馈）（1 周）
+
+**目标**：按用户 K1–K18 复验回执，修掉圈选框整体偏移与框选判定过严、时间线条目互相遮挡，把假设面板补成「能自动构建、也能自建证据链」的工具，并让「地点」字段直接成线。仍然不改技术栈、不新增外部依赖，全部走既有 Command / Model。
+
+**范围**
+
+- 框选：`LassoOverlay` 改容器相对坐标（K1 / D75）；`SelectionMode.Full` → `Partial`（K13 / D76）。
+- 时间线：满宽 + `stackChips` 时间片错行 + 轨道高度跟随 + 右端 `.is-end` 左展开（K8 / D77）。
+- 假设面板：`.cb-hyp__add` / `.cb-hyp__item-head` / 表头出框修复（K14a）；`proposeHypotheses` 草案面板，确认后才落库（K14b / D78）。
+- 自定义证据链：`CaseDoc.chains` + `chainCommands` + `lib/chains.ts` + 迁移 `normalizeChain` + 链选择条独立展示（K14c / D79）。
+- 地点联动：`lib/placeLink.ts` + 右栏「地点」自动连线提示（K15）。
+
+**验收标准**
+
+| 编号 | 标准 |
+|---|---|
+| 1 | 圈选框与鼠标指针重合，左栏与顶栏不再造成偏移 |
+| 2 | 按住左键框选时，框到对象一部分即可选中 |
+| 3 | 时间线占满宽度；同一时刻附近的条目上下错开、互不遮挡；最右端的条目不超出边界 |
+| 4 | 假设面板「新增假设」输入框与分数不再出框，长标题自动换行 |
+| 5 | 可一键生成假设草案，列表显示标题与依据实体，默认全选 |
+| 6 | 草案只有点「构建」才写入 Model，写入可一次撤销 |
+| 7 | 已覆盖的连通群体与 tag 群不再重复提草案 |
+| 8 | 可新建与删除自建证据链；选中自建链时六阶段独立展示，归入/移出写 `setChainEntry` |
+| 9 | 迁移会丢掉未知阶段 id、未知实体与重复条目 |
+| 10 | 「地点」命中已有地点/单位时一条命令写「字段 + 虚线推测关系」，已有关系不重复连 |
+
+#### M12 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 |
+|---|---|---|
+| M12-1 | **圈选偏移（K1 / D75）**：`LassoOverlay` 在 `pointerdown` 记 `event.currentTarget.getBoundingClientRect()` 左上角，框用相对坐标；松手与取消都清 `origin` | ui-smoke 断言 `.cb-lasso` 容器相对定位；手工点选验证 |
+| M12-2 | **框选判定（K13 / D76）**：`Board.tsx` 的 `selectionMode` 改 `SelectionMode.Partial` | 手工验证；`nodeIdsInRect` 仍按中心点供「圈选成组」用 |
+| M12-3 | **时间线错行（K8 / D77）**：`timeline.ts` 加 `stackChips` / `chipTrackHeight`，`TimelineView` 按 `stacked.rows` 设 `top` 与轨道高度，右端 `is-end` 左展开；`.cb-timeline__lanes` 去掉 1180px 上限 | smoke [68] + ui-smoke 样式断言 |
+| M12-4 | **假设出框（K14a）**：`.cb-hyp__add` 改 grid、`__item-head` 可换行、`.cb-hyp__table th` 限宽 | ui-smoke 正则断言 `display: grid` |
+| M12-5 | **自动构建假设（K14b / D78）**：`lib/hypothesis.ts` 加 `proposeHypotheses`（并查集 + tag 群，覆盖跳过），`addHypothesis` 支持 `id` 与初始 `stances`；面板加草案勾选与「构建」一次 `composeCommands` | smoke [69] + ui-smoke 草案→落库流程 |
+| M12-6 | **自定义证据链（K14c / D79）**：types 加 `ChainStageId` / `ChainEntry` / `ChainDef` + `CaseDoc.chains`，新增 `chainCommands` 与 `lib/chains.ts`，迁移 `normalizeChain`，证据链页签加链选择条 | smoke [70] + ui-smoke 新建/删除链 |
+| M12-7 | **地点自动连线（K15）**：新增 `lib/placeLink.ts`（`matchPlaceForNode` + `PLACE_LINK_EDGE`），`RightPanel.commitField` 命中时 `composeCommands` 写字段 + 关系线并给提示 | smoke [71] |
+| M12-8 | **收尾**：版本三处升 0.12.0、CHANGELOG、§1/§3/§6/§7、MANUAL-ACCEPTANCE L 节、桌面重建与 NSIS 归档 | 四件套 + 两轮自检 |
+
+#### M12 验收记录（2026-10-20，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| 类型检查 | `tsc --noEmit` 0 error |
+| 逻辑层 | `pnpm smoke` **770 PASS / 0 FAIL**（M11 基线 729，新增 [68]–[71] 共 41 条） |
+| 打包层 | `pnpm ui-smoke` **354 PASS / 0 FAIL**（M11 基线 314，新增 M12 段 40 条） |
+| 性能 | `pnpm bench` 1000 节点解析链 **110.8 ms**（阈值 300 ms） |
+| 构建 | `pnpm build` 成功（主包 966.02 kB） |
+| 桌面产物 | `tauri build --no-bundle` 重建 `caseboard.exe`；`run-selftest.cjs` 两轮 PASS |
+| 验收 1 圈选 | 框跟随指针，左栏/顶栏偏移消失 |
+| 验收 2 部分框选 | 框到一部分即选中 |
+| 验收 3 时间线 | 满宽 + 错行 + 右端左展开 |
+| 验收 4 出框 | 输入与分数不再溢出 |
+| 验收 5–7 草案 | 生成/勾选/构建/覆盖跳过均正常，一次撤销 |
+| 验收 8–9 自建链 | 新建删除、六阶段独立、迁移去脏 |
+| 验收 10 地点 | 一次命令写字段 + 虚线关系，已有关系不重复 |
+| 版本 | `package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 三处 **0.12.0** |
+
+#### M12 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 时间线「占满屏幕左右」 | 之前为防标题被裁把数轴限宽 1180px | 改满宽，靠 `stackChips` 错行与 `is-end` 左展开避让（D77） |
+| 框选「需要框住全部」 | React Flow 默认 `Full` 模式 | 换 `Partial`，未改 `nodeIdsInRect`——「圈选成组」仍按中心点（D76） |
+| 证据链「独立展示」 | 六阶段结构固定，只能自动推断 | 保留自动链做默认，自建链进 `doc.chains` 并独立展示（D79） |
+| 按关系与 tag 自动构建假设 | 直接建假设会污染 Model | 先出草案、勾选确认才落库（D78） |
+| 地点自动连线 | 用户只要求「自动连接」 | 明确按虚线 + 置信度 50 处理，不冒充已证实关系 |
+
 ---
 
 ## 4. 推进规则
@@ -1103,7 +1173,11 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D72 | **轨道成员是手工清单**：`TimelineTrack.nodeIds` 有值时以它为准，空/缺省才按 `kind + ref` 自动归集；「恢复自动归集」写成 `nodeIds: undefined` | 用户 I9「各时间线可自由编辑包含的事件」；两条路径都要保留，否则新建轨道没法自动出内容 |
 | D73 | **证据链人工优先、关键词兜底**：`CaseNode.fields.链条阶段` 有值时直接决定归属（`manualStage`），没有才回落到六阶段关键词匹配（`matches`） | 用户 J11 / I5「证据链无功能」：演示文案本来就不命中关键词，光靠关键词永远空 |
 | D74 | **导入到文件夹用一条命令**：`importStore.confirm` 把 `importAssets` 与 `moveAssetsToFolder` 合成一条 `composeCommands` 派发 | 用户 J10「导入后混在一起」；分两条命令会让撤销要按两次 |
-| D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
+| D75 | **圈选框用容器相对坐标**：`LassoOverlay` 在 `pointerdown` 取当前层 `getBoundingClientRect()` 的左上角，框的 `left/top` 减掉它；世界坐标仍由 `screenToFlowPosition` 换算 | 用户 K1「圈选范围与鼠标指针不重合」：`.cb-lasso` 是 `inset: 0` 的绝对定位层，却直接拿 `clientX/clientY` 当 `left/top`，整框被左栏宽度与顶栏高度整体偏移 | 手工点选 + ui-smoke 样式断言 |
+| D76 | **框选用 `Partial`**：`ReactFlow` 的 `selectionMode` 改 `SelectionMode.Partial`；`lib/groups.nodeIdsInRect` 保持「中心点在框内」 | 用户 K13 要「框到一部分就选中」；但「圈选成组」按中心点更符合直觉，两条路径必须分开 | 手工验证 + `nodeIdsInRect` 不变 |
+| D77 | **时间片按行堆叠**：`stackChips` 把 ratio 相近（< `CHIP_MIN_GAP = 0.045`）的条目排到下一行，轨道高度 `chipTrackHeight(rowCount)` 跟着长；右端条目用 `.cb-timeline__chip.is-end` 向左展开 | 用户 K8「事件被遮挡」：单行摆不下，靠裁切隐藏是错的，宽度满了就该换行 | smoke [68]、ui-smoke `.is-end` |
+| D78 | **自动构建假设先出草案**：`proposeHypotheses` 只产出 `HypothesisProposal`（id/title/reason/nodeIds），面板勾选确认后由一次 `composeCommands` 逐条 `addHypothesis` 落库，草案本身绝不进 Model；为此 `AddHypothesisInput` 增 `id` 与初始 `stances` | 用户 K14 要「自动构建」；但 Gate 0-4 规定推断产物不得直接改 Model，草案 + 确认是同一套语义 | smoke [69]、ui-smoke 草案→落库 |
+| D79 | **自定义证据链独立成 `doc.chains`**：`ChainDef{id,title,entries[{nodeId,stageId}]}`，阶段 id 定义在 `src/types/index.ts`（`lib/evidenceChain` 改为 re-export 避免循环依赖）；自动链（`链条阶段` 字段 + 关键词）仍是默认，选自定义链时六阶段按 entries 独立展示 | 用户 K14 要「新建证据链 + 单独证据链独立展示」；阶段集合必须共享，否则「六阶段」概念会分裂 | smoke [70]、ui-smoke 新建/删除链 || D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
 
@@ -1132,3 +1206,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | **M9 整体验收通过**（✅ 打 tag `ms/M9`）：交互修订——图片工具条改右侧竖排让出旋转手柄（A2）、混合多选拖动用 `composeCommands` 合成一条命令（A4/D54）、组右下角改尺寸与组头/右栏成员清单（A4）、双击空白弹「新建节点」对话框并关闭双击缩放（A5/D57）、假设与生图面板改居中模态（T1/T2/T5/T6）、区域锚点高亮改为「悬停 ∪ 多选 ∪ 锚点焦点」且可点击（T3）、地图点选取坐标与右栏经纬度字段（T7/D55）、布局后自动重算锚点与标签避让（S3/D56）、时间线回退读 `发生时刻` 等字段（S4）、演示页联动编辑（S5）、发生时刻日期时间控件、统一 tag 编辑与「按 tag 自动连线」确认面板（D58）、关系线连接点放大、素材库分组（D59）、导入后自动 OCR 与引擎缺失指引；安全精简——按 H3 彻底删除应用解锁与整库加密（D53/D60），自检第 3 轮随之移除；`pnpm smoke` **658 条**（新增 [49]–[55] 七段）、`pnpm ui-smoke` **296 条**（新增约 40 条）、`pnpm bench` **75.3 ms**、桌面自检 **17 / 18**（PASS）、`tauri build --no-bundle` 1m44s、NSIS 安装包（3,614,153 字节）归档到仓库根 `release\CaseBoard_0.9.0_x64-setup.exe`；版本三处升 **0.9.0**；§1 M9 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D53–D60、`docs/MANUAL-ACCEPTANCE.md` 新增 I 节（并把 H3 标为作废）。 |
 | 2026-10-20 | **M10 整体验收通过**（✅ 打 tag `ms/M10`）：交互打磨与内置能力——顶栏删「案情板」logo 与常驻线型图例、图例收进右下角可折叠「图示」（D66），案件编号 `A-2026-1018` 不再被挤压竖排（`.cb-topbar__brand` nowrap），MiniMap 150×100 半透明并让位；关系线连接点 14px→18px 且常驻可见，锚点扩到**八端口**（四边 + 四角，D64）；卡片与图片共用层级空间（卡片固定 100、图片分带 1–199，图片「上移/下移」首次真正生效，D62），吸附判定改卡片外扩 140px 角落区、记录角标记与偏移，卡片移动时吸附图片在**命令层**随动（`applyDockedMoves`，D63）；时间线支持多轨并行 + 比例滑杆 + 新建/删除轨道（偏好进 `doc.timeline`，D67），修掉时间滑杆贴右被裁；地图可导入底图（`settings.mapBackground`）并拖图钉直接改经纬度；素材库新增**文件夹**树形分组（新建/重命名/删除、环检测、删文件夹不删素材，D68），右栏可改所属文件夹；假设面板「证据链」页签从只读改为可编辑（改标题/改状态/画布定位，D65），演示页联动编辑补 tag；**内置 OCR 引擎随包分发**——`tesseract.js` WASM worker + 三档 SIMD 内核 + 中英语言包入 `public/ocr`（15.7 MB），探测顺序「系统 Tesseract → 内置 WASM」，右栏显示就绪状态与识别进度（D61）。数据迁移 v9（`zIndex` / `dockCorner` / `dockOffset` / `assetFolders` / `timeline` / `settings.mapBackground`）由 `migrate.ts` 兜住脏数据。版本三处升 **0.10.0**，NSIS 归档 `release\CaseBoard_0.10.0_x64-setup.exe`。机器验收：`typecheck` 0 error、`smoke` **713**、`ui-smoke` **298**、`bench` 1000 节点解析链 **75.5 ms**、`pnpm build` 成功且 `dist/ocr` 随包、桌面自检两轮 PASS。 |
 | 2026-10-20 | **M11 整体验收通过**（✅ 打 tag `ms/M11`）：按用户 I1–I15 / J1–J15 逐条复验回执落地——左右栏可点小箭头收起/展开（J2）、八个连接点常驻 `opacity: 0` hover 才显形（J4）、组标题栏去 `nodrag` 后整组可拖并加 `⠿` 抓手、左栏新增 `GroupTree` 树形总览（组 → 子组 → 成员，点条目 `focusEntity` 跳转，I3/D69）、`Board.nodes` 按 `zIndex` 排序让「上移/下移/置顶/置底」立刻生效（I1/D70）、图片 `dotMode` 小圆点（右上 `⤢` 或双击展开，I6/D71）、拖动卡片时吸附图片用 `dockPreview` **实时跟随**而非松手才动（J6）、时间线轨道条目可用 `nodeIds` 手工挑选 + 「恢复自动归集」、缩放滑条移到最下方与游标同区（10–100）、数轴收窄到 1180px、贯穿所有泳道的公用游标指针（I9/J8/D72）、地图图钉双击弹面板手填经纬度（`-90~90` / `-180~180` 校验，J9）、素材拖入画布不再误唤起导入向导（I13）、导入图片直接进当前文件夹（J10/D74）、证据链新增「链条阶段」人工归类下拉与「移出阶段」（人工优先、关键词兜底，I5/J11/D73）、假设面板字体出框修复（I5）、模板「地点」字段可选已有 place/org（`datalist`，I11）、地图视图也挂右栏（I7）、布局面板补「分层」标签（I8）、安全面板删掉「本机存储」整段（I14）。机器验收：`typecheck` 0 error、`smoke` **729**（新增 [64]–[67] 四段）、`ui-smoke` **314**（新增 M11 段 16 条）、`bench` **74.3 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 归档 `release\CaseBoard_0.11.0_x64-setup.exe`；版本三处升 **0.11.0**；§3 写入 M11 拆步/验收/偏离三表，§6 新增 D69–D74。 |
+| 2026-10-20 | **M12 整体验收通过**（✅ 打 tag `ms/M12`）：按用户 K1–K18 复验回执落地——圈选框改容器相对坐标、整框不再被左栏与顶栏偏移（K1/D75）、框选改 `SelectionMode.Partial` 只需框到一部分（K13/D76）、时间线满宽 + `stackChips` 时间片错行 + 轨道高度跟随 + 右端 `.cb-timeline__chip.is-end` 左展开（K8/D77）、假设面板「新增假设输入框 + 分数」出框修复（K14a）、按关系线与 tag 自动构建假设的草案勾选确认面板（确认后一次 `composeCommands` 落库，K14b/D78）、自定义证据链进 `doc.chains` 并在证据链页签独立展示（新建/删除/归入/移出，迁移丢脏，K14c/D79）、「地点」命中已有地点或单位时一条命令写字段 + 虚线推测关系（K15）；`pnpm smoke` **770**（新增 [68]–[71] 四段）、`pnpm ui-smoke` **354**（新增 M12 段 40 条）、`pnpm bench` 1000 节点解析链 **110.8 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 安装包归档 `release\CaseBoard_0.12.0_x64-setup.exe`；版本三处升 **0.12.0**；§1 M12 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D75–D79、`docs/MANUAL-ACCEPTANCE.md` 新增 L 节。 |

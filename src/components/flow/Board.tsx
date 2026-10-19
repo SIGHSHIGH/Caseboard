@@ -829,7 +829,7 @@ export function Board() {
         // A5：双击缩放交给我们自己的「新建节点」对话框，画布双击不再变焦
         zoomOnDoubleClick={false}
         selectionOnDrag
-        selectionMode={SelectionMode.Full}
+        selectionMode={SelectionMode.Partial}
         panOnDrag={[1, 2]}
         panActivationKeyCode="Space"
         multiSelectionKeyCode={['Meta', 'Control']}

@@ -11,6 +11,8 @@ export {
   removeTimelineTrack,
 } from './timelineCommands';
 export { composeCommands } from './compose';
+export { addChain, updateChain, deleteChain, setChainEntry } from './chainCommands';
+export type { AddChainInput, ChainPatch } from './chainCommands';
 export { applyLayout } from './layoutCommands';
 export { restoreEntities } from './restoreCommands';
 export type { RestoreEntitiesInput } from './restoreCommands';

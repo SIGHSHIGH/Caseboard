@@ -2,6 +2,18 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.12.0 · M12 复验修订（K 反馈）
+
+### M12 整体验收通过（2026-10-20，tag ms/M12）
+
+- **框选（K1 / K13）**：`.cb-lasso` 是容器的绝对定位层，原来把 `clientX/clientY` 直接当框的 `left/top`，整框被左栏宽度 + 顶栏高度整体偏移——改为 `onPointerDown` 记下容器 `getBoundingClientRect()` 的左上角，框位置改为相对坐标（世界坐标仍走 `screenToFlowPosition`，那部分本来就是对的）；`SelectionMode.Full` 改 **`Partial`**，框到对象的一部分即选中，不必把整个卡片框进去。
+- **时间线（K8）**：数轴占满可用宽度（去掉 1180px 上限），时间片按 `stackChips` **错行排布**（`CHIP_ROW_HEIGHT 22` / `CHIP_MIN_GAP 0.045`，轨道高度 `chipTrackHeight` 跟着行数长高），挤在一起的条目上下分开而不是互相遮挡；靠右端的时间片用 `.is-end` 改成向左展开，不再被裁掉。
+- **假设面板（K14a / K14b）**：「新增假设」输入与「分数」不再出框（`.cb-hyp__add` 改 `display: grid` + `minmax(0,1fr)` + 按钮 `nowrap`，`.cb-hyp__item-head` 允许换行，表头 `max-width: 200px`）；新增**按关系与 tag 自动构建假设**：`proposeHypotheses(doc)` 用并查集按关系线聚出 ≥3 个实体的连通群体、再按 tag 聚出 ≥2 个实体的群体，已覆盖的跳过，界面列成草案勾选确认后**一次 `composeCommands` 落库**（实体作为「支持」立场），草案本身不改 Model。
+- **自定义证据链（K14c）**：`CaseDoc.chains?: ChainDef[]`（`ChainEntry{nodeId, stageId}`，六个阶段 id `motive/plan/prepare/act/escape/launder` 定义在 `src/types/index.ts`，`evidenceChain.ts` 改为 re-export）；新增 `chainCommands`（`addChain` / `updateChain` / `deleteChain` / `setChainEntry`）与 `src/lib/chains.ts`（`customChainStages` / `chainCoverage` / `isChainStageId` / `assignableNodes`）；迁移 `normalizeChain` 丢掉未知阶段、未知实体与重复条目；假设面板「证据链」页签顶部多了**链选择条**（「自动（字段 + 关键词）」+ 自建链 chips + 新建/删除），选中自建链时六阶段按该链独立展示，归入/移出写 `setChainEntry`。
+- **地点自动连线（K15）**：新增纯函数 `src/lib/placeLink.ts`（`matchPlaceForNode` 只认标题完全相同、忽略大小写与首尾空白、不看自己、已有关系不重复连；`PLACE_LINK_EDGE` = `related` + 虚线 + 置信度 50），右栏「地点」字段提交时命中已有地点/单位就用 `composeCommands` 一次写「字段 + 关系线」，并在字段下给出「已自动连到「X」」提示——字段推断按**推测线**处理，不冒充已证实。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **770 条全绿**（M12 新增 [68] 时间片错行 / [69] 自动构建假设草案 / [70] 自定义证据链与迁移 / [71] 地点自动连线）、`pnpm ui-smoke` **354 条全绿**（新增 M12 段：草案面板列条目 + 确认后真的落库、链选择条 + 新建/删除自建链、六阶段仍按链展示、M12 样式区块）、`pnpm bench` 1000 节点解析链 **110.8 ms**、`pnpm build` 成功、桌面自检两轮 PASS。
+- **打包**：版本三处升 **0.12.0**（`package.json` / `tauri.conf.json` / `Cargo.toml`）；`tauri build --no-bundle` 重建 `caseboard.exe`；NSIS 安装包归档到仓库根 `release\CaseBoard_0.12.0_x64-setup.exe`。
+- **文档**：`docs/MILESTONES.md` §1 M12 置 ✅、§3 新增 M12 目标/范围/验收/拆步表/偏离表、§6 新增 D75–D79、§7 一行；`docs/MANUAL-ACCEPTANCE.md` 新增 L 节（K1–K18 逐条复验）。
 ## [未发布] v0.11.0 · M11 用户复验修订
 
 ### M11 整体验收通过（2026-10-20，tag ms/M11）

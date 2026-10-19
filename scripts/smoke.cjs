@@ -3374,6 +3374,133 @@ async function main() {
     state().undo();
     check('撤销一次就同时撤销入库与归组', doc().assets.every((asset) => asset.id !== 'a-imp'));
   }
+  console.log('[68] 时间线时间片错行（M12 / K8）');
+    {
+      const tl = require(path.join(out, 'lib', 'timeline.js'));
+      const stacked = tl.stackChips([
+        { id: 'a', ratio: 0.02 },
+        { id: 'b', ratio: 0.03 },
+        { id: 'c', ratio: 0.5 },
+      ]);
+      check('挤在一起的两条错到第二行', stacked.rows.get('a') !== stacked.rows.get('b'), JSON.stringify([...stacked.rows.entries()]));
+      check('隔得远的那条留在第一行', stacked.rows.get('c') === 0, stacked.rows.get('c'));
+      check('行数按最挤的地方算', stacked.rowCount === 2, stacked.rowCount);
+      const wide = tl.stackChips([
+        { id: 'x', ratio: 0.1 },
+        { id: 'y', ratio: 0.9 },
+      ]);
+      check('不重叠时只有一行', wide.rowCount === 1, wide.rowCount);
+      check('行数换算成轨道高度', tl.chipTrackHeight(1) === 40 && tl.chipTrackHeight(3) === 84, tl.chipTrackHeight(3));
+    }
+
+    console.log('[69] 按关系与 tag 自动构建假设草案（M12 / K14b）');
+    {
+      const hyp = require(path.join(out, 'lib', 'hypothesis.js'));
+      const proposals = hyp.proposeHypotheses(doc());
+      check('能提出草案（不直接改 Model）', proposals.length > 0, proposals.length);
+      const tagProposal = proposals.find((item) => item.kind === 'tag' && item.id === 'tag:资金链');
+      check('同 tag 的实体聚成一条草案', Boolean(tagProposal), proposals.map((item) => item.id).join(','));
+      check('草案带实体清单', Boolean(tagProposal) && tagProposal.nodeIds.length >= 2, tagProposal && tagProposal.nodeIds.join(','));
+      check('草案按群体大小降序', proposals.every((item, index) => index === 0 || proposals[index - 1].nodeIds.length >= item.nodeIds.length));
+      check('只出现一次的 tag 不造草案', proposals.every((item) => !item.id.startsWith('tag:主犯')), proposals.map((item) => item.id).join(','));
+      const hypCmds = require(path.join(out, 'commands', 'hypothesisCommands.js'));
+      const composed = require(path.join(out, 'commands', 'compose.js'));
+      const before = doc().hypotheses.length;
+      state().dispatch(
+        composed.composeCommands('按关系与 tag 自动构建 1 条假设', [
+          hypCmds.addHypothesis({
+            id: 'hyp-auto',
+            title: tagProposal.title,
+            summary: tagProposal.reason,
+            stances: tagProposal.nodeIds.map((nodeId) => ({
+              targetId: nodeId,
+              targetKind: 'node',
+              stance: 'support',
+              note: '自动构建的初始支持',
+            })),
+          }),
+        ]),
+      );
+      const created = doc().hypotheses.find((item) => item.id === 'hyp-auto');
+      check('确认后一条命令落库', doc().hypotheses.length === before + 1 && Boolean(created), doc().hypotheses.length);
+      check('自动构建的实体作为支持立场', created && created.stances.length === tagProposal.nodeIds.length, created && created.stances.length);
+      check('草案已覆盖后再提就跳过', hyp.proposeHypotheses(doc()).every((item) => item.id !== tagProposal.id));
+      state().undo();
+      check('撤销后假设恢复原样', doc().hypotheses.length === before, doc().hypotheses.length);
+    }
+
+    console.log('[70] 自定义证据链（M12 / K14c）');
+    {
+      const chains = require(path.join(out, 'lib', 'chains.js'));
+      const chainCmds = require(path.join(out, 'commands', 'chainCommands.js'));
+      const migrateMod = require(path.join(out, 'serializers', 'migrate.js'));
+      check('六个阶段 id 固定', chains.CHAIN_STAGE_IDS.length === 6 && chains.CHAIN_STAGE_IDS[0] === 'motive', chains.CHAIN_STAGE_IDS.join(','));
+      check('阶段 id 校验', chains.isChainStageId('act') && !chains.isChainStageId('ufo'));
+      state().dispatch(chainCmds.addChain({ id: 'chain-1', title: '资金链' }));
+      const memberNode = doc().nodes.find((node) => node.type !== 'evidence');
+      state().dispatch(chainCmds.setChainEntry('chain-1', memberNode.id, 'act'));
+      const chainDoc = doc();
+      const chain = (chainDoc.chains ?? []).find((item) => item.id === 'chain-1');
+      check('新建的链存在', Boolean(chain) && chain.title === '资金链', chain && chain.title);
+      check('实体落进指定阶段', Boolean(chain) && chain.entries.some((entry) => entry.nodeId === memberNode.id && entry.stageId === 'act'));
+      const stages = chains.customChainStages(chainDoc, chain);
+      const actStage = stages.find((stage) => stage.id === 'act');
+      check('自定义链按六阶段展开', stages.length === 6 && actStage.items.length === 1, actStage && actStage.items.length);
+      check('空阶段标成断点', stages.find((stage) => stage.id === 'motive').missing === true);
+      const coverage = chains.chainCoverage(stages);
+      check('覆盖率按有材料的阶段算', coverage.filled === 1 && coverage.total === 6, coverage.filled + '/' + coverage.total);
+      check('缺口清单只列空阶段', coverage.gaps.length === 5);
+      state().dispatch(chainCmds.setChainEntry('chain-1', memberNode.id, 'launder'));
+      const moved = (doc().chains ?? []).find((item) => item.id === 'chain-1');
+      check('同一实体换阶段不会重复', moved.entries.length === 1 && moved.entries[0].stageId === 'launder');
+      state().dispatch(chainCmds.setChainEntry('chain-1', memberNode.id, null));
+      check('移出阶段后链里没有它', ((doc().chains ?? [])[0] || { entries: [] }).entries.length === 0);
+      state().dispatch(chainCmds.deleteChain('chain-1'));
+      check('删除链不动材料', doc().nodes.some((node) => node.id === memberNode.id) && (doc().chains ?? []).length === 0);
+      const raw = JSON.parse(JSON.stringify(doc()));
+      raw.chains = [
+        {
+          id: 'chain-raw',
+          title: '  拼错的链  ',
+          entries: [
+            { nodeId: memberNode.id, stageId: 'act' },
+            { nodeId: memberNode.id, stageId: 'escape' },
+            { nodeId: 'no-such-node', stageId: 'act' },
+            { nodeId: memberNode.id, stageId: 'ufo' },
+          ],
+        },
+        { id: 'chain-raw', title: '重复 id' },
+      ];
+      const normalized = migrateMod.normalizeDoc(raw);
+      check('迁移后只剩一条链', normalized.chains.length === 1, normalized.chains.length);
+      check('迁移去掉重复条目与未知实体', normalized.chains[0].entries.length === 1, normalized.chains[0].entries.length);
+      check('迁移去掉未知阶段', normalized.chains[0].entries.every((entry) => chains.isChainStageId(entry.stageId)));
+      check('迁移去标题首尾空白', normalized.chains[0].title === '拼错的链', normalized.chains[0].title);
+    }
+
+    console.log('[71] 地点字段自动连线（M12 / K15）');
+    {
+      const place = require(path.join(out, 'lib', 'placeLink.js'));
+      const current = doc();
+      const candidate = current.nodes.find((node) => place.matchPlaceForNode(current, node.id, '夜色KTV') !== null);
+      check('命中已有地点', Boolean(candidate), candidate && candidate.title);
+      check('去掉首尾空白也能命中', place.matchPlaceForNode(current, candidate.id, '  夜色KTV ') !== null);
+      check('不认识的名字不连', place.matchPlaceForNode(current, candidate.id, '不存在的酒吧') === null);
+      check('空字符串不连', place.matchPlaceForNode(current, candidate.id, '') === null);
+      check('不连自己', place.matchPlaceForNode(current, candidate.id, candidate.title) === null);
+      const alreadyLinked = current.edges.find((edge) => {
+        const source = current.nodes.find((node) => node.id === edge.source);
+        const target = current.nodes.find((node) => node.id === edge.target);
+        return Boolean(source && target && target.type === 'place' && source.type === 'event');
+      });
+      check(
+        '已有关系的不再重复连',
+        alreadyLinked
+          ? place.matchPlaceForNode(current, alreadyLinked.source, current.nodes.find((node) => node.id === alreadyLinked.target).title) === null
+          : true,
+      );
+      check('地点关系是虚线 + 置信度 50', place.PLACE_LINK_EDGE.style === 'dashed' && place.PLACE_LINK_EDGE.confidence === 50);
+    }
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

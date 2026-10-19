@@ -4,9 +4,10 @@
  * 并标出缺材料的断点（验收要求「自动标断点」）。
  */
 
-import type { CaseDoc, CaseNode } from '../types';
+import type { CaseDoc, CaseNode, ChainStageId } from '../types';
 
-export type ChainStageId = 'motive' | 'plan' | 'prepare' | 'act' | 'escape' | 'launder';
+/** 阶段 id 定义在 types（M12 / K14c）：自定义链要跟着持久化，纯库只是复用 */
+export type { ChainStageId } from '../types';
 
 export interface ChainStageDef {
   id: ChainStageId;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   advanceCursor,
   buildTimeline,
+  chipTrackHeight,
   clampCursor,
   cursorFromRatio,
   formatTimelineRange,
@@ -9,6 +10,7 @@ import {
   nodesWithoutTime,
   ratioFromCursor,
   sliceTimeline,
+  stackChips,
   timelineBands,
   timelineScale,
 } from '../../lib/timeline';
@@ -263,7 +265,13 @@ export function TimelineView() {
       </div>
 
       <div className="cb-timeline__lanes">
-        {lanes.map((lane) => (
+        {lanes.map((lane) => {
+          // M12（K8）：同一时刻的多个事件错行摆放，标题不再互相遮挡
+          const stacked = stackChips(
+            lane.items.map((item) => ({ id: item.id, ratio: ratioFromCursor(scale, item.start) })),
+          );
+          const trackHeight = chipTrackHeight(stacked.rowCount);
+          return (
           <div key={lane.id} className="cb-timeline__lane">
             <div className="cb-timeline__lane-head">
               <span className="cb-timeline__dot" style={{ background: lane.color }} />
@@ -336,7 +344,7 @@ export function TimelineView() {
               </div>
             ) : null}
             <div className="cb-timeline__track-view">
-              <div className="cb-timeline__track" style={{ width: `${widthPct}%` }}>
+              <div className="cb-timeline__track" style={{ width: `${widthPct}%`, height: trackHeight }}>
                 {/* M11（J8）：贯穿所有时间线的公用指针，跟着游标走 */}
                 <span
                   className="cb-timeline__cursor"
@@ -359,8 +367,15 @@ export function TimelineView() {
                   <button
                     key={item.id}
                     type="button"
-                    className={`cb-timeline__chip is-${stateOf(item.id)}`}
-                    style={{ left: `${ratioFromCursor(scale, item.start) * 100}%` }}
+                    className={
+                      'cb-timeline__chip is-' +
+                      stateOf(item.id) +
+                      (ratioFromCursor(scale, item.start) > 0.9 ? ' is-end' : '')
+                    }
+                    style={{
+                      left: `${ratioFromCursor(scale, item.start) * 100}%`,
+                      top: `${22 + (stacked.rows.get(item.id) ?? 0) * 22}px`,
+                    }}
                     title={`${formatTimelineRange(item)} · ${STATUS_META[item.status].label} · 置信度 ${item.confidence}`}
                     onClick={() => {
                       selectNode(item.id);
@@ -373,7 +388,8 @@ export function TimelineView() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
         {lanes.length === 0 ? (
           <p className="cb-timeline__hint">还没有轨道：点「新建时间线」把某个实体单独成轨。</p>
         ) : null}

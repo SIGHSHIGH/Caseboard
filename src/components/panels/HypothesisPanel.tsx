@@ -8,15 +8,17 @@
  * - 区域锚点只读，点击后跳到素材库并聚焦对应的框。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { addHypothesis, clearStance, deleteHypothesis, setStance, updateNode } from '../../commands';
+import { addChain, addHypothesis, clearStance, composeCommands, deleteChain, deleteHypothesis, setChainEntry, setStance, updateNode } from '../../commands';
 import { annotationsForNode } from '../../lib/annotation';
+import { chainCoverage, customChainStages } from '../../lib/chains';
 import { CHAIN6_STAGES, buildEvidenceChain, manualStage, stageFields } from '../../lib/evidenceChain';
-import { STANCE_META, compareHypotheses, rankHypotheses, targetLabel } from '../../lib/hypothesis';
+import { STANCE_META, compareHypotheses, proposeHypotheses, rankHypotheses, targetLabel } from '../../lib/hypothesis';
+import { newId } from '../../lib/id';
 import { STATUS_META } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { useViewModeStore } from '../../store/viewModeStore';
-import type { EvidenceStance, Status } from '../../types';
+import type { CaseDoc, CaseNode, ChainDef, ChainStageId, EvidenceStance, Status } from '../../types';
 
 interface HypothesisPanelProps {
   onClose: () => void;
@@ -118,6 +120,14 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误';
 }
 
+/** 可以归入某阶段的实体：自定义链排除已经在本阶段的，自动链排除证据本身与已在该阶段的人 */
+function assignCandidates(doc: CaseDoc, chain: ChainDef | null, stageId: ChainStageId): CaseNode[] {
+  if (!chain) {
+    return doc.nodes.filter((node) => node.type !== 'evidence' && manualStage(node) !== stageId);
+  }
+  return doc.nodes.filter((node) => chain.entries.find((entry) => entry.nodeId === node.id)?.stageId !== stageId);
+}
+
 export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
   const doc = useDocStore((s) => s.doc);
   const dispatch = useDocStore((s) => s.dispatch);
@@ -135,9 +145,25 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
   const [activeId, setActiveId] = useState<string | null>(doc.hypotheses[0]?.id ?? null);
   const [error, setError] = useState('');
 
+  // M12（K14b）：按关系线连通群体与 tag 群体给草案，点确认才落库
+  const [proposing, setProposing] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  // M12（K14c）：自定义证据链独立展示；null 表示看自动链（字段 + 关键词）
+  const [activeChainId, setActiveChainId] = useState<string | null>(null);
+  const [chainTitle, setChainTitle] = useState('');
+
   const ranking = useMemo(() => rankHypotheses(doc), [doc]);
   const comparison = useMemo(() => compareHypotheses(doc), [doc]);
   const chain = useMemo(() => buildEvidenceChain(doc), [doc]);
+  const proposals = useMemo(() => (proposing ? proposeHypotheses(doc) : []), [doc, proposing]);
+  const chains = doc.chains ?? [];
+  const activeChain = chains.find((item) => item.id === activeChainId) ?? null;
+  const customStages = useMemo(
+    () => (activeChain ? customChainStages(doc, activeChain) : null),
+    [activeChain, doc],
+  );
+  const customCoverage = useMemo(() => (customStages ? chainCoverage(customStages) : null), [customStages]);
+  const stages = customStages ?? chain.stages;
   const anchors = useMemo(
     () => (selectedNodeId ? annotationsForNode(doc, selectedNodeId) : []),
     [doc, selectedNodeId],
@@ -172,6 +198,55 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
       const created = addHypothesis({ title: trimmed, createdAt: new Date().toISOString() });
       dispatch(created);
       setTitle('');
+    });
+  };
+
+  const toggleProposal = (id: string) => {
+    setPicked((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : prev.concat(id)));
+  };
+
+  // 自动构建：一批 addHypothesis，实体作为「支持」立场；只建议不改现有数据（Gate 0-4）
+  const buildFromProposals = () => {
+    const chosen = proposals.filter((item) => picked.includes(item.id));
+    if (chosen.length === 0) {
+      setError('先勾选至少一条草案');
+      return;
+    }
+    run(() => {
+      dispatch(
+        composeCommands(
+          '按关系与 tag 自动构建 ' + chosen.length + ' 条假设',
+          chosen.map((item) =>
+            addHypothesis({
+              id: newId('hyp'),
+              title: item.title,
+              summary: '自动构建：' + item.reason,
+              stances: item.nodeIds.map((nodeId) => ({
+                targetId: nodeId,
+                targetKind: 'node' as const,
+                stance: 'support' as const,
+                note: '自动构建的初始支持',
+              })),
+            }),
+          ),
+        ),
+      );
+      setPicked([]);
+      setProposing(false);
+    });
+  };
+
+  const createChain = () => {
+    const trimmed = chainTitle.trim();
+    if (!trimmed) {
+      setError('先给证据链起个名字，例如「资金链」「第二被告」');
+      return;
+    }
+    const id = newId('chain');
+    run(() => {
+      dispatch(addChain({ id, title: trimmed }));
+      setChainTitle('');
+      setActiveChainId(id);
     });
   };
 
@@ -279,6 +354,50 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
               <button type="button" className="cb-btn cb-btn--primary" onClick={handleAdd}>新增假设</button>
             </div>
 
+            {/* M12（K14b）：草案由关系线与 tag 推出来，勾选确认才落库 */}
+            <div className="cb-hyp__proposebar">
+              <button type="button" className="cb-btn" onClick={() => setProposing((value) => !value)}>
+                {proposing ? '收起自动构建' : '按关系与 tag 自动构建假设…'}
+              </button>
+            </div>
+            {proposing ? (
+              <div className="cb-hyp__propose">
+                <p className="cb-hyp__meta">
+                  草案只做建议，勾选后一次落库；被选中的实体会先标成「支持」。共 {proposals.length} 条。
+                </p>
+                {proposals.length === 0 ? (
+                  <p className="cb-hyp__empty">现有关系与 tag 没能提出新草案（可能都已经被现有假设覆盖了）。</p>
+                ) : (
+                  <ul className="cb-hyp__propose-list">
+                    {proposals.map((item) => (
+                      <li key={item.id} className="cb-hyp__propose-item">
+                        <label className="cb-hyp__propose-label">
+                          <input
+                            type="checkbox"
+                            checked={picked.includes(item.id)}
+                            onChange={() => toggleProposal(item.id)}
+                          />
+                          <span className="cb-hyp__propose-title">{item.title}</span>
+                        </label>
+                        <p className="cb-hyp__meta">{item.reason}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="cb-hyp__propose-ops">
+                  <button type="button" className="cb-btn cb-btn--tiny" onClick={() => setPicked(proposals.map((item) => item.id))}>
+                    全选
+                  </button>
+                  <button type="button" className="cb-btn cb-btn--tiny" onClick={() => setPicked([])}>
+                    清空
+                  </button>
+                  <button type="button" className="cb-btn cb-btn--primary" onClick={buildFromProposals}>
+                    构建 {picked.length} 条假设
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             {active ? (
               <div className="cb-hyp__stance">
                 <h3 className="cb-hyp__h3">给「{active.title}」标证据</h3>
@@ -385,12 +504,62 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
         </div>
       ) : (
         <div className="cb-hyp__chain">
+          {/* M12（K14c）：自动链之外可以自建多条证据链，各自独立展示 */}
+          <div className="cb-hyp__chains">
+            <button
+              type="button"
+              className={'cb-hyp__chainchip' + (activeChainId === null ? ' is-active' : '')}
+              onClick={() => setActiveChainId(null)}
+            >
+              自动（字段 + 关键词）
+            </button>
+            {chains.map((item) => (
+              <span key={item.id} className={'cb-hyp__chainchip' + (activeChainId === item.id ? ' is-active' : '')}>
+                <button type="button" className="cb-hyp__chainchip-btn" onClick={() => setActiveChainId(item.id)}>
+                  {item.title}（{item.entries.length}）
+                </button>
+                {activeChainId === item.id ? (
+                  <button
+                    type="button"
+                    className="cb-hyp__chainchip-del"
+                    title="删除这条链（材料本身不受影响）"
+                    onClick={() => {
+                      run(() => dispatch(deleteChain(item.id)));
+                      setActiveChainId(null);
+                    }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </span>
+            ))}
+            <input
+              className="cb-hyp__chain-new"
+              value={chainTitle}
+              placeholder="新证据链名称，例如「资金链」"
+              onChange={(event) => setChainTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') createChain();
+              }}
+            />
+            <button type="button" className="cb-btn cb-btn--tiny" onClick={createChain}>
+              新建证据链
+            </button>
+          </div>
           <p className="cb-hyp__sub">
-            动机 → 预谋 → 准备 → 实施 → 逃离 → 销赃。覆盖 {chain.covered}/{chain.total} 段，缺口：
-            {chain.gaps.length > 0 ? chain.gaps.map((gap) => chain.stages.find((stage) => stage.id === gap)?.label).join('、') : '无'}
+            动机 → 预谋 → 准备 → 实施 → 逃离 → 销赃。
+            {customCoverage && activeChain
+              ? '自定义链「' + activeChain.title + '」覆盖 ' + customCoverage.filled + '/' + customCoverage.total + ' 段'
+              : '自动链（按字段与关键词）覆盖 ' + chain.covered + '/' + chain.total + ' 段'}
+            ，缺口：
+            {(customCoverage ? customCoverage.gaps : chain.gaps).length > 0
+              ? (customCoverage ? customCoverage.gaps : chain.gaps)
+                  .map((gap) => CHAIN6_STAGES.find((stage) => stage.id === gap)?.label)
+                  .join('、')
+              : '无'}
           </p>
           <ol className="cb-hyp__stages">
-            {chain.stages.map((stage) => (
+            {stages.map((stage) => (
               <li key={stage.id} className={'cb-hyp__stage' + (stage.missing ? ' is-missing' : '')}>
                 <div className="cb-hyp__stage-head">
                   <strong>{stage.label}</strong>
@@ -409,9 +578,14 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
                       evidenceCount={item.evidenceIds.length}
                       onLocate={locateNode}
                       onRemove={() => {
-                        const target = doc.nodes.find((entry) => entry.id === item.nodeId);
-                        if (!target) return;
-                        dispatch(updateNode(target.id, { fields: stageFields(target.fields ?? {}, null) }));
+                        // 自定义链只改链本身；自动链靠清掉「链条阶段」字段
+                        if (activeChain) {
+                          dispatch(setChainEntry(activeChain.id, item.nodeId, null));
+                          return;
+                        }
+                        const node = doc.nodes.find((entry) => entry.id === item.nodeId);
+                        if (!node) return;
+                        dispatch(updateNode(node.id, { fields: stageFields(node.fields ?? {}, null) }));
                       }}
                     />
                   ))}
@@ -423,18 +597,24 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
                   onChange={(event) => {
                     const node = doc.nodes.find((item) => item.id === event.target.value);
                     if (!node) return;
+                    if (activeChain) {
+                      dispatch(setChainEntry(activeChain.id, node.id, stage.id));
+                      return;
+                    }
                     dispatch(updateNode(node.id, { fields: stageFields(node.fields ?? {}, stage.id) }));
                   }}
                 >
                   <option value="">＋ 把实体归入「{stage.label}」…</option>
-                  {doc.nodes
-                    .filter((node) => node.type !== 'evidence' && manualStage(node) !== stage.id)
-                    .map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.title}
-                        {manualStage(node) ? '（当前：' + (CHAIN6_STAGES.find((def) => def.id === manualStage(node))?.label ?? '') + '）' : ''}
-                      </option>
-                    ))}
+                  {assignCandidates(doc, activeChain, stage.id).map((node) => (
+                    <option key={node.id} value={node.id}>
+                      {node.title}
+                      {activeChain
+                        ? ''
+                        : manualStage(node)
+                          ? '（当前：' + (CHAIN6_STAGES.find((def) => def.id === manualStage(node))?.label ?? '') + '）'
+                          : ''}
+                    </option>
+                  ))}
                 </select>
               </li>
             ))}

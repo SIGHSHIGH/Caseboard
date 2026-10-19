@@ -236,3 +236,40 @@ export function timelineBands(items: TimelineItem[], scale: TimelineScale): Time
 export function nodesWithoutTime(doc: CaseDoc): CaseNode[] {
   return doc.nodes.filter((node) => nodeTimeRange(node) === null).sort((a, b) => (a.id < b.id ? -1 : 1));
 }
+
+/** 时间片竖向排布步长（px）——同一时刻的多个事件靠它错行，避免互相遮挡（M12 / K8） */
+export const CHIP_ROW_HEIGHT = 22;
+
+/** 两个时间片之间至少间隔的比例，小于它就算「同一时刻」 */
+export const CHIP_MIN_GAP = 0.045;
+
+/**
+ * 把一条泳道里的时间片按比例错行：比例接近的排到下一行，
+ * 保证每个标题都露出来，而不是后一个把前一个压住。
+ * 返回 id → 行号（0 起），以及总行数。
+ */
+export function stackChips(
+  entries: Array<{ id: string; ratio: number }>,
+  minGap = CHIP_MIN_GAP,
+): { rows: Map<string, number>; rowCount: number } {
+  const rows = new Map<string, number>();
+  const last: number[] = [];
+  const sorted = [...entries].sort((a, b) => a.ratio - b.ratio || (a.id < b.id ? -1 : 1));
+  for (const entry of sorted) {
+    const ratio = Number.isFinite(entry.ratio) ? Math.min(Math.max(entry.ratio, 0), 1) : 0;
+    let row = last.findIndex((value) => ratio - value >= minGap);
+    if (row < 0) {
+      row = last.length;
+      last.push(ratio);
+    } else {
+      last[row] = ratio;
+    }
+    rows.set(entry.id, row);
+  }
+  return { rows, rowCount: last.length };
+}
+
+/** 时间片所在的泳道高度：至少 40px，错行时按行数撑开 */
+export function chipTrackHeight(rowCount: number): number {
+  return Math.max(40, rowCount * CHIP_ROW_HEIGHT + 18);
+}

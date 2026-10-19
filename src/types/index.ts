@@ -319,6 +319,26 @@ export interface OcrParseResult {
   text: string;
 }
 
+/** 证据链六阶段（M7-2 固定六段；M12 / K14c 允许自定义链复用同一套阶段） */
+export type ChainStageId = 'motive' | 'plan' | 'prepare' | 'act' | 'escape' | 'launder';
+
+/** 自定义证据链里的一条材料（哪份材料落在哪个阶段） */
+export interface ChainEntry {
+  nodeId: string;
+  stageId: ChainStageId;
+}
+
+/**
+ * 自定义证据链（M12 / K14c）：六阶段的划分由人决定，可建多条、各自独立展示。
+ * 与「自动证据链」（按字段 + 关键词现算）互不影响。
+ */
+export interface ChainDef {
+  id: string;
+  title: string;
+  note?: string;
+  entries: ChainEntry[];
+}
+
 export interface CaseDoc {
   meta: {
     id: string;
@@ -340,5 +360,7 @@ export interface CaseDoc {
   views: View[];
   /** 多假设（M7）：共享同一份节点与素材，立场按假设分别记录 */
   hypotheses: Hypothesis[];
+  /** 自定义证据链（M12）：缺省表示只用自动证据链 */
+  chains?: ChainDef[];
   settings: Settings;
 }

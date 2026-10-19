@@ -3,9 +3,11 @@ import {
   GROUP_COLORS,
   DEFAULT_GROUP_OPACITY,
   addComment,
+  addEdge,
   addNode,
   assignNodesToGroup,
   canParentGroup,
+  composeCommands,
   deleteAsset,
   deleteComment,
   deleteGroup,
@@ -21,6 +23,7 @@ import {
 } from '../../commands';
 import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } from '../../lib/theme';
 import { memberNodeIds } from '../../lib/groups';
+import { PLACE_LINK_EDGE, matchPlaceForNode } from '../../lib/placeLink';
 import { NODE_TYPE_ORDER, NODE_TEMPLATES, templateOf, type NodeFieldDef } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
@@ -178,6 +181,8 @@ function NodeForm({ node }: { node: CaseNode }) {
   const [notes, setNotes] = useState(node.notes ?? '');
   const [confidence, setConfidence] = useState(node.confidence);
   const [commentText, setCommentText] = useState('');
+  // M12（K15）：地点自动连线后的提示文字
+  const [placeLinked, setPlaceLinked] = useState('');
   const openTagLink = useTagLinkStore((s) => s.openDialog);
   const requestPick = useMapStore((s) => s.requestPick);
   const setViewMode = useViewModeStore((s) => s.setMode);
@@ -243,6 +248,9 @@ function NodeForm({ node }: { node: CaseNode }) {
     dispatch(updateNode(node.id, { fields: applyGeoFields(node.fields, lat, lng) }));
   };
 
+  /** M12（K15）：地点字段命中已有 place/org 且两者还没关系时返回该实体（判定在 lib/placeLink.ts） */
+  const placeMatchOf = (text: string) => matchPlaceForNode(useDocStore.getState().doc, node.id, text);
+
   /** 字段提交：数字字段优先存 number，空字符串视为删除该字段。 */
   const commitField = (key: string, raw: string) => {
     const field = template.fields.find((item) => item.key === key);
@@ -265,9 +273,22 @@ function NodeForm({ node }: { node: CaseNode }) {
       }
       return;
     }
-    if (JSON.stringify(next) !== JSON.stringify(node.fields)) {
-      dispatch(updateNode(node.id, { fields: next }));
+    const fieldChanged = JSON.stringify(next) !== JSON.stringify(node.fields);
+    // M12（K15）：填的地点正好是已有地点/单位 → 顺手连一条「推测」关系（虚线 + 置信度 50）
+    const placeHit = key === '地点' ? placeMatchOf(trimmed) : null;
+    if (!fieldChanged && !placeHit) return;
+    const fieldCmd = updateNode(node.id, { fields: next });
+    if (!placeHit) {
+      dispatch(fieldCmd);
+      return;
     }
+    dispatch(
+      composeCommands('填写地点并连线到「' + placeHit.title + '」', [
+        fieldCmd,
+        addEdge({ source: node.id, target: placeHit.id, ...PLACE_LINK_EDGE }),
+      ]),
+    );
+    setPlaceLinked(placeHit.title);
   };
 
   const addOneComment = () => {
@@ -449,6 +470,11 @@ function NodeForm({ node }: { node: CaseNode }) {
             />
           ))}
         </div>
+        {placeLinked ? (
+          <p className="cb-form__subtle">
+            已按「地点」自动连到已有对象「{placeLinked}」（虚线 · 推测 · 置信度 50，可在关系里改）
+          </p>
+        ) : null}
         {Object.keys(node.fields).some((key) => !template.fields.some((field) => field.key === key)) ? (
           <p className="cb-form__subtle">
             含模板外自定义字段：

@@ -8,9 +8,18 @@ import { newId } from '../lib/id';
 import type { Command } from './types';
 
 export interface AddHypothesisInput {
+  /** 指定 id（自动构建假设时由调用方生成，便于同一批里引用） */
+  id?: string;
   title: string;
   summary?: string;
   createdAt?: string;
+  /** 一次带上的初始证据（M12 / K14b：自动构建的实体直接作为「支持」） */
+  stances?: Array<{
+    targetId: string;
+    targetKind: HypothesisStance['targetKind'];
+    stance: EvidenceStance;
+    note?: string;
+  }>;
 }
 
 export interface HypothesisPatch {
@@ -26,13 +35,25 @@ export function addHypothesis(input: AddHypothesisInput): Command {
       const title = input.title.trim();
       if (!title) return;
       const hypothesis: Hypothesis = {
-        id: newId('hyp'),
+        id: input.id?.trim() || newId('hyp'),
         title,
         stances: [],
         status: 'active',
         createdAt: input.createdAt ?? new Date().toISOString(),
       };
       if (input.summary) hypothesis.summary = input.summary.trim();
+      if (draft.hypotheses.some((item) => item.id === hypothesis.id)) return;
+      for (const raw of input.stances ?? []) {
+        if (!targetExists(draft, raw.targetId, raw.targetKind)) continue;
+        const stance: HypothesisStance = {
+          targetId: raw.targetId,
+          targetKind: raw.targetKind,
+          stance: raw.stance,
+        };
+        const note = (raw.note ?? '').trim();
+        if (note) stance.note = note;
+        hypothesis.stances.push(stance);
+      }
       draft.hypotheses.push(hypothesis);
     },
   };
