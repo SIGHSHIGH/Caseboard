@@ -15,7 +15,12 @@ import { createDemoDoc } from '../data/demo';
 import { isRegionFlattened, type RgbaImage } from '../lib/redact';
 import type { TrashItem } from './db/repo';
 import type { Asset, CaseDoc } from '../types';
+import { analyzeConflicts } from '../lib/contradictions';
+import { adoptionScore, extractFromText } from '../lib/extract';
+import { buildReport } from '../lib/report';
+import { SAMPLE_REFERENCE, SAMPLE_TRANSCRIPT } from '../data/sampleTranscript';
 import { buildCaseboard, readCaseboard } from '../serializers/caseboard';
+import { buildReportDocx } from '../serializers/reportDocx';
 import { boardToPdfBytes } from '../serializers/pdfExport';
 import { boardToPngBytes, drawBoardToCanvas } from '../serializers/png';
 import { boardToSvg } from '../serializers/svg';
@@ -407,6 +412,24 @@ export async function runSelftest(): Promise<SelftestReport> {
     }
     if (diff === 0) throw new Error('与原始像素完全相同，马赛克未生效');
     return result.regions + ' 区域 / ' + result.pixels + ' 像素 · 解码复核抹平 · 与原始像素差异 ' + diff + ' 点';
+  });
+
+  await record('AI 文本能力（M6 验收 1/5：离线抽取与七节报告）', async () => {
+    const extracted = extractFromText(SAMPLE_TRANSCRIPT);
+    if (extracted.nodes.length < 6) throw new Error('样本笔录抽取实体不足：' + extracted.nodes.length);
+    const score = adoptionScore(extracted, SAMPLE_REFERENCE);
+    if (score.rate < 0.7) throw new Error('采纳率低于 70%：' + Math.round(score.rate * 100) + '%');
+    const conflicts = analyzeConflicts(doc, { template: 'fraud' });
+    if (conflicts.chainReview.length !== 5) throw new Error('证据链审查阶段数不是 5');
+    const report = buildReport(doc, { unresolved: extracted.unresolved, conflicts });
+    if (report.sections !== 7) throw new Error('报告不是七节');
+    if (!/\[(节点|证据):/.test(report.markdown)) throw new Error('报告缺少 [节点:id]/[证据:id] 引用');
+    const docx = buildReportDocx(report.markdown, report.title);
+    if (docx[0] !== 0x50 || docx[1] !== 0x4b) throw new Error('Word 不是 zip 容器');
+    return (
+      '抽取 ' + extracted.nodes.length + ' 实体 / ' + extracted.edges.length + ' 关系 · 采纳率 ' +
+      Math.round(score.rate * 100) + '% · 报告 7 节 ' + report.citations + ' 处引用 · Word ' + docx.length + ' 字节'
+    );
   });
 
   await record('零外呼（验收 3 断网可用的机器证据）', async () => {

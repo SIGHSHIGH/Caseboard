@@ -377,6 +377,119 @@ function check(name, condition, detail) {
   await new Promise((resolve) => setTimeout(resolve, 350));
   check('回到画布并选中该实体', doc.querySelector('.cb-work__canvas') !== null && doc.querySelectorAll('.cb-node.is-selected').length === 1, doc.querySelectorAll('.cb-node.is-selected').length);
 
+  console.log('[UI] M6 AI 助手面板');
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const setInputValue = async (el, value) => {
+    if (!el) return false;
+    const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(el, value);
+    el.dispatchEvent(new window.Event('input', { bubbles: true }));
+    await sleep(120);
+    return true;
+  };
+  check('顶栏有 AI 助手按钮', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').includes('AI 助手')));
+  check('可打开 AI 助手面板', await clickByText('.cb-topbar__io .cb-btn', 'AI 助手'));
+  check('AI 面板已渲染', doc.querySelector('.cb-ai') !== null);
+  check('五个功能页签', doc.querySelectorAll('.cb-ai__tab').length === 5, doc.querySelectorAll('.cb-ai__tab').length);
+  check('抽取页声明未采纳不改动画布', (doc.querySelector('.cb-ai__tip')?.textContent || '').includes('未采纳前不会改动画布'));
+  check('可载入示例笔录', await clickByText('.cb-ai .cb-btn', '载入示例笔录'));
+  check('示例笔录已填入文本框', (doc.querySelector('.cb-ai__input')?.value || '').includes('李梅'), (doc.querySelector('.cb-ai__input')?.value || '').slice(0, 40));
+  const aiNodesBefore = doc.querySelectorAll('.cb-node').length;
+  check('可抽取建图', await clickByText('.cb-ai .cb-btn', '抽取建图'));
+  await sleep(400);
+  check('生成待确认清单（≥6 条）', doc.querySelectorAll('.cb-ai__draft').length >= 6, doc.querySelectorAll('.cb-ai__draft').length);
+  check(
+    '草稿默认全部「待确认」',
+    doc.querySelectorAll('.cb-ai__draft.is-pending').length === doc.querySelectorAll('.cb-ai__draft').length,
+    [doc.querySelectorAll('.cb-ai__draft.is-pending').length, doc.querySelectorAll('.cb-ai__draft').length],
+  );
+  check('采纳前画布实体数量不变', doc.querySelectorAll('.cb-node').length === aiNodesBefore, [aiNodesBefore, doc.querySelectorAll('.cb-node').length]);
+  check('待核实清单包含手机号', (doc.querySelector('.cb-ai__unresolved')?.textContent || '').includes('手机号'), doc.querySelector('.cb-ai__unresolved')?.textContent);
+  check('可计算采纳率', await clickByText('.cb-ai .cb-btn', '计算采纳率'));
+  await sleep(200);
+  const aiScoreText = doc.querySelector('.cb-ai__score')?.textContent || '';
+  const aiScoreRate = Number((aiScoreText.match(/采纳率 (\d+)%/) || [])[1] || 0);
+  check('采纳率 ≥70%（门禁）', aiScoreRate >= 70 && aiScoreText.includes('无遗漏'), aiScoreText);
+  const firstAcceptBtn = [...doc.querySelectorAll('.cb-ai__draft.is-pending .cb-btn')].find((b) => (b.textContent || '').trim() === '采纳');
+  check('单条草稿有「采纳」按钮', !!firstAcceptBtn);
+  if (firstAcceptBtn) firstAcceptBtn.click();
+  await sleep(250);
+  check('单条采纳后状态变为已采纳', doc.querySelectorAll('.cb-ai__draft.is-accepted').length === 1, doc.querySelectorAll('.cb-ai__draft.is-accepted').length);
+  check('可全部采纳（一次撤销）', await clickByText('.cb-ai .cb-btn', '全部采纳'));
+  await sleep(350);
+  check('全部采纳后没有待确认项', doc.querySelectorAll('.cb-ai__draft.is-pending').length === 0, doc.querySelectorAll('.cb-ai__draft.is-pending').length);
+  check('采纳后画布新增实体', doc.querySelectorAll('.cb-node').length > aiNodesBefore, [aiNodesBefore, doc.querySelectorAll('.cb-node').length]);
+
+  const aiConflictTab = [...doc.querySelectorAll('.cb-ai__tab')].find((tab) => (tab.textContent || '').trim() === '矛盾审查');
+  check('有「矛盾审查」页签', !!aiConflictTab);
+  if (aiConflictTab) aiConflictTab.click();
+  await sleep(200);
+  check('审查页含证据链模板选择', (doc.querySelector('.cb-ai__section')?.textContent || '').includes('证据链模板'));
+  check('可运行本地审查', await clickByText('.cb-ai .cb-btn', '运行本地审查'));
+  await sleep(300);
+  check('冲突结论区已渲染', (doc.querySelector('.cb-ai__body')?.textContent || '').includes('冲突与疑问（'), doc.querySelector('.cb-ai__h3')?.textContent);
+  check('证据链审查表五个阶段', doc.querySelectorAll('.cb-ai__chain tbody tr').length === 5, doc.querySelectorAll('.cb-ai__chain tbody tr').length);
+
+  const aiEditTab = [...doc.querySelectorAll('.cb-ai__tab')].find((tab) => (tab.textContent || '').trim() === '自然语言编辑');
+  check('有「自然语言编辑」页签', !!aiEditTab);
+  if (aiEditTab) aiEditTab.click();
+  await sleep(200);
+  check('自然语言输入框已就绪', !!doc.querySelector('.cb-ai__input--short'));
+  await setInputValue(doc.querySelector('.cb-ai__input--short'), '把李梅和张建国连起来，关系是同伙');
+  check('可生成指令预览', await clickByText('.cb-ai .cb-btn', '生成预览'));
+  await sleep(300);
+  check('预览列出一条命令', doc.querySelectorAll('.cb-ai__preview li').length === 1, doc.querySelectorAll('.cb-ai__preview li').length);
+  check('预览标注可执行', doc.querySelectorAll('.cb-ai__preview li.is-ready').length === 1);
+  check('预览文案点名「同伙」', (doc.querySelector('.cb-ai__preview')?.textContent || '').includes('同伙'), doc.querySelector('.cb-ai__preview')?.textContent);
+  const aiEdgesBefore = doc.querySelectorAll('.react-flow__edge').length;
+  check('确认执行按钮存在', await clickByText('.cb-ai .cb-btn', '确认执行（一次撤销）'));
+  await sleep(350);
+  check('执行后新增一条关系', doc.querySelectorAll('.react-flow__edge').length === aiEdgesBefore + 1, [aiEdgesBefore, doc.querySelectorAll('.react-flow__edge').length]);
+
+  const aiEditTab2 = [...doc.querySelectorAll('.cb-ai__tab')].find((tab) => (tab.textContent || '').trim() === '自然语言编辑');
+  if (aiEditTab2) aiEditTab2.click();
+  await sleep(200);
+  const aiNodesBeforeDelete = doc.querySelectorAll('.cb-node').length;
+  await setInputValue(doc.querySelector('.cb-ai__input--short'), '删除李梅');
+  check('可预览删除指令', await clickByText('.cb-ai .cb-btn', '生成预览'));
+  await sleep(300);
+  check('删除指令标注需二次确认', (doc.querySelector('.cb-ai__body')?.textContent || '').includes('含删除操作，需二次确认'), doc.querySelector('.cb-ai__body')?.textContent?.includes('含删除操作'));
+  check('删除确认勾选框出现', (doc.querySelector('.cb-ai__check')?.textContent || '').includes('我确认执行删除操作'));
+  const aiDeleteConfirm = [...doc.querySelectorAll('.cb-ai .cb-btn')].find((b) => (b.textContent || '').includes('确认执行（一次撤销）'));
+  check('未勾选时「确认执行」禁用', !!aiDeleteConfirm && aiDeleteConfirm.disabled === true);
+  check('未勾选时画布不变', doc.querySelectorAll('.cb-node').length === aiNodesBeforeDelete, [aiNodesBeforeDelete, doc.querySelectorAll('.cb-node').length]);
+
+  const aiReportTab = [...doc.querySelectorAll('.cb-ai__tab')].find((tab) => (tab.textContent || '').trim() === '报告');
+  check('有「报告」页签', !!aiReportTab);
+  if (aiReportTab) aiReportTab.click();
+  await sleep(200);
+  check('报告页说明引用要求', (doc.querySelector('.cb-ai__section')?.textContent || '').includes('[节点:id]'));
+  check('可生成报告', await clickByText('.cb-ai .cb-btn', '生成报告'));
+  await sleep(400);
+  const aiReportText = doc.querySelector('.cb-ai__report')?.textContent || '';
+  check('报告已渲染七节', (aiReportText.match(/^## /gm) || []).length === 7, (aiReportText.match(/^## /gm) || []).length);
+  check('报告事实句带引用标记', aiReportText.includes('[节点:') || aiReportText.includes('[证据:'));
+  check('报告含证据清单与待核实', aiReportText.includes('证据清单') && aiReportText.includes('待核实'));
+  check('可导出 Word 与 PDF', ['导出 Word', '导出 PDF'].every((label) => [...doc.querySelectorAll('.cb-ai .cb-btn')].some((b) => (b.textContent || '').includes(label))));
+
+  const aiSettingsTab = [...doc.querySelectorAll('.cb-ai__tab')].find((tab) => (tab.textContent || '').trim() === '设置');
+  check('有「设置」页签', !!aiSettingsTab);
+  if (aiSettingsTab) aiSettingsTab.click();
+  await sleep(200);
+  check('三个模型通道选项', doc.querySelectorAll('.cb-ai__provider-option').length === 3, doc.querySelectorAll('.cb-ai__provider-option').length);
+  check('默认通道显示完全离线', (doc.querySelector('.cb-ai__privacy')?.textContent || '').includes('完全离线'), doc.querySelector('.cb-ai__privacy')?.textContent);
+  const aiProviderRadios = doc.querySelectorAll('.cb-ai__provider-option input');
+  if (aiProviderRadios.length === 3) aiProviderRadios[2].click();
+  await sleep(200);
+  check('远程通道提示数据会离开本机', (doc.querySelector('.cb-ai__privacy')?.textContent || '').includes('远程模型') && (doc.querySelector('.cb-ai__privacy')?.textContent || '').includes('发送到'), doc.querySelector('.cb-ai__privacy')?.textContent);
+  check('远程需显式勾选允许', (doc.querySelector('.cb-ai__check')?.textContent || '').includes('允许远程模型'));
+  const closeAi = doc.querySelector('.cb-ai .cb-modal__icon');
+  if (closeAi) closeAi.click();
+  await sleep(250);
+  check('关闭后 AI 面板移除', doc.querySelector('.cb-ai') === null);
+  check('采纳的实体留在画布上', doc.querySelectorAll('.cb-node').length > aiNodesBefore, [aiNodesBefore, doc.querySelectorAll('.cb-node').length]);
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

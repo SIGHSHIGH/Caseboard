@@ -35,7 +35,7 @@
 | M3 | DSL + 双向同步 | 2–3 周 | Lezer grammar、CodeMirror 6、serialize/parse/diff、同步状态机 | 序列化幂等；1000 节点解析+渲染 < 300ms；解析失败不清空 Model | ✅ 2026-10-19 |
 | M4 | Tauri + SQLite + 项目文件 + 导出 | 3–4 周 | Tauri 2 外壳、SQLite、`.caseboard` 单文件、图片/整板导出、脱敏导出 | `.caseboard` 可拷机打开；离线可用；PDF 报告可交付 | ✅ 2026-10-19 |
 | M5 | 分析视图 | 2–3 周 | 过滤、聚焦、路径/中心度、自动布局、时间线回放、演示模式 | 路径高亮可复现；时间游标可播放；一键整理保留锁定节点 | ✅ 2026-10-19 |
-| M6 | AI 文本能力 | 2–3 周 | 抽取建图（P4）、自然语言编辑（P6）、矛盾检测/证据链（P5）、报告（P7）、本地模型 | 采纳率 ≥ 70%；AI 永不直接改 Model，只进待确认队列 | ⬜ |
+| M6 | AI 文本能力 | 2–3 周 | 抽取建图（P4）、自然语言编辑（P6）、矛盾检测/证据链（P5）、报告（P7）、本地模型 | 采纳率 ≥ 70%；AI 永不直接改 Model，只进待确认队列 | ✅ 2026-10-19 |
 | M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ⬜ |
 | M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ⬜ |
 
@@ -518,6 +518,43 @@
 5. 纯本地模型模式下（拔网线）完成抽取 + 报告全流程。
 6. 采纳率实测 ≥ 70%（用一份样本文笔录记录度量结果）。
 
+**M6 拆步与实现**
+
+| 步 | 实现 | 验收抓手 | 状态 |
+|---|---|---|---|
+| M6-1 | 通道、提示词与数据边界：`src/services/ai/{types,prompts,settings,provider}.ts`；P4–P7 提示词逐字内置（来源 `docs/CaseBoard-SPEC.md:640-748`）；三通道 `builtin`（内置规则，零外呼）/ `ollama`（仅回环地址）/ `openai`（必须显式允许远程并二次确认）；设置只存 localStorage，不进 `CaseDoc` | smoke [40] **9 条**：默认内置、三通道中文名与隐私文案、回环判定、未授权远程拒绝、非法设置夹紧、围栏 JSON 解析、非法回复中文报错、P4 红线 | ✅ |
+| M6-2 | 抽取建图与待确认队列：`src/lib/extract.ts`（人物/机构/地点/事件/证据/手机号；转账仅认完成态、书证 88 实线、陈述 45 点线；同对实体去重保留高置信）、`src/commands/aiCommands.ts`（`acceptAiDrafts` 单条 Command、整批一次撤销）、`src/store/aiStore.ts`、`src/components/panels/AiPanel.tsx`、`src/data/sampleTranscript.ts`（虚构样本笔录 + 8 项参考答案） | smoke [36] **13 条**：不改 Model、≥6 实体、转账「转账 50 万」实线 88、通话实线 88、认识点线 ≤50、手机号进待核实、采纳率 8/8、别名候选、一次撤销、合并既有李梅、新实体 todo、关系落盘、撤销全撤回；ui-smoke 18 条 | ✅ |
+| M6-3 | 矛盾检测与证据链审查：`src/lib/contradictions.ts`（time_conflict / duplicate_identity / unsupported_claim / contradiction + 三套链条模板 fraud/theft/general，输出 covered/weak/missing 与 ≤5 条问句建议） | smoke [37] **9 条**：四类冲突全部命中、`involvedIds`+建议问句、按严重度排序、五阶段链条、只读 | ✅ |
+| M6-4 | 自然语言编辑：`src/lib/nlEdit.ts`（`parseNlEdit` / `buildNlCommands`，支持新增/改名/连边/删除/移组/查询；无法解析只提问不生成命令）、`src/commands/compose.ts`（多命令合成一条撤销） | smoke [38] **8 条**：连接指令 1 条可执行、文案点名两端与「同伙」、未提供证据不吃已证实（点线 40）、删除 `hasDelete`、不可解析只提问、预览不改 Model、执行压一条、一次撤销；ui-smoke 6 条（含删除确认禁用态） | ✅ |
+| M6-5 | 报告与导出：`src/lib/report.ts`（七节 Markdown，事实句尾 `[节点:id]` / `[证据:id]`，推测标「（待核实）」）、`src/serializers/reportDocx.ts`（fflate 手写最小 OOXML）、`src/serializers/reportPdf.ts`（canvas + pdf-lib，桌面端用） | smoke [39] **10 条**：七节、引用数、二至五节每条事实句带引用、待核实标记、可复现、docx 为 zip、含 document.xml、正文含实体/证据与引用、纯文本行分类 | ✅ |
+| M6-6 | 纯本地零外呼：内置通道全为纯函数，`fetch` 被替换成抛错桩仍能完成抽取/审查/报告/Word；桌面自检新增 AI 检查项 | smoke [41] **4 条**：断网完成全流程、零网络请求、离线报告仍有引用、离线仍拒绝未授权远程；`caseboard.exe --selftest` 两轮均含「AI 文本能力」检查 | ✅ |
+
+**M6 验收记录（2026-10-19，✅ 通过）**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| 类型检查 | `node node_modules/typescript/bin/tsc --noEmit` → 0 error | ✅ |
+| 逻辑层 | `pnpm smoke` **513 条全通过**（M6 新增 53 条：[36] 13 / [37] 9 / [38] 8 / [39] 10 / [40] 9 / [41] 4） | ✅ |
+| 打包层 | `pnpm ui-smoke` **193 条全通过**（M6 新增 51 条）；`pnpm build` 825 modules，CSS 61.07 kB (gzip 10.47)、主包 821.36 kB (gzip 278.65)、reportDocx 2.50 kB、reportPdf 2.39 kB、CodePanel 345.79 kB、pdf 483.44 kB、2.66s | ✅ |
+| 桌面产物 | `node scripts/tauri-cli.cjs build --no-bundle` → `src-tauri/target/release/caseboard.exe`（release 3m39s，版本 **0.6.0**）；`node scripts/run-selftest.cjs` 两轮 **PASS 15 / 16**（新增 AI 检查项，第 2 轮跨进程数据完整）；`pnpm bench` 1000 节点 **75.6 ms** < 300 ms | ✅ |
+| 验收 1 待确认队列 | 粘贴样本笔录 → 13 条草稿全部 `pending`，采纳前画布实体数不变（Gate 0-4）；单条采纳 → `accepted`，全部采纳 → 0 条 pending 且画布新增实体；整批只压 1 条撤销 | ✅ |
+| 验收 2 diff 与二次确认 | 「把李梅和张建国连起来，关系是同伙」→ 1 条 `addEdge` 预览（同伙/点线 40，不伪造已证实）；「删除李梅」→ `hasDelete` + 提示「含删除操作，需二次确认」+「确认执行」禁用，未勾选时画布不变 | ✅ |
+| 验收 3 矛盾命中 | 构造用例四类全中：时间冲突（start>end）、一物多主（同名李梅）、无证据断言（已证实无证据）、关系矛盾（同对实体实线+虚线）；链条五阶段输出状态与缺口 | ✅ |
+| 验收 4 报告引用 | 七节报告，二至五节每条事实句均带 `[节点:id]`/`[证据:id]`；Word 正文保留引用与小节（3172 字节）；PDF 与 Word 同源 Markdown，桌面端导出（人工确认） | ✅ |
+| 验收 5 纯本地离线 | smoke [41] 用抛错 `fetch` 桩跑完抽取/审查/报告/Word，0 次网络请求；桌面自检「AI 文本能力」+「零外呼」同轮通过 | ✅ |
+| 验收 6 采纳率 | 样本笔录对 8 项参考答案 **8/8 = 100%**（门禁 ≥70%，无遗漏）；桌面自检同样输出 100% | ✅ |
+| 数据边界 | 设置页明示「完全离线 / 仅访问本机 / 会发送到」；远程通道未允许时直接抛「当前是纯本地模式…」；密钥只存 localStorage 不进案件文件 | ✅ |
+
+**M6 与计划的偏离（如实记录）**
+
+| 项 | 计划 | 实际 | 原因 |
+|---|---|---|---|
+| 本地模型 | Ollama / llama.cpp 二选一 | 内置规则为默认通道，Ollama 作为可切换的本机模型通道，未直接集成 llama.cpp | 内置规则让验收 5/6 可重复、零外呼；llama.cpp 需额外编译与模型文件，收益与 Ollama 重叠 |
+| 远程抽取/审查 | P4/P5 远程通道 | 已实现（`requestRemote` + `parseExtractReply` / `parseConflictReply`），机器验收只走内置通道 | 远程模型输出不确定，不能作为门禁；远程只在用户显式允许后可用 |
+| P6 提示词 | 远程 NL → 命令 | 本地确定性解析为主，`P6_EDIT_PROMPT` 已内置但未接远程执行 | 删除等破坏性操作必须可静态审计；本地解析能给出逐条 ready/problem 与二次确认 |
+| 报告 PDF | Word/PDF 都机器验收 | Word 机器验收；PDF 与 Word 同源 Markdown，桌面端人工确认 | node 无 canvas（与整板 PDF 同一限制，D28） |
+| 智能布局建议 | AI 建议布局 | 未做；M5 一键整理已覆盖布局需求 | 优先级低于六条验收，避免为凑功能加不可验收路径 |
+
 ---
 
 ### M7 · 高级功能 + AI 生图（3–4 周）
@@ -705,6 +742,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D38 | 演示模式先做**按实体类型分组的逐步讲解**（一屏一实体 + 关联清单 + 键盘 ←/→/空格翻页 + 「在画布中查看」），不做镜头动画、逐条连线亮起、全屏与导出；演示全程只读文档，退出只切视图与选中 | 镜头动画与全屏既无法用 jsdom 伪布局自动验收（D9），又是纯观赏成本；而验收 5 要求的「按步骤播放、退出后画布状态还原」靠只读性与视图切换即可严格满足 | `src/lib/present.ts` 的 `presentationOrder` / `relatedOf` / `presentationDeck` 是纯函数，smoke 直接断言顺序、方向与文档不变 |
 | D39 | 时间线播放口径：**1× = 整段时间在 60 秒内放完**（`advanceCursor(scale, at, speed, (span/60000)×delta)`），时间一律按 **UTC 墙上时间**解析与显示，刻度为空时禁用播放；区间事件的条带宽度 = `(end-start)/span` | 案件跨度从数小时到数年，若按真实毫秒推进，长跨度永远播不完、短跨度一闪而过；固定 60 秒让「播放」在不同案件上手感一致。UTC 墙上时间避免同一份笔录在不同时区显示不同时刻 | `src/lib/timeline.ts` 的 `parseTimelineTime` / `advanceCursor` / `timelineBands`；`TimelineView` 的 rAF 循环只负责按帧换算 |
 | D40 | 路径与中心度用**自写确定性 BFS / Brandes**（`src/lib/graph.ts`），不调用 graphology；依赖仍保留在 package.json（规格锁定技术栈） | 分析结果要能「同数据同结果」写进验收，自写实现可固定邻居顺序（id 升序）、并列路径排序与浮点保留位数；引库还要再包一层排序 | `shortestPath` / `allPaths` / `degreeCentrality` / `betweennessCentrality` 全是纯函数，smoke [31]/[33] 直接断言数值；将来需要更多图算法时再评估切到 graphology |
+| D41 | AI 通道**内置规则为默认且承担全部机器验收**：`src/lib/extract.ts` 的抽取器、`src/lib/contradictions.ts` 的审查、`src/lib/report.ts` 的报告全为纯函数，`fetch` 抛错也能跑完；Ollama（仅回环）与 OpenAI 兼容通道需显式允许远程 | M6 验收 5「断网完成全流程」与验收 6「采纳率 ≥70%」必须可重复；远程模型输出不确定，不能当门禁，但产品仍需可选的本机/远程模型通道 | `src/services/ai/{settings,provider}.ts`（`requireRemotePermission`）、smoke [41] |
+| D42 | AI 草稿**采纳才落 Model**：`acceptAiDrafts` 是唯一写入口，按标题/别名合并既有节点，新建实体固定 `status:'todo'`，不写 `confirmed`；`acceptAll` 合成一条 Command，整批一次撤销 | Gate 0-4「AI 产出只进待确认队列」；合并而非复制避免同一人重复建卡；新实体不自动已证实，线型/置信度保留 AI 的保守值 | `src/commands/aiCommands.ts`、`src/store/aiStore.ts`、smoke [36] |
+| D43 | 报告 Word 用 **fflate 手写最小 OOXML**，PDF 用 **canvas + pdf-lib embedPng**（与整板 PDF 同路线）；两者共用同一份 Markdown，引用标记不因导出格式丢失 | 不新增 `docx` 依赖（离线、包体小、可控）；node 无 canvas，PDF 只能桌面/人工确认，Word 可机器解压断言 | `src/serializers/reportDocx.ts`、`src/serializers/reportPdf.ts`、smoke [39] |
+| D44 | 自然语言编辑**默认不吃「已证实」**：无证据措辞生成点线 40 / 虚线 55，只有明确「已证实/确认」才实线；删除必须 `hasDelete` + 勾选确认 + `applyNl` 二次校验 | 与 Gate 0-3 线型语义一致；AI/指令都不能凭一句话把推测升格为已证实；删除是不可逆高风险操作 | `src/lib/nlEdit.ts`、`src/store/aiStore.ts`、smoke [38]、ui-smoke |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -727,4 +768,5 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M4 人工验收热修（第一轮回执 A1–A8）**：修好 A1 拖入（`dragDropEnabled:false`，D34）、A2 图片缩放/旋转手柄（补 `nodrag`）、A4 框选与 Ctrl 多选 + 批量移动（D35）、A6 自动/启动快照（D36）、A7 回收站恢复连同关系并一次撤销（`restoreEntities`）、A8 导出面板错位（`.cb-modal__mask` + `.cb-modal cb-export`）；A3 曲率手柄延期至 M5（D37）。机器验收：typecheck 0 error、smoke **346 条**、ui-smoke 84 条、build 470 modules、`tauri build --no-bundle` 成功、自检 phase1 14 / phase2 15 全绿。 |
 | 2026-10-19 | **M4 整体验收通过**（✅ 打 tag `ms/M4`）：Tauri 2 外壳 + SQLite/FTS5 + `.caseboard` 单文件 + 整板 PNG/SVG/PDF + 案件图片包 + 脱敏导出 + 自动保存/版本快照/回收站/历史面板落地；`caseboard.exe --selftest` 两轮 **14 + 15 项全绿**（数据跨进程完整、跨目录打开、零外呼、PDF 回读 2 页、脱敏 1024 像素可验证抹平）；§1 总表 M4 置 ✅、§3 写入 M4 拆步表与验收记录（含遗留与延期表），新增 D25–D33（Rust 装进工作区 / 二进制 base64 过 IPC / Rust 只做 IO / 模型驱动出图 / `--selftest` 通道 / 绝对路径存素材 / 数据目录可覆盖 + 建表提前 / PDF 关对象流 / 删除进回收站）；`pnpm smoke` **337 条**、`pnpm ui-smoke` 84 条、`pnpm bench` 75.7ms、`pnpm build` 469 modules。 |
 | 2026-10-19 | **M4 人工验收第二轮回执热修（A1 旋转 / A3 曲率手柄）**：旋转手柄被图层工具条压住（层级上下文）→ 工具条 `top:-60px` + window 指针监听；新增 `CaseEdge.controlPoints` 与 `src/lib/edgeCurve.ts`，选中关系可拖曲率手柄、双击复位，SVG/PNG 与画布共用曲线（D37 由延期改为已实现）；§3 增第二轮回执表并致谢「其余通过」；机器验收 smoke **359 条**、ui-smoke **90 条**、自检 14 + 15 全绿；「视觉对齐 / 折叠操作提示」语义待用户确认。 |
+| 2026-10-19 | **M6 整体验收通过**（✅ 打 tag `ms/M6`）：AI 文本能力五步落地——三通道与 P4–P7 提示词、内置抽取器待确认队列、矛盾与证据链审查、自然语言编辑 diff、七节报告与 Word/PDF 导出；`pnpm smoke` **513 条**（M6 新增 53）、`pnpm ui-smoke` **193 条**（新增 51）、桌面自检 **15/16**、版本 **0.6.0**；§3 拆步表与验收记录落地，新增 D41–D44。 |
 | 2026-10-19 | **M5 整体验收通过**（✅ 打 tag `ms/M5`）：分析视图五步落地——图内核（路径/中心度/五种布局/时间线）、过滤与聚焦、路径与中心度可视化、一键整理、时间线回放与演示模式；`pnpm smoke` **460 条**（M5 新增 101）、`pnpm ui-smoke` **142 条**（新增 52）、`pnpm build` 811 modules；§1 总表 M5 置 ✅，§3 写入 M5 拆步与验收记录（含与计划的五项偏离），新增 D38（演示模式先做逐步讲解）、D39（1× = 60 秒、UTC 口径）、D40（自写确定性 BFS/Brandes）。 |

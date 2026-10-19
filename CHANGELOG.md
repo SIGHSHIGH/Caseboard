@@ -2,6 +2,20 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.6.0 · M6 AI 文本能力
+
+### M6 整体验收通过（2026-10-19，tag ms/M6）
+
+- **模型通道与提示词**（`src/services/ai/`）：三通道——内置规则（离线、确定性）、Ollama（只允许回环地址）、OpenAI 兼容接口（必须显式允许远程并二次确认）；P4–P7 提示词逐字内置；设置只存 localStorage，不进案件文件。
+- **抽取建图**（`src/lib/extract.ts` + `src/data/sampleTranscript.ts`）：识别人物/机构/地点/事件/证据/手机号，抽转账（仅完成态）、通话、认识关系；书证走实线 88、陈述走点线 45；同对实体去重保留高置信；无法确定的进「待核实」。虚构样本笔录对 8 项参考答案 **8/8 = 100%**。
+- **待确认队列**（`src/commands/aiCommands.ts` + `src/store/aiStore.ts` + `AiPanel.tsx`）：AI 只产草稿，逐条采纳/驳回；采纳才 `dispatch(acceptAiDrafts)`，按标题/别名合并既有实体、新实体固定 `todo`，整批一条撤销（Gate 0-4）。
+- **矛盾与证据链审查**（`src/lib/contradictions.ts`）：时间冲突、一物多主、无证据断言、关系矛盾四类；fraud/theft/general 三套链条模板输出 covered/weak/missing 与 ≤5 条建议问句。
+- **自然语言编辑**（`src/lib/nlEdit.ts`）：新增/改名/连边/删除/移组/查询，逐条给出可执行或阻断原因；未提供证据不吃「已证实」（点线 40 / 虚线 55）；删除需勾选确认且 `applyNl` 二次校验。
+- **七节报告与导出**（`src/lib/report.ts` + `src/serializers/reportDocx.ts` + `reportPdf.ts`）：事实句尾带 `[节点:id]` / `[证据:id]`，推测标「（待核实）」；Word 由 fflate 手写 OOXML（不新增依赖），PDF 用 canvas + pdf-lib（与整板 PDF 同路线）。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **513 条全绿**（M6 新增 53：[36] 13 / [37] 9 / [38] 8 / [39] 10 / [40] 9 / [41] 4）、`pnpm ui-smoke` **193 条全绿**（新增 51）、`pnpm build` 825 modules、`tauri build --no-bundle` 3m39s、`run-selftest.cjs` 两轮 **PASS 15 / 16**、`pnpm bench` 1000 节点 75.6 ms。
+- **文档**：`docs/MILESTONES.md` §1 M6 置 ✅、§3 拆步表 + 验收记录 + 偏离表、§6 新增 D41–D44、§7 一行；版本三处升 0.6.0。
+
+
 ## [未发布] v0.5.0 · M5 分析视图
 
 ### M5 整体验收通过（2026-10-19，tag ms/M5）

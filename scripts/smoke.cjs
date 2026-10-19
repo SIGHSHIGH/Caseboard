@@ -2035,6 +2035,392 @@ async function main() {
       Math.abs(ratioFromCursor(scale, scale.min + scale.span / 2) - 0.5) < 1e-9,
   );
 
+  console.log('[36] 抽取建图：样本笔录与待确认队列（M6）');
+  const { extractFromText, adoptionScore, aliasCandidates } = require(path.join(out, 'lib', 'extract.js'));
+  const { SAMPLE_TRANSCRIPT, SAMPLE_REFERENCE } = require(path.join(out, 'data', 'sampleTranscript.js'));
+  const { acceptAiDrafts } = require(path.join(out, 'commands', 'aiCommands.js'));
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m6Before = JSON.stringify(doc());
+  const m6Extract = extractFromText(SAMPLE_TRANSCRIPT);
+  check('抽取不改动 Model（Gate 0-4）', JSON.stringify(doc()) === m6Before);
+  check(
+    '样本笔录抽出 6 个以上实体',
+    m6Extract.nodes.length >= 6,
+    m6Extract.nodes.map((node) => node.title),
+  );
+  check(
+    '转账关系：李梅 → 恒信财务公司，实线 88，标签「转账 50 万」',
+    (() => {
+      const edge = m6Extract.edges.find((item) => item.sourceTitle === '李梅' && item.targetTitle === '恒信财务公司' && item.relType === '转账');
+      return edge !== undefined && edge.style === 'solid' && edge.confidence === 88 && edge.label === '转账 50 万' && edge.weight === 500000;
+    })(),
+    m6Extract.edges.map((edge) => [edge.sourceTitle, edge.relType, edge.targetTitle, edge.style, edge.confidence]),
+  );
+  check(
+    '通话关系：李梅 → 张建国，实线 88',
+    (() => {
+      const edge = m6Extract.edges.find((item) => item.sourceTitle === '李梅' && item.targetTitle === '张建国' && item.relType === '通话');
+      return edge !== undefined && edge.style === 'solid' && edge.confidence === 88;
+    })(),
+  );
+  check(
+    '陈述性「认识」关系用点线 45，不伪造已证实',
+    (() => {
+      const edge = m6Extract.edges.find((item) => item.relType === '认识');
+      return edge !== undefined && edge.style === 'dotted' && edge.confidence <= 50;
+    })(),
+    m6Extract.edges.filter((edge) => edge.style !== 'solid').map((edge) => [edge.relType, edge.style, edge.confidence]),
+  );
+  check(
+    '手机号进入待核实清单（不当作实体）',
+    m6Extract.unresolved.some((item) => item.includes('手机号')) && m6Extract.unresolved.some((item) => item.includes('13800138000')),
+    m6Extract.unresolved,
+  );
+  const m6Score = adoptionScore(m6Extract, SAMPLE_REFERENCE);
+  check(
+    '采集采纳率 8/8 = 100%（门禁 ≥70%）',
+    m6Score.matched === 8 && m6Score.total === 8 && m6Score.rate >= 0.7 && m6Score.missing.length === 0,
+    m6Score,
+  );
+  check(
+    '别名合并候选能发现「张建国 / 三哥」',
+    (() => {
+      const nodes = [
+        { id: 'n1', type: 'person', title: '张建国', aliases: ['三哥'] },
+        { id: 'n2', type: 'person', title: '三哥', aliases: [] },
+      ];
+      return aliasCandidates(nodes).some((item) => item.reason.includes('别名'));
+    })(),
+  );
+  const m6PastBefore = state().past.length;
+  const m6NodeCount = doc().nodes.length;
+  state().dispatch(acceptAiDrafts({ nodes: m6Extract.nodes, edges: m6Extract.edges }));
+  check(
+    '采纳后整批只压一条撤销记录',
+    state().past.length - m6PastBefore === 1,
+    state().past.length - m6PastBefore,
+  );
+  check(
+    '与既有节点按标题合并（李梅不产生副本）',
+    doc().nodes.filter((node) => node.title === '李梅').length === 1,
+    doc().nodes.filter((node) => node.title === '李梅').length,
+  );
+  check(
+    '新实体只进「待核实」状态，不自动已证实',
+    (() => {
+      const org = doc().nodes.find((node) => node.title === '恒信财务公司');
+      const evidence = doc().nodes.find((node) => node.title === '银行流水');
+      return org !== undefined && org.status === 'todo' && org.type === 'org' && evidence !== undefined && evidence.type === 'evidence';
+    })(),
+    doc().nodes.filter((node) => node.title === '恒信财务公司' || node.title === '银行流水').map((node) => [node.title, node.type, node.status]),
+  );
+  check(
+    '采纳后新增关系（转账 / 通话都落到画布）',
+    doc().edges.some((edge) => edge.relType === '转账' && edge.label === '转账 50 万') &&
+      doc().edges.some((edge) => edge.relType === '通话'),
+    doc().edges.map((edge) => edge.relType),
+  );
+  check('撤销一次全部撤回', (state().undo(), JSON.stringify(doc()) === m6Before));
+  state().dispatch(replaceDocument(createDemoDoc()));
+
+  console.log('');
+  console.log('[37] 矛盾检测与证据链审查（M6）');
+  const { analyzeConflicts } = require(path.join(out, 'lib', 'contradictions.js'));
+  const m6Base = JSON.parse(JSON.stringify(createDemoDoc()));
+  const m6Template = m6Base.nodes.find((node) => node.title === '李梅');
+  const m6ConflictDoc = JSON.parse(JSON.stringify(m6Base));
+  m6ConflictDoc.nodes.find((node) => node.id === 'zhang').time = { start: '2026-09-05', end: '2026-09-01' };
+  const m6Dup = JSON.parse(JSON.stringify(m6Template));
+  m6Dup.id = 'li-dup';
+  m6Dup.x = m6Template.x + 300;
+  m6Dup.title = m6Template.title;
+  m6ConflictDoc.nodes.push(m6Dup);
+  const m6Claim = JSON.parse(JSON.stringify(m6Template));
+  m6Claim.id = 'claim-1';
+  m6Claim.x = m6Template.x;
+  m6Claim.y = m6Template.y + 300;
+  m6Claim.title = '王五';
+  m6Claim.status = 'confirmed';
+  m6Claim.notes = '已确认其参与分赃。';
+  m6ConflictDoc.nodes.push(m6Claim);
+  m6ConflictDoc.edges.push({
+    id: 'e-solid-li',
+    source: 'li',
+    target: 'zhang',
+    relType: '认识',
+    label: '认识',
+    path: 'bezier',
+    directed: false,
+    style: 'solid',
+    confidence: 90,
+    evidenceIds: [],
+  });
+  const m6Report = analyzeConflicts(m6ConflictDoc, { template: 'fraud' });
+  const m6Types = new Set(m6Report.conflicts.map((item) => item.type));
+  check('命中时间冲突', m6Types.has('time_conflict'), [...m6Types]);
+  check('命中一物多主（同名实体）', m6Types.has('duplicate_identity'), [...m6Types]);
+  check('命中无证据断言（已证实却没有证据）', m6Types.has('unsupported_claim'), [...m6Types]);
+  check('命中关系矛盾（同一对实体同时有实线与虚线）', m6Types.has('contradiction'), [...m6Types]);
+  check(
+    '每条冲突都指到具体实体并给出问句建议',
+    m6Report.conflicts.every((item) => item.involvedIds.length > 0 && item.suggestion.length > 0),
+    m6Report.conflicts.map((item) => [item.type, item.involvedIds]),
+  );
+  check(
+    '冲突按严重程度排序（高在前）',
+    (() => {
+      const order = { high: 0, medium: 1, low: 2 };
+      const sorted = m6Report.conflicts.map((item) => order[item.severity]);
+      return sorted.every((value, index) => index === 0 || sorted[index - 1] <= value);
+    })(),
+    m6Report.conflicts.map((item) => item.severity),
+  );
+  check(
+    '证据链模板覆盖五个阶段并给出状态',
+    m6Report.chainReview.length === 5 && m6Report.chainReview.every((item) => ['covered', 'weak', 'missing'].includes(item.status)),
+    m6Report.chainReview,
+  );
+  check('建议不超过 5 条', m6Report.nextSteps.length > 0 && m6Report.nextSteps.length <= 5, m6Report.nextSteps.length);
+  check(
+    '审查只读：不修改文档',
+    (() => {
+      const before = JSON.stringify(m6ConflictDoc);
+      analyzeConflicts(m6ConflictDoc, { template: 'fraud' });
+      return JSON.stringify(m6ConflictDoc) === before;
+    })(),
+  );
+
+  console.log('');
+  console.log('[38] 自然语言编辑：diff 预览与二次确认（M6）');
+  const { parseNlEdit, buildNlCommands } = require(path.join(out, 'lib', 'nlEdit.js'));
+  const { composeCommands } = require(path.join(out, 'commands', 'compose.js'));
+  state().dispatch(replaceDocument(createDemoDoc()));
+  const m6LinkPlan = parseNlEdit(doc(), '把李梅和张建国连起来，关系是同伙');
+  check(
+    '连接指令解析成一条可执行的关系预览',
+    m6LinkPlan.commands.length === 1 && m6LinkPlan.preview.length === 1 && m6LinkPlan.preview[0].ready === true && m6LinkPlan.hasDelete === false,
+    m6LinkPlan,
+  );
+  check(
+    '预览文案点名两端实体与关系',
+    m6LinkPlan.preview[0].text.includes('李梅') && m6LinkPlan.preview[0].text.includes('张建国') && m6LinkPlan.preview[0].text.includes('同伙'),
+    m6LinkPlan.preview[0].text,
+  );
+  check(
+    '未提供证据的指令关系不吃「已证实」（点线/虚线且置信度 ≤60）',
+    (() => {
+      const commands = buildNlCommands(doc(), m6LinkPlan);
+      const command = m6LinkPlan.commands[0];
+      return (
+        commands.length === 1 &&
+        command.kind === 'addEdge' &&
+        command.style !== 'solid' &&
+        command.confidence <= 60
+      );
+    })(),
+    m6LinkPlan.commands,
+  );
+  const m6DeletePlan = parseNlEdit(doc(), '删除李梅');
+  check(
+    '删除指令标记 hasDelete，必须二次确认',
+    m6DeletePlan.hasDelete === true && m6DeletePlan.needsConfirmation === true && m6DeletePlan.commands.length === 1,
+    m6DeletePlan,
+  );
+  const m6Unclear = parseNlEdit(doc(), '处理一下这个案子');
+  check(
+    '无法解析的指令不生成命令，只提澄清问题',
+    m6Unclear.commands.length === 0 && m6Unclear.questions.length > 0 && m6Unclear.preview.every((item) => item.ready === false),
+    m6Unclear,
+  );
+  const m6BeforeNl = JSON.stringify(doc());
+  check('预览阶段不改动 Model', JSON.stringify(doc()) === m6BeforeNl);
+  const m6PastNl = state().past.length;
+  state().dispatch(composeCommands('AI 指令：测试', buildNlCommands(doc(), m6LinkPlan)));
+  check(
+    '执行后新增关系且只压一条撤销记录',
+    doc().edges.some((edge) => edge.relType === '同伙') && state().past.length - m6PastNl === 1,
+    [doc().edges.length, state().past.length - m6PastNl],
+  );
+  state().undo();
+  check('一次撤销撤回整批指令', JSON.stringify(doc()) === m6BeforeNl);
+  state().dispatch(replaceDocument(createDemoDoc()));
+
+  console.log('');
+  console.log('[39] 报告引用与 Word 导出（M6）');
+  const { buildReport, reportPlainLines } = require(path.join(out, 'lib', 'report.js'));
+  const { buildReportDocx } = require(path.join(out, 'serializers', 'reportDocx.js'));
+  const { unzipSync, strFromU8 } = require('fflate');
+  const m6ReportDoc = createDemoDoc(true);
+  const m6Text = buildReport(m6ReportDoc, { generatedAt: '2026-10-19T12:00:00.000Z', unresolved: ['手机号 13800138000 的实名机主待核实'] });
+  check('报告固定七节', m6Text.sections === 7 && (m6Text.markdown.match(/^## /gm) || []).length === 7, (m6Text.markdown.match(/^## /gm) || []).length);
+  check('报告有引用（[节点:] / [证据:]）', m6Text.citations > 0, m6Text.citations);
+  const m6FactSections = m6Text.markdown
+    .split(/^## /m)
+    .filter((section) => /^[二三四五]、/.test(section));
+  check(
+    '每条事实句都带引用（第二至五节的项目符号）',
+    m6FactSections.length === 4 &&
+      m6FactSections.every((section) =>
+        section
+          .split('\n')
+          .filter((line) => line.startsWith('- '))
+          .every((line) => line.includes('[节点:') || line.includes('[证据:')),
+      ),
+    m6FactSections
+      .flatMap((section) => section.split('\n'))
+      .filter((line) => line.startsWith('- ') && !line.includes('[节点:') && !line.includes('[证据:')),
+  );
+  check(
+    '推测关系标注「（待核实）」',
+    m6Text.markdown.includes('（待核实）'),
+    m6Text.markdown.split('\n').filter((line) => line.includes('（待核实）')).slice(0, 2),
+  );
+  check(
+    '报告可复现（同输入同输出）',
+    buildReport(m6ReportDoc, { generatedAt: '2026-10-19T12:00:00.000Z', unresolved: ['手机号 13800138000 的实名机主待核实'] }).markdown === m6Text.markdown,
+  );
+  const m6Docx = buildReportDocx(m6Text.markdown, m6Text.title);
+  check('Word 文件是 zip 容器（PK 头）', m6Docx[0] === 0x50 && m6Docx[1] === 0x4b && m6Docx.length > 1024, m6Docx.length);
+  const m6Zip = unzipSync(m6Docx);
+  check(
+    'docx 含 [Content_Types].xml 与 word/document.xml',
+    m6Zip['[Content_Types].xml'] !== undefined && m6Zip['word/document.xml'] !== undefined,
+    Object.keys(m6Zip),
+  );
+  const m6Xml = strFromU8(m6Zip['word/document.xml']);
+  check(
+    'Word 正文包含案件实体与证据名称',
+    m6Xml.includes('李梅') && m6Xml.includes('银行流水') && m6Xml.includes('（待核实）'),
+    m6Xml.length,
+  );
+  check(
+    'Word 正文保留引用标记与报告小节',
+    m6Xml.includes('[节点:') && m6Xml.includes('[证据:') && m6Xml.includes('情况分析报告'),
+  );
+  const m6Plain = reportPlainLines(m6Text.markdown);
+  check(
+    '纯文本行拆分类别正确（标题/小节/项目符号）',
+    m6Plain[0].kind === 'title' && m6Plain.some((row) => row.kind === 'heading') && m6Plain.some((row) => row.kind === 'bullet'),
+    m6Plain.slice(0, 3),
+  );
+
+  console.log('');
+  console.log('[40] AI 通道设置与数据边界（M6）');
+  const {
+    DEFAULT_AI_SETTINGS,
+    PROVIDER_LABEL,
+    isLocalProvider,
+    normalizeAiSettings,
+    providerPrivacyText,
+    requireRemotePermission,
+  } = require(path.join(out, 'services', 'ai', 'settings.js'));
+  const { parseExtractReply, P4_EXTRACT_PROMPT } = require(path.join(out, 'services', 'ai', 'prompts.js'));
+  check(
+    '默认通道是内置规则（离线）',
+    DEFAULT_AI_SETTINGS.provider === 'builtin' && DEFAULT_AI_SETTINGS.allowRemote === false,
+    DEFAULT_AI_SETTINGS,
+  );
+  check(
+    '三种通道都有中文名与隐私说明',
+    Object.keys(PROVIDER_LABEL).length === 3 &&
+      providerPrivacyText({ ...DEFAULT_AI_SETTINGS, provider: 'builtin' }).includes('离线') &&
+      providerPrivacyText({ ...DEFAULT_AI_SETTINGS, provider: 'openai', allowRemote: true }).includes('远程'),
+  );
+  check(
+    'Ollama 只允许回环地址，远程地址不算本机',
+    isLocalProvider({ ...DEFAULT_AI_SETTINGS, provider: 'ollama', baseUrl: 'http://127.0.0.1:11434' }) === true &&
+      isLocalProvider({ ...DEFAULT_AI_SETTINGS, provider: 'ollama', baseUrl: 'http://10.0.0.8:11434' }) === false,
+  );
+  check(
+    '未允许远程时调用远程通道直接拒绝',
+    (() => {
+      try {
+        requireRemotePermission({ ...DEFAULT_AI_SETTINGS, provider: 'openai', allowRemote: false });
+        return false;
+      } catch (error) {
+        return String(error.message).includes('纯本地模式');
+      }
+    })(),
+  );
+  check('内置通道无需远程许可', (() => {
+    try {
+      requireRemotePermission(DEFAULT_AI_SETTINGS);
+      return true;
+    } catch {
+      return false;
+    }
+  })());
+  const m6BadSettings = normalizeAiSettings({ provider: 'chatgpt', model: '', baseUrl: '', allowRemote: 'yes' });
+  check(
+    '非法设置被夹回默认值',
+    m6BadSettings.provider === 'builtin' && m6BadSettings.model === DEFAULT_AI_SETTINGS.model && m6BadSettings.allowRemote === false,
+    m6BadSettings,
+  );
+  const m6Reply = '好的：\n' + String.fromCharCode(96, 96, 96) + 'json\n' + JSON.stringify(m6Extract) + '\n' + String.fromCharCode(96, 96, 96);
+  const m6Parsed = parseExtractReply(m6Reply);
+  check(
+    '模型回复可解析（剥掉代码围栏）',
+    m6Parsed.nodes.length === m6Extract.nodes.length && m6Parsed.edges.length === m6Extract.edges.length,
+    [m6Parsed.nodes.length, m6Parsed.edges.length],
+  );
+  check(
+    '非法模型回复抛中文错误',
+    (() => {
+      try {
+        parseExtractReply('我不知道');
+        return false;
+      } catch (error) {
+        return String(error.message).includes('JSON');
+      }
+    })(),
+  );
+  check(
+    'P4 提示词内置线型语义与禁止虚构红线',
+    P4_EXTRACT_PROMPT.includes('solid') && P4_EXTRACT_PROMPT.includes('dotted') && P4_EXTRACT_PROMPT.includes('unresolved'),
+    P4_EXTRACT_PROMPT.length,
+  );
+
+  console.log('[41] 纯本地模式零外呼（M6 验收 5）');
+  const m6OfflineOriginalFetch = globalThis.fetch;
+  let m6OfflineCalls = 0;
+  globalThis.fetch = (...args) => {
+    m6OfflineCalls += 1;
+    throw new Error('纯本地模式不应发起网络请求：' + String(args[0]));
+  };
+  let m6OfflineExtract = null;
+  let m6OfflineReport = null;
+  let m6OfflineDocx = null;
+  let m6OfflineError = null;
+  try {
+    m6OfflineExtract = extractFromText(SAMPLE_TRANSCRIPT);
+    const offlineDoc = createDemoDoc(true);
+    const offlineConflicts = analyzeConflicts(offlineDoc, { template: 'fraud' });
+    m6OfflineReport = buildReport(offlineDoc, { unresolved: ['手机号待核实'], conflicts: offlineConflicts });
+    m6OfflineDocx = buildReportDocx(m6OfflineReport.markdown, m6OfflineReport.title);
+  } catch (error) {
+    m6OfflineError = error;
+  } finally {
+    globalThis.fetch = m6OfflineOriginalFetch;
+  }
+  check(
+    '断网也能完成抽取、审查、报告与 Word 导出',
+    m6OfflineError === null && m6OfflineExtract !== null && m6OfflineExtract.nodes.length >= 6 && m6OfflineReport !== null && m6OfflineReport.sections === 7 && m6OfflineDocx[0] === 0x50 && m6OfflineDocx[1] === 0x4b,
+    m6OfflineError ? String(m6OfflineError.message) : '',
+  );
+  check('全程没有发起任何网络请求', m6OfflineCalls === 0, m6OfflineCalls);
+  check('离线报告仍带引用', m6OfflineReport.citations > 0, m6OfflineReport.citations);
+  check(
+    '离线模式仍拒绝未授权的远程通道',
+    (() => {
+      try {
+        requireRemotePermission({ ...DEFAULT_AI_SETTINGS, provider: 'openai', allowRemote: false });
+        return false;
+      } catch (error) {
+        return String(error.message).includes('纯本地模式');
+      }
+    })(),
+  );
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

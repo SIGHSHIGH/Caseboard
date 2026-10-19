@@ -10,6 +10,7 @@ import { LINE_STYLE_META } from '../../lib/theme';
 import type { LineStyle } from '../../types';
 import { ExportDialog } from './ExportDialog';
 import { HistoryDialog } from './HistoryDialog';
+import { AiPanel } from './AiPanel';
 
 const LEGEND: LineStyle[] = ['solid', 'dashed', 'dotted'];
 
@@ -40,6 +41,7 @@ export function TopBar() {
   const importing = useRef(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
 
   const handleSaveProject = async () => {
@@ -162,6 +164,14 @@ export function TopBar() {
         </button>
         <button
           type="button"
+          className={`cb-btn${aiOpen ? ' is-active' : ''}`}
+          title="AI 助手：抽取建图 / 矛盾审查 / 自然语言编辑 / 报告（本地优先）"
+          onClick={() => setAiOpen(true)}
+        >
+          AI 助手
+        </button>
+        <button
+          type="button"
           className={`cb-btn${historyOpen ? ' is-active' : ''}`}
           title="历史与回收站：版本快照、被删除的实体与关系"
           onClick={() => setHistoryOpen(true)}
@@ -186,6 +196,7 @@ export function TopBar() {
       </div>
       {exportOpen ? <ExportDialog onClose={() => setExportOpen(false)} /> : null}
       {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
+      {aiOpen ? <AiPanel onClose={() => setAiOpen(false)} /> : null}
     </header>
   );
 }
