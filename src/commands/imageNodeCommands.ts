@@ -69,6 +69,8 @@ export interface ImageNodePatch {
   dockCorner?: DockCorner | null;
   dockOffset?: { x: number; y: number } | null;
   pinned?: boolean;
+  /** M11（I6）：true = 压缩成小圆点；false/null = 展开成正常图片 */
+  dotMode?: boolean;
 }
 
 export function updateImageNode(id: string, patch: ImageNodePatch): Command {
@@ -105,6 +107,7 @@ export function updateImageNode(id: string, patch: ImageNodePatch): Command {
         else node.dockOffset = { x: Math.round(patch.dockOffset.x), y: Math.round(patch.dockOffset.y) };
       }
       if (patch.pinned !== undefined) node.pinned = patch.pinned ? true : undefined;
+      if (patch.dotMode !== undefined) node.dotMode = patch.dotMode ? true : undefined;
     },
   };
 }

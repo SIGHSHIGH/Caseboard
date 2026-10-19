@@ -2,6 +2,22 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.11.0 · M11 用户复验修订
+
+### M11 整体验收通过（2026-10-20，tag ms/M11）
+
+- **外壳与控件（I7 / I8 / I13 / I14 / J2）**：地图视图也渲染右栏（原来只有画布视图挂 `<RightPanel />`，所以地图里改不了经纬度）；自动布局的「层级」标签改为用户找的**「分层」**（提示里保留「也写作层级」）；素材库拖入画布不再误触发导入向导（`onDrop` 先判断 `ASSET_DND_TYPE`——WebView2 的拖拽会带 file item 才被误判为导入）；安全面板删掉整块「本机存储」说明；左右栏各加一个可点击的折叠箭头（`.cb-collapse--left` / `--right`，`aria-expanded` 同步）。
+- **连接点与组（J4 / I3）**：八个连接点常驻时 `opacity: 0`，鼠标悬停卡片才显形（尺寸仍 18px）；组标题栏去掉 `nodrag` —— 这正是「组拖不动」的根因（有 `nodrag` 时 React Flow 的 d3-drag 不接管 pointerdown），并加 `⠿` 抓手图标与 `cursor: grab`；组成员点击改为「选中 + `focusEntity` 居中」；左栏新增 `GroupTree` 组树总览（层级组、成员、成员计数、折叠开关、点条目跳转画布）。
+- **图片（I1 / I6 / J6）**：`nodes` 数组按 `zIndex` 排序后再交给 React Flow，DOM 顺序与层级一致，「上移/下移/置顶/置底」立刻可见；新增 `ImageNode.dotMode`，图片可压成 26px 小圆点（双击圆点或点 `⤢` 展开，右栏与工具条都有开关），便于把图片拖到卡片角落吸附；卡片拖动时 `onNodeDrag` 实时算 `dockPreview`，吸附图片**跟着指针走**，不再是松手才跳过去。
+- **时间线（I9 / J8）**：轨道支持**手工挑选条目**（`TimelineTrack.nodeIds`，迁移时去重去空；清单为空即回到按 `kind` + `ref` 自动归集），多轨模式下每条泳道有「编辑」面板可勾选这条时间线包含哪些事件；缩放滑杆移到最下方与游标滑杆并排（同一份 `spanRatio`，拖一下整条数轴跟着缩放）；新增贯穿所有泳道的**公用指针**（`.cb-timeline__cursor`，跟着游标走）；数轴宽度上限 1180px，宽屏不再无限拉长。
+- **地图（J9）**：双击图钉弹出「手动编辑经纬度」面板（纬度/经度输入 + 回车写回 + 越界提示），仍走 `updateNode` 命令。
+- **素材库（J10）**：从某个素材文件夹里导入图片时，`confirm()` 用 `composeCommands` 把 `importAssets` 与 `moveAssetsToFolder` 合成**一条**命令，导完直接落在当前文件夹，撤销一次同时回退。
+- **证据链（I5 / J11）**：新增 `CHAIN_STAGE_FIELD`（字段名「链条阶段」）+ `manualStage` / `stageFields`，**人工阶段优先于关键词**——证据链页签每个阶段有「＋ 把实体归入本阶段」下拉、条目上有「移出阶段」，不再是一屏关键词猜出来的 `missing`；假设面板表格改 `table-layout: fixed` + `overflow-wrap: anywhere`，修掉字体出框。
+- **地点关联（I11）**：事件「地点」字段改成「可选已有对象 + 可手填」双通道输入（`datalist` 列出全部地点/单位标题）。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **729 条全绿**（M11 新增 [64] 图片小圆点 / [65] 轨道手工挑选条目 / [66] 证据链人工归类 / [67] 导入直接进文件夹）、`pnpm ui-smoke` **314 条全绿**（新增折叠箭头、组树、小圆点、工具条 6 按钮、时间线缩放与公用指针、地图右栏、M11 样式区块）、`pnpm bench` 1000 节点解析链 **74.3 ms**、`pnpm build` 成功、桌面自检两轮 PASS。
+- **打包**：版本三处升 **0.11.0**（`package.json` / `tauri.conf.json` / `Cargo.toml`）；`tauri build --no-bundle` 重建 `caseboard.exe`；NSIS 安装包归档到仓库根 `release\CaseBoard_0.11.0_x64-setup.exe`。
+- **文档**：`docs/MILESTONES.md` §1 M11 置 ✅、§3 新增 M11 目标/范围/验收/拆步表/偏离表、§6 新增 D69–D74、§7 一行；`docs/MANUAL-ACCEPTANCE.md` 新增 K 节（I1–I15 / J1–J15 逐条复验）。
+
 ## [未发布] v0.10.0 · M10 交互打磨与内置能力
 
 ### M10 整体验收通过（2026-10-20，tag ms/M10）

@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { addHypothesis, clearStance, deleteHypothesis, setStance, updateNode } from '../../commands';
 import { annotationsForNode } from '../../lib/annotation';
-import { buildEvidenceChain } from '../../lib/evidenceChain';
+import { CHAIN6_STAGES, buildEvidenceChain, manualStage, stageFields } from '../../lib/evidenceChain';
 import { STANCE_META, compareHypotheses, rankHypotheses, targetLabel } from '../../lib/hypothesis';
 import { STATUS_META } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
@@ -38,12 +38,14 @@ function ChainItem({
   weak,
   evidenceCount,
   onLocate,
+  onRemove,
 }: {
   nodeId: string;
   title: string;
   weak: boolean;
   evidenceCount: number;
   onLocate: (nodeId: string) => void;
+  onRemove: () => void;
 }) {
   const dispatch = useDocStore((s) => s.dispatch);
   const node = useDocStore((s) => s.doc.nodes.find((item) => item.id === nodeId));
@@ -93,6 +95,9 @@ function ChainItem({
         </select>
         <button type="button" className="cb-link-btn" onClick={() => onLocate(nodeId)} title="在画布中选中这个实体">
           在画布定位
+        </button>
+        <button type="button" className="cb-link-btn" onClick={onRemove} title="把这个实体移出本阶段（改回自动识别）">
+          移出阶段
         </button>
       </span>
     </li>
@@ -403,9 +408,34 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
                       weak={item.weak}
                       evidenceCount={item.evidenceIds.length}
                       onLocate={locateNode}
+                      onRemove={() => {
+                        const target = doc.nodes.find((entry) => entry.id === item.nodeId);
+                        if (!target) return;
+                        dispatch(updateNode(target.id, { fields: stageFields(target.fields ?? {}, null) }));
+                      }}
                     />
                   ))}
                 </ul>
+                {/* M11（J11）：人工把实体归入本阶段——证据链不再只靠关键词猜 */}
+                <select
+                  className="cb-hyp__assign"
+                  value=""
+                  onChange={(event) => {
+                    const node = doc.nodes.find((item) => item.id === event.target.value);
+                    if (!node) return;
+                    dispatch(updateNode(node.id, { fields: stageFields(node.fields ?? {}, stage.id) }));
+                  }}
+                >
+                  <option value="">＋ 把实体归入「{stage.label}」…</option>
+                  {doc.nodes
+                    .filter((node) => node.type !== 'evidence' && manualStage(node) !== stage.id)
+                    .map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {node.title}
+                        {manualStage(node) ? '（当前：' + (CHAIN6_STAGES.find((def) => def.id === manualStage(node))?.label ?? '') + '）' : ''}
+                      </option>
+                    ))}
+                </select>
               </li>
             ))}
           </ol>

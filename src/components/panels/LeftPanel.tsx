@@ -3,6 +3,7 @@ import { NODE_TYPE_META } from '../../lib/theme';
 import { NODE_TEMPLATES, NODE_TYPE_ORDER } from '../../lib/nodeTemplates';
 import { AssetLibrary } from './AssetLibrary';
 import { AnalysisPanel } from './AnalysisPanel';
+import { GroupTree } from './GroupTree';
 
 const TABS: Array<{ id: LeftTab; label: string }> = [
   { id: 'nodes', label: '对象' },
@@ -87,8 +88,9 @@ export function LeftPanel() {
           {mode === 'lasso' ? (
             <p className="cb-panel__note">圈选中：在画布拖框选择对象，Esc 取消</p>
           ) : (
-            <p className="cb-panel__note">拖标题栏移动整组，右下角调整大小，折叠后变成超级节点</p>
+            <p className="cb-panel__note">拖组标题栏移动整组，右下角调整大小，折叠后变成超级节点</p>
           )}
+          <GroupTree />
         </>
       ) : null}
 

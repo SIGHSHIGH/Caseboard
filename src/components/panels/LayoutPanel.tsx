@@ -7,7 +7,7 @@ import { useUiStore } from '../../store/uiStore';
 
 const KINDS: Array<{ id: LayoutKind; label: string; hint: string }> = [
   { id: 'force', label: '力导向', hint: '关系越近越聚在一起，适合看团伙结构' },
-  { id: 'hierarchical', label: '层级', hint: '按关系方向从左到右分层，适合看资金与指令流向' },
+  { id: 'hierarchical', label: '分层', hint: '按关系方向从左到右分层（也写作「层级」），适合看资金与指令流向' },
   { id: 'radial', label: '径向', hint: '以关键人物为中心向外扩散，适合看辐射范围' },
   { id: 'circle', label: '环形', hint: '均匀排成一圈，适合逐项核对' },
   { id: 'grid', label: '网格', hint: '整齐网格，适合整理素材与笔记' },

@@ -19,6 +19,7 @@ import { CommandPalette } from './components/panels/CommandPalette';
 import { NewNodeDialog } from './components/panels/NewNodeDialog';
 import { TagLinkDialog } from './components/panels/TagLinkDialog';
 import { usePaletteStore } from './store/paletteStore';
+import { ASSET_DND_TYPE } from './lib/dnd';
 
 // 代码视图带着 CodeMirror 6，按需加载，避免拖慢画布首屏
 const CodePanel = lazy(() => import('./components/code/CodePanel').then((mod) => ({ default: mod.CodePanel })));
@@ -40,6 +41,9 @@ export default function App() {
   const openPalette = usePaletteStore((s) => s.openPalette);
   const closePalette = usePaletteStore((s) => s.closePalette);
   const [splitPct, setSplitPct] = useState(44);
+  // M11（J2）：左右栏都能点小箭头收起/展开，收起后画布立刻变宽
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
   const workRef = useRef<HTMLDivElement>(null);
   useCodeSyncBridge();
 
@@ -96,6 +100,9 @@ export default function App() {
   }, [startImport]);
 
   const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    // M11（I13）：素材库内部拖拽走 Board 自己的落点逻辑；这里只处理「从系统拖进来的图片文件」，
+    // 否则从素材缩略图拖到画布会误唤起导入向导。
+    if (Array.from(event.dataTransfer?.types ?? []).includes(ASSET_DND_TYPE)) return;
     const files = imagesOf(event.dataTransfer?.files);
     if (files.length === 0) return;
     event.preventDefault();
@@ -130,7 +137,19 @@ export default function App() {
         }}
         onDrop={onDrop}
       >
-        {viewMode === 'board' ? <LeftPanel /> : null}
+        {viewMode === 'board' && leftOpen ? <LeftPanel /> : null}
+        {viewMode === 'board' ? (
+          <button
+            type="button"
+            className="cb-collapse cb-collapse--left"
+            title={leftOpen ? '收起左栏' : '展开左栏'}
+            aria-label={leftOpen ? '收起左栏' : '展开左栏'}
+            aria-expanded={leftOpen}
+            onClick={() => setLeftOpen((value) => !value)}
+          >
+            {leftOpen ? '‹' : '›'}
+          </button>
+        ) : null}
         <div className={viewMode === 'board' ? 'cb-work' : 'cb-work cb-work--stage'} ref={workRef}>
           {viewMode === 'timeline' ? <TimelineView /> : null}
           {viewMode === 'present' ? <PresentationView /> : null}
@@ -173,7 +192,20 @@ export default function App() {
             </>
           ) : null}
         </div>
-        {viewMode === 'board' ? <RightPanel /> : null}
+        {/* M11（I7）：地图视图也要右栏，才能改经纬度、点选设坐标；时间线/演示保留大舞台 */}
+        {viewMode === 'board' || viewMode === 'map' ? (
+          <button
+            type="button"
+            className="cb-collapse cb-collapse--right"
+            title={rightOpen ? '收起右栏' : '展开右栏'}
+            aria-label={rightOpen ? '收起右栏' : '展开右栏'}
+            aria-expanded={rightOpen}
+            onClick={() => setRightOpen((value) => !value)}
+          >
+            {rightOpen ? '›' : '‹'}
+          </button>
+        ) : null}
+        {(viewMode === 'board' || viewMode === 'map') && rightOpen ? <RightPanel /> : null}
       </div>
       <ImportWizard />
       <NewNodeDialog />

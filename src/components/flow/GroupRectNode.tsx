@@ -36,6 +36,7 @@ function GroupRectNodeInner({ data, selected }: NodeProps<GroupRectFlowNode>) {
   const dispatch = useDocStore((s) => s.dispatch);
   const doc = useDocStore((s) => s.doc);
   const selectNode = useUiStore((s) => s.selectNode);
+  const focusEntity = useUiStore((s) => s.focusEntity);
   const { zoom } = useViewport();
   const [drag, setDrag] = useState<DragState | null>(null);
   const [preview, setPreview] = useState<{ w: number; h: number } | null>(null);
@@ -91,7 +92,16 @@ function GroupRectNodeInner({ data, selected }: NodeProps<GroupRectFlowNode>) {
         borderStyle: selected ? 'solid' : 'dashed',
       }}
     >
-      <div className="cb-group__header nodrag" style={{ background: hexToRgba(group.color, 0.92) }}>
+      {/* M11（I3）：标题栏本身可以拖（不要 nodrag，否则 d3-drag 不接管、整组拖不动）；
+          内部按钮各自带 nodrag，点按钮不会带动分组。 */}
+      <div
+        className="cb-group__header"
+        title="按住标题栏拖动整组"
+        style={{ background: hexToRgba(group.color, 0.92) }}
+      >
+        <span className="cb-group__grip" aria-hidden="true">
+          ⠿
+        </span>
         <span className="cb-group__title">{group.title}</span>
         <button
           type="button"
@@ -137,6 +147,7 @@ function GroupRectNodeInner({ data, selected }: NodeProps<GroupRectFlowNode>) {
                     onClick={(event) => {
                       event.stopPropagation();
                       selectNode(node.id);
+                      focusEntity(node.id, 'node');
                       setListOpen(false);
                     }}
                   >

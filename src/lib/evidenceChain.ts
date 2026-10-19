@@ -59,6 +59,29 @@ function haystack(node: CaseNode): string {
   return [node.title, fields, (node.tags ?? []).join(' '), node.notes ?? '', (node.aliases ?? []).join(' ')].join(' ').toLowerCase();
 }
 
+/** M11（J11）：人工把实体归入某个阶段时写在节点字段里的键 */
+export const CHAIN_STAGE_FIELD = '链条阶段';
+
+/** 节点被人工归入的阶段（没有则 null） */
+export function manualStage(node: CaseNode): ChainStageId | null {
+  const raw = node.fields?.[CHAIN_STAGE_FIELD];
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  const found = CHAIN6_STAGES.find((def) => def.label === raw || def.id === raw);
+  return found ? found.id : null;
+}
+
+/** 把实体归入某个阶段（写字段）后的新 fields；stageId 为 null 表示移出 */
+export function stageFields(fields: Record<string, string | number | boolean>, stageId: ChainStageId | null): Record<string, string | number | boolean> {
+  const next: Record<string, string | number | boolean> = { ...fields };
+  if (stageId === null) {
+    delete next[CHAIN_STAGE_FIELD];
+    return next;
+  }
+  const def = CHAIN6_STAGES.find((item) => item.id === stageId);
+  next[CHAIN_STAGE_FIELD] = def ? def.label : stageId;
+  return next;
+}
+
 function evidenceIdsOf(doc: CaseDoc, nodeId: string): string[] {
   const ids = new Set<string>();
   for (const edge of doc.edges) {
@@ -73,6 +96,9 @@ function evidenceIdsOf(doc: CaseDoc, nodeId: string): string[] {
 }
 
 function matches(node: CaseNode, def: ChainStageDef): boolean {
+  // M11（J11）：人工归入的阶段优先，关键词只当自动建议
+  const manual = manualStage(node);
+  if (manual) return manual === def.id;
   const text = haystack(node);
   return def.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }

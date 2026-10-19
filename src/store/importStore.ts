@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useDocStore } from './docStore';
-import { composeCommands, importAssets, updateAsset } from '../commands';
+import { composeCommands, importAssets, moveAssetsToFolder, updateAsset } from '../commands';
 import { dedupeCandidates, nextAssetNo, type DuplicateEntry, type ImportMode } from '../lib/assetMeta';
 import { imageService, type PrepareFailure, type PrepareProgress, type PreparedImage } from '../services/image';
 import { OCR_ENGINE_HINT, ocrEngineStatus, recognizeAssetText } from '../services/ocr';
@@ -71,9 +71,11 @@ interface ImportStore {
   sourceLabel: string;
   capturedAt: string;
   linkedNodeId: string;
+  /** M11（J10）：导入后直接放进这个素材文件夹（空串 = 未分类） */
+  folderId: string;
   /** M9：导入后的 OCR 结果提示（未装引擎时给安装指引） */
   ocrNotice: string | null;
-  startImport: (files: File[], origin: Asset['source']) => Promise<void>;
+  startImport: (files: File[], origin: Asset['source'], folderId?: string) => Promise<void>;
   confirm: () => Promise<number>;
   reset: () => void;
   clearOcrNotice: () => void;
@@ -81,6 +83,7 @@ interface ImportStore {
   setSourceLabel: (label: string) => void;
   setCapturedAt: (value: string) => void;
   setLinkedNodeId: (id: string) => void;
+  setFolderId: (id: string) => void;
   dropDraft: (hash: string) => void;
 }
 
@@ -97,9 +100,10 @@ export const useImportStore = create<ImportStore>((set, get) => ({
   sourceLabel: '现场照片',
   capturedAt: '',
   linkedNodeId: '',
+  folderId: '',
   ocrNotice: null,
 
-  startImport: async (files, origin) => {
+  startImport: async (files, origin, folderId) => {
     if (files.length === 0) return;
     const doc = useDocStore.getState().doc;
     set({
@@ -111,6 +115,7 @@ export const useImportStore = create<ImportStore>((set, get) => ({
       duplicates: [],
       failed: [],
       origin,
+      folderId: folderId ?? '',
       progress: { done: 0, total: files.length, name: '' },
     });
     try {
@@ -148,7 +153,7 @@ export const useImportStore = create<ImportStore>((set, get) => ({
   },
 
   confirm: async () => {
-    const { drafts, mode, sourceLabel, capturedAt, linkedNodeId, origin } = get();
+    const { drafts, mode, sourceLabel, capturedAt, linkedNodeId, origin, folderId } = get();
     if (drafts.length === 0) return 0;
     set({ busy: true, error: null });
     try {
@@ -171,9 +176,18 @@ export const useImportStore = create<ImportStore>((set, get) => ({
               attachments: [asset.id],
             }))
           : undefined;
-      useDocStore.getState().dispatch(
-        importAssets({ assets, evidenceNodes, linkNodeId: linkedNodeId || undefined }),
-      );
+      const importCmd = importAssets({ assets, evidenceNodes, linkNodeId: linkedNodeId || undefined });
+      // M11（J10）：从某个素材文件夹导入时，导完直接归进那个文件夹，不再全丢进「未分类」
+      useDocStore
+        .getState()
+        .dispatch(
+          folderId
+            ? composeCommands('导入素材到文件夹（' + assets.length + ' 张）', [
+                importCmd,
+                moveAssetsToFolder(assets.map((asset) => asset.id), folderId),
+              ])
+            : importCmd,
+        );
       // M9：导入后自动 OCR —— 引擎缺失只给安装指引，绝不阻断导入
       const notice = await runOcrOnImported(assets);
       set({
@@ -199,5 +213,6 @@ export const useImportStore = create<ImportStore>((set, get) => ({
   setSourceLabel: (sourceLabel) => set({ sourceLabel }),
   setCapturedAt: (capturedAt) => set({ capturedAt }),
   setLinkedNodeId: (linkedNodeId) => set({ linkedNodeId }),
+  setFolderId: (folderId) => set({ folderId }),
   dropDraft: (hash) => set((state) => ({ drafts: state.drafts.filter((item) => item.hash !== hash) })),
 }));

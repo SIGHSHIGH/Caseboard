@@ -49,6 +49,7 @@
 | M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ✅ 2026-10-19 |
 | M9 | 交互修订与安全精简 | 1 周 | 图片工具条竖排、混合拖动命令合成、组尺寸与成员清单、双击新建对话框、模态居中、地图取点、布局换锚点、时间线回退、演示联动编辑、tag 自动连线、素材库分组、导入 OCR；**删除启动密码/整库加密**；NSIS 归档 `release\` | 十条验收全部通过；全仓库 `vault` 零命中；`smoke` 658 / `ui-smoke` 296 全绿 | ✅ 2026-10-20 |
 | M10 | 交互打磨与内置能力 | 1 周 | 顶栏删 logo 与常驻图例、八端口连线与连接点放大、图片层级与吸附随动、多轨时间线与比例、地图底图与拖动改坐标、素材文件夹、证据链可编辑、演示 tag 编辑、**内置 OCR 引擎随包分发**；NSIS 归档 `release\` | 十项验收全部通过；`smoke` 713 / `ui-smoke` 298 全绿；`dist/ocr` 随包 | ✅ 2026-10-20 |
+| M11 | 用户复验修订（I/J 反馈） | 1 周 | 左右栏折叠箭头、连接点常驻隐藏、组标题栏可拖动 + 左栏组树、图片小圆点与拖动实时跟随、时间线手工挑选条目 + 公用指针 + 缩放移到底部、地图双击手填经纬度、导入直接进当前文件夹、证据链人工归类、地点字段关联已有对象、素材拖拽不再误触导入、安全面板删本机存储段 | I1–I15 / J1–J15 逐条通过；`smoke` 729 / `ui-smoke` 314 全绿 | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -849,6 +850,85 @@
 
 
 
+### M11 · 用户复验修订（I/J 反馈）（1 周）
+
+**目标**：用户对 M10 交付逐条复验（I1–I15 / J1–J15），把「通过但还要更顺手」的条目落成具体控件与数据能力，并修掉复验暴露的缺陷（地图视图右栏缺失、组根本拖不动、素材拖拽误触导入、证据链仍无交互）。**这一轮不改技术栈、不新增外部依赖**，全部在既有 Command / Model 体系内完成。
+
+**范围**
+
+- 外壳与控件：左右栏折叠箭头（J2）、连接点常驻透明 hover 才显形（J4）、布局面板补「分层」标签（I8）、地图视图挂右栏（I7）、素材拖拽不唤起导入（I13）、安全面板删「本机存储」段（I14）。
+- 组与层级：组标题栏去 `nodrag` 才能整组拖动 + `⠿` 抓手（I3 / D69）、左栏 `GroupTree` 树形总览与成员跳转（I3）、节点数组按 `zIndex` 排序让层级立刻可见（I1 / D70）。
+- 图片：`dotMode` 小圆点（I6 / D71）、吸附图片拖动时实时跟随（J6）。
+- 时间线：轨道条目手工挑选 `nodeIds` + 恢复自动归集（I9 / D72）、贯穿所有泳道的公用游标指针（J8）、缩放滑条移到最下方与游标同区、数轴收窄到 1180px（I9）。
+- 地图：双击图钉弹面板手填经纬度（J9）。
+- 素材库：导入图片直接进当前文件夹（J10 / D74）。
+- 证据链：`链条阶段` 字段人工归类优先于关键词（J11 / I5 / D73）、假设面板字体出框修复（I5）。
+- 模板字段：事件「地点」可选已有 place/org（I11）。
+
+**验收标准**
+
+| 编号 | 标准 |
+|---|---|
+| 1 | 左右栏都能点小箭头收起/展开，收起后画布变宽，再次展开恢复原选择 |
+| 2 | 组的标题栏能按住拖动整组（含子组与成员），右下角仍可改尺寸，表头按钮仍可点 |
+| 3 | 左栏「分组」页签出现树形总览，点组或成员能定位到画布 |
+| 4 | 图片工具条点「置顶/置底/上移/下移」后前后关系**立即**变化，不需要点空白处 |
+| 5 | 图片可压成 26px 小圆点，双击圆点或点 ⤢ 展开；开关进模型、重开案件仍生效 |
+| 6 | 八个连接点平时不可见，鼠标移到卡片上才出现，尺寸 18px |
+| 7 | 时间线多轨模式下可编辑每条轨道包含哪些实体，可一键恢复自动归集；游标指针贯穿所有泳道；缩放滑条在最下方 |
+| 8 | 地图里双击图钉可手填经纬度并写回 `fields.经纬度`，非法值有中文提示 |
+| 9 | 素材库里拖素材到画布不会唤起导入向导；从文件夹里导入的图片直接落在该文件夹 |
+| 10 | 证据链可把任意实体归入六个阶段之一，也可移出；演示数据开箱即有内容 |
+
+#### M11 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 |
+|---|---|---|
+| M11-1 | **左右栏折叠（J2）**：`App.tsx` 增 `leftOpen` / `rightOpen`，左侧 `{viewMode === 'board' && leftOpen ? <LeftPanel /> : null}` + `.cb-collapse--left`、右侧 `.cb-collapse--right`；`index.css` 增 `.cb-collapse` 竖条样式 | ui-smoke：点箭头后 `.cb-panel--left/--right` 消失，再点恢复 |
+| M11-2 | **地图挂右栏（I7）**：右侧渲染条件从 `viewMode === 'board'` 扩成 `board \|\| map` | ui-smoke：切到地图后 `.cb-panel--right` 存在 |
+| M11-3 | **连接点常驻隐藏（J4）**：`.cb-handle` 的 `opacity: 0.45` 改 `0`，尺寸保持 18px，hover 卡片时 `opacity: 1` | ui-smoke：规则命中 `opacity: 0` |
+| M11-4 | **组可拖动 + 组树（I3）**：`GroupRectNode` 的 `.cb-group__header` 去掉 `nodrag`、加 `⠿` 抓手与 `cursor: grab`；成员点击补 `focusEntity(node.id, 'node')`；新增 `panels/GroupTree.tsx`（`GroupRow` 递归、成员列 `memberNodeIds(doc, id, false)`、折叠按钮、空态）挂进 `LeftPanel` 的「分组」页签 | ui-smoke：`.cb-gtree__head` 含「分组总览」、`.cb-gtree__member` 存在 |
+| M11-5 | **层级立刻生效（I1）**：`Board` 的 `nodes` useMemo 末尾 `all.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))` | 画布上点「置顶/置底」立即换层 |
+| M11-6 | **图片小圆点（I6）**：`types.ImageNode.dotMode`、`migrate.normalizeImageNode` 保留、`imageNodeCommands.ImageNodePatch` 支持、`lib/imageNode.IMAGE_DOT_SIZE = 26`、`FreeImageNode` 早退分支（`.cb-img-dot` + `⤢` + 双击展开）、工具条第 6 个按钮、右栏 `ImageForm` 开关 | smoke [64]；ui-smoke：工具条 6 个按钮 |
+| M11-7 | **吸附实时跟随（J6）**：`Board` 增 `dockPreview`，`onNodeDrag` 的 base 分支按 `dx/dy` 算被吸附图片的新位置写进 `dockPreview`，`imageNodes` 的 `position` 优先取它，`onNodeDragStop` 清空 | 拖动卡片时圆点/图片跟着走，不等松手 |
+| M11-8 | **时间线（I9 / J8）**：`TimelineTrack.nodeIds` 进类型与迁移；`timelineTracks.laneOf` 手工清单优先；`TimelineView` 删顶栏比例滑杆、底部新增 `.cb-timeline__zoombar`、泳道「编辑」按钮展开 `.cb-timeline__laneedit` 复选框面板 + 「恢复自动归集」、每条泳道内插 `.cb-timeline__cursor` | smoke [65]；ui-smoke：`.cb-timeline__zoombar`、`.cb-timeline__cursor`、`.cb-timeline__laneedit` |
+| M11-9 | **地图双击手填（J9）**：`MapView` 增 `editing` / `editError`、`beginEdit` / `commitEdit`、pin 的 `onDoubleClick`、`.cb-map__edit` 浮层（Enter 提交、Esc 取消、范围校验） | 双击图钉改坐标后右栏经纬度同步 |
+| M11-10 | **导入进文件夹（J10）**：`importStore` 增 `folderId` / `setFolderId`，`startImport(files, origin, folderId?)`，`confirm` 用 `composeCommands([importAssets, moveAssetsToFolder])` 一次派发；`AssetLibrary` 传 `activeFolder` | smoke [67]：一次 `undo` 同时回退导入与归类 |
+| M11-11 | **证据链人工归类（J11 / I5）**：`evidenceChain` 增 `CHAIN_STAGE_FIELD = '链条阶段'` / `manualStage` / `stageFields`，`matches` 人工优先；`HypothesisPanel` 增每阶段 `.cb-hyp__assign` 下拉与 `ChainItem` 的「移出阶段」；`.cb-hyp` 系列补 `min-width: 0` / `table-layout: fixed` / `overflow-wrap: anywhere` 修字体出框 | smoke [66]；假设面板从空壳变成可归类 |
+| M11-12 | **收尾**：I11 地点 `datalist`、I13 拖拽守卫、I8「分层」标签、I14 删本机存储段；smoke [64]–[67] 四段、ui-smoke M11 段 16 条；版本三处 0.11.0；重建 exe + 两轮自检 + NSIS 归档 | 四件套全绿 + 自检 PASS |
+
+#### M11 验收记录（2026-10-20，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| 类型检查 | `tsc --noEmit` 0 error |
+| 逻辑层 | `pnpm smoke` **729 PASS / 0 FAIL**（M10 基线 713，新增 [64]–[67] 共 16 条） |
+| 打包层 | `pnpm ui-smoke` **314 PASS / 0 FAIL**（M10 基线 298；改旧断言 1 处、新增 M11 段 16 条） |
+| 性能 | `pnpm bench` 1000 节点解析链 **74.3 ms**（阈值 300 ms） |
+| 构建 | `pnpm build` 成功，`dist/ocr` 随包 |
+| 桌面产物 | `tauri build --no-bundle` 重建 `caseboard.exe`；`run-selftest.cjs` 两轮 PASS |
+| 验收 1 折叠 | 左右栏箭头可用，画布自适应 |
+| 验收 2 组拖动 | 标题栏可拖整组，右下角仍可缩放，表头按钮不受影响 |
+| 验收 3 组树 | 「分组」页签有树形总览与成员跳转 |
+| 验收 4 层级 | 置顶/置底立即生效 |
+| 验收 5 圆点 | 26px 圆点、双击展开、重开案件保持 |
+| 验收 6 连接点 | 常驻 `opacity: 0`，hover 显形，18px |
+| 验收 7 时间线 | 轨道可手工挑选条目 + 恢复自动、公用指针、底部缩放 |
+| 验收 8 地图 | 双击图钉手填经纬度并写回 |
+| 验收 9 素材 | 拖拽不误触导入；导入落进当前文件夹 |
+| 验收 10 证据链 | 可人工归类与移出，演示数据开箱有内容 |
+| 版本 | `package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 三处 **0.11.0** |
+
+#### M11 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 时间线「缩放由最下方滑条同步控制」 | 原比例滑杆在顶栏，与游标滑杆分居两端 | 整块移到 `.cb-timeline__zoombar`，与游标同区，并把数轴收窄到 1180px（D72 同批） |
+| 证据链「无功能」 | 阶段列表完全靠关键词命中，演示文案几乎不命中 | 不推翻关键词兜底，另加人工 `链条阶段` 字段并让它优先（D73） |
+| 图片上下移「无功能」 | 命令层生效但画布不重排 | 只改渲染顺序即可修好，未改层级数据结构（D70） |
+| 左右栏折叠 | 原设计无折叠，宽度固定 | 用 `App` 级两个布尔 + `.cb-collapse` 竖条，未引入可拖拽分栏 |
+| J14「安装目录里没有 ocr 文件夹」 | OCR 资源被 Tauri 内嵌进 exe，安装目录本来不该有独立文件 | 在文档与自检说明里写清「引擎内嵌」，不改打包方式 |
+
 ---
 
 ## 4. 推进规则
@@ -1017,6 +1097,12 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D66 | 线型图例从顶栏常驻改为**右下角可折叠「图示」**（`CanvasLegend`），但三条线型语义仍然固定、不可关闭 | 用户第 2 项要求删掉常驻图例；Gate 0-3 又要求「图例常驻、不提供绕过开关」——两者折中：图例默认折叠但不提供任何「隐藏线型语义」的开关，展开即见完整说明 | `CanvasLegend.tsx`、`TopBar.tsx`、ui-smoke 图例断言 |
 | D67 | 时间线多轨与比例是**数据**（`doc.timeline.tracks` + `doc.timeline.prefs`），不再是组件内部状态；默认仍是「按类型」两条泳道，`spanRatio` 夹在 0.1–1 | 用户第 10 项要多轨、比例、新建时间线；这些偏好如果只活在组件里，切视图/重开就丢，也无法进 undo。放进文档后顺带由 `migrate` 兜住脏数据（悬空 `trackIds`、非法轨道） | `src/lib/timelineTracks.ts`、`commands/timelineCommands.ts`、`smoke [58]`/`[62]` |
 | D68 | 素材文件夹是**树**（`AssetFolder.parentId` + 环检测），删除文件夹只做「子级上提 + 素材回未分类」，**永不删素材**；分组纯函数 `groupAssets(assets, mode, folders)` 负责路径拼接 | 用户第 13 项要「新建文件夹管理素材」；用树而不是标签，是因为案卷素材通常是「现场照片 / 书证」这类层级。删文件夹连带删素材对取证工具是不可接受的数据损失 | `src/commands/assetFolderCommands.ts`、`src/lib/assetGroups.ts`、`AssetLibrary.tsx`、smoke [60] |
+| D69 | **组的拖动与缩放分开**：`.cb-group__header` 去掉 `nodrag`（有它时 React Flow 的 d3-drag 不接管，整组根本拖不动），`.cb-group__resize` / `.cb-group__fold` / `.cb-group__count` 继续保留 `nodrag` | 用户 I3「组拖动困难」；同一条 `nodrag` 规则不能同时服务拖动与点击控件 |
+| D70 | **层级要立刻可见靠 DOM 顺序**：`Board` 的 `nodes` 数组按 `zIndex` 升序排序后再交给 React Flow（v12 用渲染顺序叠层，只改 `zIndex` 字段不会重排），`nodes` useMemo 依赖里带上会改变层级的字段 | 用户 I1「要点击空白处才显示前后关系」；`zIndex` 字段本身不触发重排 |
+| D71 | **图片小圆点进模型**：`ImageNode.dotMode` 持久化到文档（迁移保留），画布上以 `IMAGE_DOT_SIZE = 26` 渲染，双击圆点或点 `⤢` 展开；右栏属性面板给同一个开关 | 用户 I6「改为可压缩隐藏的小圆点」；不落库的话重开案件又变回大图 |
+| D72 | **轨道成员是手工清单**：`TimelineTrack.nodeIds` 有值时以它为准，空/缺省才按 `kind + ref` 自动归集；「恢复自动归集」写成 `nodeIds: undefined` | 用户 I9「各时间线可自由编辑包含的事件」；两条路径都要保留，否则新建轨道没法自动出内容 |
+| D73 | **证据链人工优先、关键词兜底**：`CaseNode.fields.链条阶段` 有值时直接决定归属（`manualStage`），没有才回落到六阶段关键词匹配（`matches`） | 用户 J11 / I5「证据链无功能」：演示文案本来就不命中关键词，光靠关键词永远空 |
+| D74 | **导入到文件夹用一条命令**：`importStore.confirm` 把 `importAssets` 与 `moveAssetsToFolder` 合成一条 `composeCommands` 派发 | 用户 J10「导入后混在一起」；分两条命令会让撤销要按两次 |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -1045,3 +1131,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M8 整体验收通过**（✅ 打 tag `ms/M8`）：保险库加密与启动密码（自检第 3 轮 7/7）、脱敏全链路（像素 + 文本 + 清单）、AI 合规审计导出、打印样式与 PDF 页眉页脚、全局搜索与 Ctrl+K 命令面板、NSIS 安装包与签名脚本；`pnpm smoke` **598 条**（M8 新增 25）、`pnpm ui-smoke` **256 条**（新增 22）、桌面自检 **17 / 18 / 7**、版本 **0.8.0**；§1 M8 置 ✅、§3 写入拆步/验收/偏离三表，新增 D49–D52；`scripts/sign-installer.ps1` 就绪但本机无代码签名证书。 |
 | 2026-10-20 | **M9 整体验收通过**（✅ 打 tag `ms/M9`）：交互修订——图片工具条改右侧竖排让出旋转手柄（A2）、混合多选拖动用 `composeCommands` 合成一条命令（A4/D54）、组右下角改尺寸与组头/右栏成员清单（A4）、双击空白弹「新建节点」对话框并关闭双击缩放（A5/D57）、假设与生图面板改居中模态（T1/T2/T5/T6）、区域锚点高亮改为「悬停 ∪ 多选 ∪ 锚点焦点」且可点击（T3）、地图点选取坐标与右栏经纬度字段（T7/D55）、布局后自动重算锚点与标签避让（S3/D56）、时间线回退读 `发生时刻` 等字段（S4）、演示页联动编辑（S5）、发生时刻日期时间控件、统一 tag 编辑与「按 tag 自动连线」确认面板（D58）、关系线连接点放大、素材库分组（D59）、导入后自动 OCR 与引擎缺失指引；安全精简——按 H3 彻底删除应用解锁与整库加密（D53/D60），自检第 3 轮随之移除；`pnpm smoke` **658 条**（新增 [49]–[55] 七段）、`pnpm ui-smoke` **296 条**（新增约 40 条）、`pnpm bench` **75.3 ms**、桌面自检 **17 / 18**（PASS）、`tauri build --no-bundle` 1m44s、NSIS 安装包（3,614,153 字节）归档到仓库根 `release\CaseBoard_0.9.0_x64-setup.exe`；版本三处升 **0.9.0**；§1 M9 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D53–D60、`docs/MANUAL-ACCEPTANCE.md` 新增 I 节（并把 H3 标为作废）。 |
 | 2026-10-20 | **M10 整体验收通过**（✅ 打 tag `ms/M10`）：交互打磨与内置能力——顶栏删「案情板」logo 与常驻线型图例、图例收进右下角可折叠「图示」（D66），案件编号 `A-2026-1018` 不再被挤压竖排（`.cb-topbar__brand` nowrap），MiniMap 150×100 半透明并让位；关系线连接点 14px→18px 且常驻可见，锚点扩到**八端口**（四边 + 四角，D64）；卡片与图片共用层级空间（卡片固定 100、图片分带 1–199，图片「上移/下移」首次真正生效，D62），吸附判定改卡片外扩 140px 角落区、记录角标记与偏移，卡片移动时吸附图片在**命令层**随动（`applyDockedMoves`，D63）；时间线支持多轨并行 + 比例滑杆 + 新建/删除轨道（偏好进 `doc.timeline`，D67），修掉时间滑杆贴右被裁；地图可导入底图（`settings.mapBackground`）并拖图钉直接改经纬度；素材库新增**文件夹**树形分组（新建/重命名/删除、环检测、删文件夹不删素材，D68），右栏可改所属文件夹；假设面板「证据链」页签从只读改为可编辑（改标题/改状态/画布定位，D65），演示页联动编辑补 tag；**内置 OCR 引擎随包分发**——`tesseract.js` WASM worker + 三档 SIMD 内核 + 中英语言包入 `public/ocr`（15.7 MB），探测顺序「系统 Tesseract → 内置 WASM」，右栏显示就绪状态与识别进度（D61）。数据迁移 v9（`zIndex` / `dockCorner` / `dockOffset` / `assetFolders` / `timeline` / `settings.mapBackground`）由 `migrate.ts` 兜住脏数据。版本三处升 **0.10.0**，NSIS 归档 `release\CaseBoard_0.10.0_x64-setup.exe`。机器验收：`typecheck` 0 error、`smoke` **713**、`ui-smoke` **298**、`bench` 1000 节点解析链 **75.5 ms**、`pnpm build` 成功且 `dist/ocr` 随包、桌面自检两轮 PASS。 |
+| 2026-10-20 | **M11 整体验收通过**（✅ 打 tag `ms/M11`）：按用户 I1–I15 / J1–J15 逐条复验回执落地——左右栏可点小箭头收起/展开（J2）、八个连接点常驻 `opacity: 0` hover 才显形（J4）、组标题栏去 `nodrag` 后整组可拖并加 `⠿` 抓手、左栏新增 `GroupTree` 树形总览（组 → 子组 → 成员，点条目 `focusEntity` 跳转，I3/D69）、`Board.nodes` 按 `zIndex` 排序让「上移/下移/置顶/置底」立刻生效（I1/D70）、图片 `dotMode` 小圆点（右上 `⤢` 或双击展开，I6/D71）、拖动卡片时吸附图片用 `dockPreview` **实时跟随**而非松手才动（J6）、时间线轨道条目可用 `nodeIds` 手工挑选 + 「恢复自动归集」、缩放滑条移到最下方与游标同区（10–100）、数轴收窄到 1180px、贯穿所有泳道的公用游标指针（I9/J8/D72）、地图图钉双击弹面板手填经纬度（`-90~90` / `-180~180` 校验，J9）、素材拖入画布不再误唤起导入向导（I13）、导入图片直接进当前文件夹（J10/D74）、证据链新增「链条阶段」人工归类下拉与「移出阶段」（人工优先、关键词兜底，I5/J11/D73）、假设面板字体出框修复（I5）、模板「地点」字段可选已有 place/org（`datalist`，I11）、地图视图也挂右栏（I7）、布局面板补「分层」标签（I8）、安全面板删掉「本机存储」整段（I14）。机器验收：`typecheck` 0 error、`smoke` **729**（新增 [64]–[67] 四段）、`ui-smoke` **314**（新增 M11 段 16 条）、`bench` **74.3 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 归档 `release\CaseBoard_0.11.0_x64-setup.exe`；版本三处升 **0.11.0**；§3 写入 M11 拆步/验收/偏离三表，§6 新增 D69–D74。 |

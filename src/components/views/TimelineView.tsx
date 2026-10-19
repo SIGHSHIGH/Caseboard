@@ -21,7 +21,7 @@ import {
   trackWidthPct,
 } from '../../lib/timelineTracks';
 import { NODE_TYPE_META, STATUS_META } from '../../lib/theme';
-import { addTimelineTrack, removeTimelineTrack, setTimelinePrefs } from '../../commands';
+import { addTimelineTrack, removeTimelineTrack, setTimelinePrefs, updateTimelineTrack } from '../../commands';
 import { useDocStore } from '../../store/docStore';
 import { useTimelineStore } from '../../store/timelineStore';
 import { useUiStore } from '../../store/uiStore';
@@ -46,6 +46,8 @@ export function TimelineView() {
 
   const [addingTrack, setAddingTrack] = useState(false);
   const [newTrackRef, setNewTrackRef] = useState('');
+  /** M11（I9）：正在编辑成员的时间线轨道 id */
+  const [editingLane, setEditingLane] = useState<string | null>(null);
 
   const config = doc.timeline;
   const spanRatio = clampSpanRatio(config?.prefs.spanRatio ?? 1);
@@ -168,22 +170,7 @@ export function TimelineView() {
               ))}
             </select>
           </label>
-          <label className="cb-timeline__speed" title="比例越小，横向铺得越开，可以滚动看细节">
-            比例
-            <input
-              className="cb-timeline__zoom"
-              type="range"
-              min={10}
-              max={100}
-              step={5}
-              value={Math.round(spanRatio * 100)}
-              aria-label="时间线比例"
-              onChange={(event) =>
-                dispatch(setTimelinePrefs({ spanRatio: clampSpanRatio(Number(event.target.value) / 100) }))
-              }
-            />
-            <span className="cb-timeline__zoom-val">{Math.round(spanRatio * 100)}%</span>
-          </label>
+
           <div className="cb-timeline__modes" role="group" aria-label="时间线分道方式">
             <button
               type="button"
@@ -256,6 +243,25 @@ export function TimelineView() {
         onChange={(event) => setCursor(cursorFromRatio(scale, Number(event.target.value) / 1000))}
       />
 
+      {/* M11（I9）：缩放由最下方滑条统一控制，和游标滑条并排，拖一下整条数轴跟着缩放 */}
+      <div className="cb-timeline__zoombar">
+        <span className="cb-timeline__zoombar-label">缩放</span>
+        <input
+          className="cb-timeline__zoom"
+          type="range"
+          min={10}
+          max={100}
+          step={5}
+          value={Math.round(spanRatio * 100)}
+          aria-label="时间线缩放"
+          onChange={(event) =>
+            dispatch(setTimelinePrefs({ spanRatio: clampSpanRatio(Number(event.target.value) / 100) }))
+          }
+        />
+        <span className="cb-timeline__zoom-val">{Math.round(spanRatio * 100)}%</span>
+        <span className="cb-timeline__hint">数值越小，整段数轴铺得越长，可以横向滚动看细节</span>
+      </div>
+
       <div className="cb-timeline__lanes">
         {lanes.map((lane) => (
           <div key={lane.id} className="cb-timeline__lane">
@@ -266,18 +272,77 @@ export function TimelineView() {
               </span>
               <span className="cb-timeline__lane-count">{lane.items.length}</span>
               {mode === 'tracks' ? (
-                <button
-                  type="button"
-                  className="cb-timeline__lane-del"
-                  title="删除这条时间线（不影响实体）"
-                  onClick={() => dispatch(removeTimelineTrack(lane.id))}
-                >
-                  ×
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="cb-timeline__lane-edit"
+                    title="挑选这条时间线包含哪些条目"
+                    onClick={() => setEditingLane((value) => (value === lane.id ? null : lane.id))}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    className="cb-timeline__lane-del"
+                    title="删除这条时间线（不影响实体）"
+                    onClick={() => dispatch(removeTimelineTrack(lane.id))}
+                  >
+                    ×
+                  </button>
+                </>
               ) : null}
             </div>
+            {editingLane === lane.id ? (
+              <div className="cb-timeline__laneedit">
+                <span className="cb-timeline__hint">
+                  勾选这条时间线包含的条目；全不勾则按轨道类型自动归集
+                </span>
+                <div className="cb-timeline__laneedit-list">
+                  {items.map((item) => {
+                    const track = (config?.tracks ?? []).find((entry) => entry.id === lane.id);
+                    const manual = track?.nodeIds ?? [];
+                    const checked =
+                      manual.length > 0
+                        ? manual.includes(item.id)
+                        : lane.items.some((entry) => entry.id === item.id);
+                    return (
+                      <label key={lane.id + '-pick-' + item.id} className="cb-timeline__laneedit-item">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const base = manual.length > 0 ? manual : lane.items.map((entry) => entry.id);
+                            const next = checked
+                              ? base.filter((id) => id !== item.id)
+                              : [...base, item.id];
+                            dispatch(updateTimelineTrack(lane.id, { nodeIds: next }));
+                          }}
+                        />
+                        <span>{item.title}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="cb-btn cb-btn--ghost"
+                  onClick={() => {
+                    dispatch(updateTimelineTrack(lane.id, { nodeIds: undefined }));
+                    setEditingLane(null);
+                  }}
+                >
+                  恢复自动归集
+                </button>
+              </div>
+            ) : null}
             <div className="cb-timeline__track-view">
               <div className="cb-timeline__track" style={{ width: `${widthPct}%` }}>
+                {/* M11（J8）：贯穿所有时间线的公用指针，跟着游标走 */}
+                <span
+                  className="cb-timeline__cursor"
+                  style={{ left: `${ratioFromCursor(scale, at) * 100}%` }}
+                  aria-hidden="true"
+                />
                 {lane.items.map((item) => {
                   const band = bands.get(item.id);
                   if (!band) return null;

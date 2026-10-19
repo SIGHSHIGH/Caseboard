@@ -186,6 +186,35 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
   const offsetX = preview ? preview.x - image.x : 0;
   const offsetY = preview ? preview.y - image.y : 0;
 
+  // M11（I6）：压缩成小圆点模式——只占 26×26，方便拖到卡片角吸附，双击圆点展开
+  if (image.dotMode) {
+    return (
+      <div
+        className={`cb-img-dot${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}`}
+        title={`${title}（小圆点模式：拖到卡片角即可吸附，右键或用右栏可展开）`}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          dispatch(updateImageNode(image.id, { dotMode: false }));
+        }}
+      >
+        <span className="cb-img-dot__core" aria-hidden="true" />
+        {image.linkedNodeId ? <span className="cb-img-dot__linked" aria-hidden="true" /> : null}
+        <button
+          type="button"
+          className="cb-img-dot__expand nodrag nopan"
+          title="展开成正常图片"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            dispatch(updateImageNode(image.id, { dotMode: false }));
+          }}
+        >
+          ⤢
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`cb-free-image${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}`}
@@ -293,6 +322,14 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
           >
             <span className="cb-free-image__bar-icon" aria-hidden="true">{image.pinned ? '⏏' : '⌖'}</span>
             <span>{image.pinned ? '去图钉' : '图钉'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => dispatch(updateImageNode(image.id, { dotMode: true }))}
+            title="压缩成小圆点（方便拖到卡片角吸附）"
+          >
+            <span className="cb-free-image__bar-icon" aria-hidden="true">◍</span>
+            <span>圆点</span>
           </button>
         </div>
       ) : null}

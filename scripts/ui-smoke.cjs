@@ -672,7 +672,7 @@ function check(name, condition, detail) {
   if (m9ImageEl) m9ImageEl.click();
   await sleep(200);
   check('图片工具条挂在图片右侧', doc.querySelector('.cb-free-image__bar') !== null);
-  check('工具条 5 个竖排图标按钮', doc.querySelectorAll('.cb-free-image__bar button').length === 5 && doc.querySelectorAll('.cb-free-image__bar-icon').length === 5, doc.querySelectorAll('.cb-free-image__bar button').length);
+  check('工具条 6 个竖排图标按钮（M11 加「圆点」）', doc.querySelectorAll('.cb-free-image__bar button').length === 6 && doc.querySelectorAll('.cb-free-image__bar-icon').length === 6, doc.querySelectorAll('.cb-free-image__bar button').length);
   check('锚点可点选对应实体（M9 / T3）', (() => {
     const rule = (cssText.match(/\.cb-free-image__anchor\s*\{[^}]*\}/) || [''])[0];
     return /pointer-events:\s*auto/.test(rule) && doc.querySelectorAll('.cb-free-image__anchor').length >= 1;
@@ -693,6 +693,41 @@ function check(name, condition, detail) {
   check('样式表含 M9 新增区块', ['.cb-taglink', '.cb-tagedit', '.cb-geo', '.cb-map__pickbar', '.cb-assets__groupby'].every((sel) => srcCss.includes(sel)), ['.cb-taglink', '.cb-tagedit', '.cb-geo', '.cb-map__pickbar', '.cb-assets__groupby'].filter((sel) => !srcCss.includes(sel)));
   check('样式表不再出现启动密码锁屏样式', !/\.cb-lock\b/.test(srcCss) && !/\.cb-lock__/.test(srcCss));
 
+  console.log('[UI] M11 交互修订：折叠箭头 / 组树 / 圆点 / 时间线缩放 / 地图手填坐标');
+  check('左右栏都有折叠小箭头', doc.querySelector('.cb-collapse--left') !== null && doc.querySelector('.cb-collapse--right') !== null);
+  {
+    const leftToggle = doc.querySelector('.cb-collapse--left');
+    leftToggle.click();
+    await sleep(120);
+    check('点左栏箭头就收起左栏', doc.querySelector('.cb-panel--left') === null);
+    doc.querySelector('.cb-collapse--left').click();
+    await sleep(120);
+    check('再点一次左栏回来', doc.querySelector('.cb-panel--left') !== null);
+    const rightToggle = doc.querySelector('.cb-collapse--right');
+    rightToggle.click();
+    await sleep(120);
+    check('点右栏箭头就收起右栏', doc.querySelector('.cb-panel--right') === null);
+    doc.querySelector('.cb-collapse--right').click();
+    await sleep(120);
+    check('再点一次右栏回来', doc.querySelector('.cb-panel--right') !== null);
+  }
+  check('八个连接点常驻时透明（hover 才显形）', /\.cb-handle\s*\{[^}]*opacity:\s*0;/.test(cssText), (cssText.match(/\.cb-handle\s*\{[^}]*\}/) || [''])[0].slice(0, 140));
+  check('可切到分组标签并看到组树', await clickByText('.cb-tabs .cb-tab', '分组'));
+  check('左栏有分组总览树', doc.querySelector('.cb-gtree__head') !== null && (doc.querySelector('.cb-gtree__head').textContent || '').includes('分组总览'), doc.querySelector('.cb-gtree__head') && doc.querySelector('.cb-gtree__head').textContent);
+  check('组树列出组与成员', doc.querySelectorAll('.cb-gtree__row').length >= 1 && doc.querySelectorAll('.cb-gtree__member').length >= 1, [doc.querySelectorAll('.cb-gtree__row').length, doc.querySelectorAll('.cb-gtree__member').length]);
+  await clickByText('.cb-tabs .cb-tab', '对象');
+  await sleep(120);
+  check('可切到时间线', await clickByText('.cb-viewtab', '时间线'));
+  await sleep(150);
+  check('时间线缩放滑条在最下方一排（M11）', doc.querySelector('.cb-timeline__zoombar .cb-timeline__zoom') !== null);
+  check('所有时间线有公用指针', doc.querySelector('.cb-timeline__cursor') !== null || doc.querySelector('.cb-timeline--empty') !== null);
+  check('时间线有轨道编辑入口或多轨未启用', doc.querySelector('.cb-timeline__lane-edit') !== null || doc.querySelector('.cb-timeline__modes') !== null);
+  check('可切到地图', await clickByText('.cb-viewtab', '地图'));
+  await sleep(150);
+  check('地图视图也显示右栏（M11 / I7）', doc.querySelector('.cb-panel--right') !== null);
+  await clickByText('.cb-viewtab', '画布');
+  await sleep(150);
+  check('样式表含 M11 新增区块', ['.cb-collapse', '.cb-gtree__row', '.cb-img-dot', '.cb-timeline__cursor', '.cb-timeline__zoombar', '.cb-timeline__laneedit', '.cb-map__edit', '.cb-hyp__assign'].every((sel) => srcCss.includes(sel)), ['.cb-collapse', '.cb-gtree__row', '.cb-img-dot', '.cb-timeline__cursor', '.cb-timeline__zoombar', '.cb-timeline__laneedit', '.cb-map__edit', '.cb-hyp__assign'].filter((sel) => !srcCss.includes(sel)));
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

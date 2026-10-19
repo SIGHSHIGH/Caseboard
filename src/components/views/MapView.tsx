@@ -45,6 +45,9 @@ export function MapView() {
   const [drag, setDrag] = useState<PinDrag | null>(null);
   const [bgBusy, setBgBusy] = useState(false);
   const [bgError, setBgError] = useState<string | null>(null);
+  /** M11（J9）：双击图钉后手填经纬度 */
+  const [editing, setEditing] = useState<{ id: string; lat: string; lng: string } | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
   const dragMoved = useRef(false);
 
   const points = useMemo(() => geoPoints(nodes), [nodes]);
@@ -65,6 +68,36 @@ export function MapView() {
     const offsetX = (rect.width - MAP_W * scale) / 2;
     const offsetY = (rect.height - MAP_H * scale) / 2;
     return { x: (clientX - rect.left - offsetX) / scale, y: (clientY - rect.top - offsetY) / scale };
+  };
+
+  /** J9：双击图钉 -> 打开手填面板 */
+  const beginEdit = (id: string) => {
+    const target = nodes.find((node) => node.id === id);
+    const geo = target ? parseGeo(target.fields) : null;
+    setEditError(null);
+    setEditing({ id, lat: geo ? String(geo.lat) : '', lng: geo ? String(geo.lng) : '' });
+  };
+
+  const commitEdit = () => {
+    if (!editing) return;
+    const target = nodes.find((node) => node.id === editing.id);
+    if (!target) {
+      setEditing(null);
+      return;
+    }
+    const lat = Number(editing.lat.trim());
+    const lng = Number(editing.lng.trim());
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setEditError('纬度和经度都要填数字，例如 31.7833 与 119.9500');
+      return;
+    }
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      setEditError('纬度必须在 -90~90，经度必须在 -180~180');
+      return;
+    }
+    dispatch(updateNode(target.id, { fields: applyGeoFields(target.fields, lat, lng) }));
+    setEditing(null);
+    setEditError(null);
   };
 
   const onMapClick = (event: React.MouseEvent<SVGSVGElement>) => {
@@ -279,6 +312,10 @@ export function MapView() {
                     className={`cb-map__pin${point.node.id === pickNodeId ? ' is-picking' : ''}${dragging ? ' is-dragging' : ''}`}
                     transform={'translate(' + pos.x + ',' + pos.y + ')'}
                     onPointerDown={(event) => beginPinDrag(event, point)}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                      beginEdit(point.node.id);
+                    }}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (dragMoved.current) {
@@ -310,8 +347,43 @@ export function MapView() {
               })}
             </svg>
             <span className="cb-map__hintline">
-              拖动图钉改坐标 · 单击实体选中{picking ? ' · 正在取点' : ''}
+              拖动图钉改坐标 · 双击图钉手填经纬度 · 单击实体选中{picking ? ' · 正在取点' : ''}
             </span>
+            {editing ? (
+              <div className="cb-map__edit" role="dialog" aria-label="手动编辑经纬度">
+                <div className="cb-map__edit-head">手动编辑经纬度</div>
+                <label className="cb-field">
+                  <span>纬度（-90~90）</span>
+                  <input
+                    className="cb-map__edit-input"
+                    value={editing.lat}
+                    autoFocus
+                    onChange={(event) => setEditing({ ...editing, lat: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') commitEdit();
+                      if (event.key === 'Escape') setEditing(null);
+                    }}
+                  />
+                </label>
+                <label className="cb-field">
+                  <span>经度（-180~180）</span>
+                  <input
+                    className="cb-map__edit-input"
+                    value={editing.lng}
+                    onChange={(event) => setEditing({ ...editing, lng: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') commitEdit();
+                      if (event.key === 'Escape') setEditing(null);
+                    }}
+                  />
+                </label>
+                {editError ? <p className="cb-map__error">{editError}</p> : null}
+                <div className="cb-map__edit-ops">
+                  <button className="cb-btn cb-btn--primary" onClick={commitEdit}>写回坐标</button>
+                  <button className="cb-btn cb-btn--ghost" onClick={() => setEditing(null)}>取消</button>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

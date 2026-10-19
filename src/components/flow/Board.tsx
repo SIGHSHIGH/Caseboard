@@ -46,6 +46,7 @@ import { newId } from '../../lib/id';
 import {
   CARD_LAYER_Z,
   DOCK_TOLERANCE,
+  IMAGE_DOT_SIZE,
   fitImageSize,
   findDockTarget,
   snapImageRect,
@@ -158,6 +159,8 @@ export function Board() {
   // 代码侧请求居中时用 nonce 去重：文档后续变化不该把视口抢回去
   const lastFocusNonce = useRef(0);
   const [pending, setPending] = useState<Connection | null>(null);
+  // M11（J6）：卡片拖动时吸附在它上面的图片实时跟随（松手再落库，拖动过程中不再「等一等」
+  const [dockPreview, setDockPreview] = useState<Record<string, { x: number; y: number }>>({});
   const themeMode = useThemeStore((s) => s.mode);
   const grid = BOARD_GRID[themeMode] ?? BOARD_GRID.board;
 
@@ -287,7 +290,7 @@ export function Board() {
     const imageNodes: BoardFlowNode[] = doc.imageNodes.map((image) => ({
       id: image.id,
       type: 'freeImage',
-      position: dragPos[image.id] ?? { x: image.x, y: image.y },
+      position: dockPreview[image.id] ?? dragPos[image.id] ?? { x: image.x, y: image.y },
       data: {
         image,
         asset: doc.assets.find((item) => item.id === image.assetId),
@@ -295,14 +298,21 @@ export function Board() {
       },
       selected: selectedImageIds.includes(image.id),
       zIndex: image.zIndex,
-      style: { width: image.w, height: image.h },
+      // M11（I6）：小圆点模式只占 26×26，方便拖到卡片角吸附
+      style: image.dotMode
+        ? { width: IMAGE_DOT_SIZE, height: IMAGE_DOT_SIZE }
+        : { width: image.w, height: image.h },
     }));
 
-    // 组矩形永远排在前面，保证 zIndex -1 生效时不被节点层打乱
-    return [...groupNodes, ...baseNodes, ...superNodes, ...imageNodes];
+    // 组矩形永远排在前面，保证 zIndex -1 生效时不被节点层打乱；
+    // M11（I1）：整体按 zIndex 升序排一次，DOM 顺序与层级一致，点「上移/下移/置顶/置底」立刻看到效果
+    const all = [...groupNodes, ...baseNodes, ...superNodes, ...imageNodes];
+    all.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    return all;
   }, [
     model,
     dragPos,
+    dockPreview,
     selectedNodeIds,
     selectedGroupId,
     selectedImageIds,
@@ -424,21 +434,41 @@ export function Board() {
 
   const onNodeDrag = useCallback(
     (_event: unknown, node: BoardFlowNode) => {
-      if (node.type !== 'freeImage') return;
-      const image = doc.imageNodes.find((item) => item.id === node.id);
-      if (!image) return;
-      const moving = { x: node.position.x, y: node.position.y, w: image.w, h: image.h };
-      const result = snapImageRect(moving, otherRectsFor(image.id));
-      setGuides(result.guides);
-      // 吸附（M10）：判定外扩到卡片外围一圈，并给出建议的角落位置，偏移一点也能吸住
-      const dock = findDockTarget(moving, model.nodes, DOCK_TOLERANCE);
-      setAttachTarget(dock ? dock.nodeId : null);
+      if (node.type === 'freeImage') {
+        const image = doc.imageNodes.find((item) => item.id === node.id);
+        if (!image) return;
+        const moving = { x: node.position.x, y: node.position.y, w: image.w, h: image.h };
+        const result = snapImageRect(moving, otherRectsFor(image.id));
+        setGuides(result.guides);
+        // 吸附（M10）：判定外扩到卡片外围一圈，并给出建议的角落位置，偏移一点也能吸住
+        const dock = findDockTarget(moving, model.nodes, DOCK_TOLERANCE);
+        setAttachTarget(dock ? dock.nodeId : null);
+        return;
+      }
+      if (node.type !== 'base') return;
+      // M11（J6）：卡片被拖动时，吸附在它上面的图片实时跟着走，不用等松手
+      const anchor = doc.nodes.find((item) => item.id === node.id);
+      if (!anchor) return;
+      const dx = Math.round(node.position.x) - anchor.x;
+      const dy = Math.round(node.position.y) - anchor.y;
+      if (dx === 0 && dy === 0) {
+        if (Object.keys(dockPreview).length > 0) setDockPreview({});
+        return;
+      }
+      const next: Record<string, { x: number; y: number }> = {};
+      for (const image of doc.imageNodes) {
+        if (image.linkedNodeId !== node.id) continue;
+        next[image.id] = { x: image.x + dx, y: image.y + dy };
+      }
+      setDockPreview(next);
     },
-    [doc, model.nodes, otherRectsFor, setAttachTarget, setGuides],
+    [doc, model.nodes, dockPreview, otherRectsFor, setAttachTarget, setGuides],
   );
 
   const onNodeDragStop = useCallback(
     (_event: unknown, node: BoardFlowNode) => {
+      // 松手后位置由命令落库，实时预览清掉，避免和 Model 里的坐标打架
+      setDockPreview({});
       if (node.type === 'freeImage') {
         const image = doc.imageNodes.find((item) => item.id === node.id);
         if (image) {

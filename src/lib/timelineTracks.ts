@@ -85,6 +85,11 @@ export function defaultTracks(items: readonly TimelineItem[]): TimelineTrack[] {
 }
 
 function laneOf(track: TimelineTrack, items: readonly TimelineItem[]): TimelineItem[] {
+  // M11（I9）：手工挑过条目就以手工清单为准，允许一条轨道混放不同实体的事件
+  if (track.nodeIds && track.nodeIds.length > 0) {
+    const picked = new Set(track.nodeIds);
+    return items.filter((item) => picked.has(item.id));
+  }
   if (track.kind === 'entity') return items.filter((item) => item.id === track.ref);
   return items.filter((item) => item.type === track.ref);
 }

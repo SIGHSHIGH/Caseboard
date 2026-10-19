@@ -35,14 +35,6 @@ export function SecurityDialog({ onClose }: { onClose: () => void }) {
         </header>
         <div className="cb-security__body">
           <section className="cb-security__block">
-            <h3>本机存储（M9 已删除启动密码与加密）</h3>
-            <p className="cb-security__note">
-              案件数据保存在本机普通 SQLite 文件里（<code>caseboard.db</code>），不再有启动密码、锁屏或密文库。
-              需要限制访问时，用操作系统的账户权限与磁盘加密（BitLocker）保护这台机器。
-            </p>
-            <p className="cb-security__state">当前状态：普通 SQLite（无需密码即可打开）</p>
-          </section>
-          <section className="cb-security__block">
             <h3>Windows Hello（接入位）</h3>
             <p className="cb-security__note">
               已预留接入位（<code>hello_available</code> / <code>hello_verify</code>），当前版本未接入。

@@ -3263,6 +3263,117 @@ async function main() {
     check('取消吸附清掉角标记', detached.linkedNodeId === undefined && detached.dockCorner === undefined);
   }
 
+  console.log('[64] 图片压成小圆点（M11 / I6）');
+  {
+    const imageLib = require(path.join(out, 'lib', 'imageNode.js'));
+    const imageCmds = require(path.join(out, 'commands', 'imageNodeCommands.js'));
+    const migrateMod = require(path.join(out, 'serializers', 'migrate.js'));
+    check('小圆点尺寸常量已定义', imageLib.IMAGE_DOT_SIZE === 26, imageLib.IMAGE_DOT_SIZE);
+    const dotRaw = JSON.parse(JSON.stringify(doc()));
+    dotRaw.imageNodes = [
+      {
+        id: 'img-dot',
+        kind: 'freeImage',
+        assetId: 'a-folder',
+        x: 0,
+        y: 0,
+        w: 120,
+        h: 90,
+        rotation: 0,
+        zIndex: 5,
+        dotMode: true,
+      },
+    ];
+    const dotMigrated = migrateMod.normalizeDoc(dotRaw);
+    check('迁移保留小圆点标记', dotMigrated.imageNodes[0].dotMode === true, dotMigrated.imageNodes[0]);
+    state().dispatch(addImageNode({ id: 'img-dot-2', assetId: 'a-folder', x: 520, y: 520, assetWidth: 400, assetHeight: 300 }));
+    state().dispatch(imageCmds.updateImageNode('img-dot-2', { dotMode: true }));
+    check('命令可把小圆点打开', doc().imageNodes.find((item) => item.id === 'img-dot-2').dotMode === true);
+    state().dispatch(imageCmds.updateImageNode('img-dot-2', { dotMode: false }));
+    check('命令可把小圆点收起', doc().imageNodes.find((item) => item.id === 'img-dot-2').dotMode === undefined);
+    const ordered = doc().imageNodes.map((item) => item.zIndex ?? 0);
+    check('图片层级不与卡片层打架', ordered.every((value) => value !== imageLib.CARD_LAYER_Z), ordered);
+    state().dispatch(imageCmds.deleteImageNode('img-dot-2'));
+  }
+
+  console.log('[65] 时间线轨道可自由挑选条目（M11 / I9）');
+  {
+    const tracksLib = require(path.join(out, 'lib', 'timelineTracks.js'));
+    const migrateMod = require(path.join(out, 'serializers', 'migrate.js'));
+    // 手工构造两条条目：演示数据里只有 1 个能解析的节点，凑两条才能验「挑两个不同实体」
+    const items = [
+      { id: 'sx-1', type: 'person', title: '甲', status: 'todo', confidence: 60, start: Date.UTC(2026, 0, 1), end: Date.UTC(2026, 0, 1) },
+      { id: 'sx-2', type: 'event', title: '乙', status: 'todo', confidence: 60, start: Date.UTC(2026, 0, 2), end: Date.UTC(2026, 0, 2) },
+    ];
+    const picked = ['sx-1', 'sx-2'];
+    const mixed = tracksLib.buildTrackLanes(doc().nodes, items, {
+      tracks: [{ id: 'mix', title: '混合轨', kind: 'entity', ref: items[0].id, order: 0, nodeIds: picked }],
+      prefs: { mode: 'tracks', trackIds: [], spanRatio: 1 },
+    });
+    check('手工清单优先于 kind/ref 自动归集', mixed[0].items.length === 2, mixed[0].items.map((item) => item.id));
+    check(
+      '手工清单里的条目就是勾选的那些',
+      mixed[0].items.every((item) => picked.includes(item.id)),
+      mixed[0].items.map((item) => item.id),
+    );
+    const auto = tracksLib.buildTrackLanes(doc().nodes, items, {
+      tracks: [{ id: 'auto', title: '自动轨', kind: 'entity', ref: items[0].id, order: 0 }],
+      prefs: { mode: 'tracks', trackIds: [], spanRatio: 1 },
+    });
+    check('没挑过就按实体自动归集', auto[0].items.length === 1 && auto[0].items[0].id === items[0].id);
+    const deduped = migrateMod.normalizeTimeline({
+      tracks: [{ id: 't9', title: '去重轨', kind: 'entity', ref: items[0].id, nodeIds: [items[0].id, items[0].id, ''] }],
+      prefs: { mode: 'tracks', trackIds: [], spanRatio: 1 },
+    });
+    check('迁移时条目清单去重去空', deduped.tracks[0].nodeIds.length === 1, deduped.tracks[0].nodeIds);
+  }
+
+  console.log('[66] 证据链可人工归类（M11 / J11）');
+  {
+    const chain = require(path.join(out, 'lib', 'evidenceChain.js'));
+    const target = doc().nodes.find((node) => node.type === 'person') ?? doc().nodes[0];
+    check('演示实体默认没有人工阶段', chain.manualStage(target) === null, chain.manualStage(target));
+    state().dispatch(updateNode(target.id, { fields: { ...target.fields, [chain.CHAIN_STAGE_FIELD]: '实施' } }));
+    check('人工阶段能按中文标签识别', chain.manualStage(doc().nodes.find((node) => node.id === target.id)) === 'act');
+    const built = chain.buildEvidenceChain(doc());
+    const actStage = built.stages.find((stage) => stage.id === 'act');
+    check('人工归类的实体出现在对应阶段', actStage.items.some((item) => item.nodeId === target.id), actStage.items.map((item) => item.nodeId));
+    const cleaned = chain.stageFields({ 链条阶段: '实施', 地点: '夜色KTV' }, null);
+    check('移出阶段只删阶段键、保留其它字段', cleaned['链条阶段'] === undefined && cleaned['地点'] === '夜色KTV', cleaned);
+    state().dispatch(updateNode(target.id, { fields: chain.stageFields(target.fields, null) }));
+    check('移出后回到无人工阶段', chain.manualStage(doc().nodes.find((node) => node.id === target.id)) === null);
+  }
+
+  console.log('[67] 导入素材直接进当前文件夹（M11 / J10）');
+  {
+    const folderCmds = require(path.join(out, 'commands', 'assetFolderCommands.js'));
+    const composed = require(path.join(out, 'commands', 'compose.js'));
+    state().dispatch(folderCmds.addAssetFolder({ id: 'fld-imp', title: '导入目标' }));
+    const cmd = composed.composeCommands('导入素材到文件夹（1 张）', [
+      importAssets({
+        assets: [
+          {
+            id: 'a-imp',
+            path: 'assets/a-imp',
+            kind: 'image',
+            hash: 'cafe'.repeat(16),
+            thumbnails: [],
+            source: 'import',
+            zone: 'evidence',
+            name: '拖入的照片.png',
+            annotations: [],
+          },
+        ],
+        evidenceNodes: [],
+      }),
+      folderCmds.moveAssetsToFolder(['a-imp'], 'fld-imp'),
+    ]);
+    state().dispatch(cmd);
+    const imported = doc().assets.find((asset) => asset.id === 'a-imp');
+    check('导入后素材落在指定文件夹', imported && imported.folderId === 'fld-imp', imported && imported.folderId);
+    state().undo();
+    check('撤销一次就同时撤销入库与归组', doc().assets.every((asset) => asset.id !== 'a-imp'));
+  }
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

@@ -1,6 +1,6 @@
 [package]
 name = "caseboard"
-version = "0.10.0"
+version = "0.11.0"
 description = "案情板 CaseBoard · 数字刑侦白板"
 authors = ["CaseBoard"]
 edition = "2021"

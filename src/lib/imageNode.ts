@@ -221,6 +221,8 @@ const DOCK_CORNER_GAP = 6;
 
 /** 吸附判定半径（世界坐标，M10）：卡片外围这么远之内都算「要吸附」 */
 export const DOCK_TOLERANCE = 140;
+/** M11（I6）：压缩成小圆点时的边长（世界坐标） */
+export const IMAGE_DOT_SIZE = 26;
 
 export function findDockTarget(
   image: { x: number; y: number; w: number; h: number },

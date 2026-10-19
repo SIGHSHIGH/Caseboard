@@ -116,7 +116,7 @@ export function AssetLibrary() {
 
   const handlePick = async () => {
     const files = await fileService.pickFiles('image/*');
-    if (files.length > 0) await startImport(files, 'import');
+    if (files.length > 0) await startImport(files, 'import', activeFolder ?? undefined);
   };
 
   const handleWatch = async () => {

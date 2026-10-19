@@ -343,6 +343,8 @@ function normalizeImageNode(
     }
   }
   if (raw.pinned === true) node.pinned = true;
+  // M11（I6）：压缩成小圆点的图片节点
+  if (raw.dotMode === true) node.dotMode = true;
   return node;
 }
 
@@ -440,6 +442,11 @@ function normalizeTimelineTrack(raw: unknown, index: number): TimelineTrack | nu
   };
   const color = str(raw.color);
   if (color.length > 0) track.color = color;
+  // M11（I9）：手工挑选的条目（只留字符串、去重；空的当没填，回到自动归集）
+  if (Array.isArray(raw.nodeIds)) {
+    const picked = Array.from(new Set(raw.nodeIds.map((item) => str(item)).filter((item) => item.length > 0)));
+    if (picked.length > 0) track.nodeIds = picked;
+  }
   return track;
 }
 

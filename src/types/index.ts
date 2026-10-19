@@ -205,6 +205,8 @@ export interface ImageNode {
   dockOffset?: XY;
   /** 图钉装饰（白板照片质感） */
   pinned?: boolean;
+  /** 压缩成小圆点（M11 / I6）：方便把图片拖到卡片角吸附，占地极小 */
+  dotMode?: boolean;
 }
 
 /**
@@ -253,6 +255,8 @@ export interface TimelineTrack {
   ref: string;
   color?: string;
   order: number;
+  /** 手工挑选的条目（M11 / I9）：有值时以它为准，否则按 kind + ref 自动归集 */
+  nodeIds?: string[];
 }
 
 export interface TimelinePrefs {

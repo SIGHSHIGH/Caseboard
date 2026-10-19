@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   GROUP_COLORS,
   DEFAULT_GROUP_OPACITY,
@@ -59,10 +59,13 @@ function TemplateField({
   field,
   value,
   onCommit,
+  suggestions,
 }: {
   field: NodeFieldDef;
   value: string;
   onCommit: (key: string, next: string) => void;
+  /** M11（I11）：可选既有对象（如「地点」可挑已有地点/单位），仍允许自由填写 */
+  suggestions?: string[];
 }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value, field.key]);
@@ -88,6 +91,32 @@ function TemplateField({
             </option>
           ))}
         </select>
+      </label>
+    );
+  }
+
+  if (suggestions && suggestions.length > 0) {
+    // 有候选时给出下拉 + 自由输入双通道：选中即写回，也可以手打别名
+    const options = value.length > 0 && !suggestions.includes(value) ? [value, ...suggestions] : suggestions;
+    return (
+      <label className={className}>
+        <span>{field.label}</span>
+        <input
+          list={'cb-suggest-' + field.key}
+          value={draft}
+          placeholder={field.placeholder ?? '可手填，也可选已有对象'}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+        <datalist id={'cb-suggest-' + field.key}>
+          {options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+        <span className="cb-field__hint">共 {suggestions.length} 个可关联对象，双击输入框可从列表挑</span>
       </label>
     );
   }
@@ -167,6 +196,15 @@ function NodeForm({ node }: { node: CaseNode }) {
   }, [node.id, node.fields]);
 
   const template = templateOf(node.type);
+  /** M11（I11）：「地点」字段可从已有地点/单位里挑，省得手打后与卡片对不上 */
+  const placeChoices = useMemo(() => {
+    const titles = useDocStore
+      .getState()
+      .doc.nodes.filter((item) => item.type === 'place' || item.type === 'org')
+      .map((item) => item.title.trim())
+      .filter((title) => title.length > 0);
+    return Array.from(new Set(titles));
+  }, [node.id, node.type]);
 
   const commitTitle = () => {
     const next = title.trim();
@@ -407,6 +445,7 @@ function NodeForm({ node }: { node: CaseNode }) {
               field={field}
               value={valueOf(field.key)}
               onCommit={commitField}
+              suggestions={field.key === '地点' ? placeChoices : undefined}
             />
           ))}
         </div>
@@ -1176,6 +1215,15 @@ function ImageForm({ image }: { image: ImageNode }) {
           onChange={(event) => dispatch(updateImageNode(image.id, { pinned: event.target.checked }))}
         />
         <span>显示图钉</span>
+      </label>
+
+      <label className="cb-check">
+        <input
+          type="checkbox"
+          checked={image.dotMode === true}
+          onChange={(event) => dispatch(updateImageNode(image.id, { dotMode: event.target.checked }))}
+        />
+        <span>压缩成小圆点（方便拖到卡片角吸附，双击圆点可展开）</span>
       </label>
 
       <div className="cb-form__section">
