@@ -87,9 +87,14 @@ export function normalizeControlPoints(raw: unknown): XY[] | undefined {
 
 /* ===== M9 / S3：连接点（handle）按相对位置自动选择 ===== */
 
-/** 卡片四条边上的连接点，名字与 React Flow 的 handle id 一致 */
-export type EdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
-export const ANCHORS: EdgeAnchor[] = ['top', 'right', 'bottom', 'left'];
+/** 卡片上的连接点，名字与 React Flow 的 handle id 一致。
+ *  M10：四边中点之外再加四个角（tl/tr/br/bl），斜向关系可以走角，线不再被挤在四条边上。 */
+export type EdgeAnchor = 'top' | 'right' | 'bottom' | 'left' | 'tl' | 'tr' | 'br' | 'bl';
+export const ANCHORS: EdgeAnchor[] = ['top', 'right', 'bottom', 'left', 'tr', 'br', 'bl', 'tl'];
+/** 只有四边中点（老数据/老 handle 的合法取值） */
+export const SIDE_ANCHORS: EdgeAnchor[] = ['top', 'right', 'bottom', 'left'];
+/** 只有四角 */
+export const CORNER_ANCHORS: EdgeAnchor[] = ['tl', 'tr', 'br', 'bl'];
 
 export interface RectLike {
   x: number;
@@ -102,7 +107,7 @@ export function rectOf(node: RectLike): RectLike {
   return { x: node.x, y: node.y, w: node.w, h: node.h };
 }
 
-/** 某条边上的连接点坐标（世界坐标） */
+/** 某条边/某个角上的连接点坐标（世界坐标） */
 export function anchorPoint(rect: RectLike, anchor: EdgeAnchor): XY {
   switch (anchor) {
     case 'top':
@@ -112,6 +117,15 @@ export function anchorPoint(rect: RectLike, anchor: EdgeAnchor): XY {
     case 'left':
       return { x: rect.x, y: rect.y + rect.h / 2 };
     case 'right':
+      return { x: rect.x + rect.w, y: rect.y + rect.h / 2 };
+    case 'tl':
+      return { x: rect.x, y: rect.y };
+    case 'tr':
+      return { x: rect.x + rect.w, y: rect.y };
+    case 'br':
+      return { x: rect.x + rect.w, y: rect.y + rect.h };
+    case 'bl':
+      return { x: rect.x, y: rect.y + rect.h };
     default:
       return { x: rect.x + rect.w, y: rect.y + rect.h / 2 };
   }
@@ -119,13 +133,26 @@ export function anchorPoint(rect: RectLike, anchor: EdgeAnchor): XY {
 
 /**
  * 按两个矩形的相对位置挑「面对面」的连接点。
- * 横向距离更大就用左右，否则用上下——布局后节点位置大变时连线不会绕到卡片背后，
- * 也就不会出现线穿卡片和交叉。
+ * 横向/纵向距离明显占优就用左右或上下；两个方向分量接近（斜向排列）就用对角，
+ * 布局后节点位置大变时连线也不会绕到卡片背后，也就不会出现线穿卡片和交叉。
  */
 export function bestAnchors(source: RectLike, target: RectLike): { source: EdgeAnchor; target: EdgeAnchor } {
   const dx = target.x + target.w / 2 - (source.x + source.w / 2);
   const dy = target.y + target.h / 2 - (source.y + source.h / 2);
-  if (Math.abs(dx) >= Math.abs(dy)) {
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  // 斜向判定：短边分量超过长边的 45% 时认为是对角关系，走角上的连接点
+  if (Math.min(ax, ay) > Math.max(ax, ay) * 0.45) {
+    const nearX = dx >= 0 ? 'r' : 'l';
+    const nearY = dy >= 0 ? 'b' : 't';
+    const farX = dx >= 0 ? 'l' : 'r';
+    const farY = dy >= 0 ? 't' : 'b';
+    return {
+      source: `${nearY}${nearX}` as EdgeAnchor,
+      target: `${farY}${farX}` as EdgeAnchor,
+    };
+  }
+  if (ax >= ay) {
     return dx >= 0 ? { source: 'right', target: 'left' } : { source: 'left', target: 'right' };
   }
   return dy >= 0 ? { source: 'bottom', target: 'top' } : { source: 'top', target: 'bottom' };
@@ -134,6 +161,11 @@ export function bestAnchors(source: RectLike, target: RectLike): { source: EdgeA
 /** 单个矩形朝另一个矩形方向的连接点（画吸附线、聚合边用） */
 export function facingAnchor(rect: RectLike, other: RectLike): EdgeAnchor {
   return bestAnchors(rect, other).source;
+}
+
+/** handle id 是否是我们认识的连接点（老文档里可能有别的值） */
+export function isEdgeAnchor(value: unknown): value is EdgeAnchor {
+  return typeof value === 'string' && (ANCHORS as string[]).includes(value);
 }
 
 /* ===== M9 / S3：标签避让 ===== */

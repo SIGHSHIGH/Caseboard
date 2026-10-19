@@ -60,13 +60,22 @@ function check(name, condition, detail) {
   console.log('[UI] 打包产物挂载结果');
   check('根容器已渲染', doc.querySelector('#root') !== null && doc.querySelector('#root').children.length > 0);
   check('顶栏存在', doc.querySelector('.cb-topbar') !== null);
-  check('标题含「案情板」', text.includes('案情板'));
+  check('顶栏显示案件标题与编号', text.includes('连环诈骗案') && text.includes('A-2026-1018'));
+  check('顶栏不再有「案情板」logo 块（M10）', (() => {
+    const brand = doc.querySelector('.cb-topbar__brand');
+    return brand !== null && brand.querySelector('.cb-topbar__logo') === null;
+  })());
   check('左栏 8 个节点类型按钮', doc.querySelectorAll('.cb-type-btn').length === 8, doc.querySelectorAll('.cb-type-btn').length);
   check('每个类型按钮带字段数提示', doc.querySelectorAll('.cb-type-btn__hint').length === 8, doc.querySelectorAll('.cb-type-btn__hint').length);
   check('节点卡片展示模板字段摘要', doc.querySelectorAll('.cb-node__field').length >= 2, doc.querySelectorAll('.cb-node__field').length);
   check('画布渲染 6 个节点', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
   check('关系线已渲染', doc.querySelectorAll('.react-flow__edge').length === 6, doc.querySelectorAll('.react-flow__edge').length);
-  check('线型图例 3 项', doc.querySelectorAll('.cb-legend__item').length === 3, doc.querySelectorAll('.cb-legend__item').length);
+  check('线型图例收进右下角「图示」（M10）', (() => {
+    // 顶栏不再常驻图例，改由 CanvasLegend 折叠；展开后仍是 3 条线型
+    if (doc.querySelector('.cb-topbar__legend') !== null) return false;
+    const fab = doc.querySelector('.cb-legend-fab');
+    return fab !== null && fab.getAttribute('aria-expanded') === 'false';
+  })());
   check('右栏显示案件概览', text.includes('案件概览'));
   check('节点标题可见', text.includes('张建国') && text.includes('恒信财务'));
   check('撤销按钮初始禁用', (() => {
@@ -654,9 +663,10 @@ function check(name, condition, detail) {
   check('tag 连线面板已移除', doc.querySelector('.cb-taglink') === null);
 
   check('可切到素材标签（分组）', await clickByText('.cb-tabs .cb-tab', '素材'));
-  check('素材库有三种分组方式', doc.querySelectorAll('.cb-assets__groupby .cb-tab').length === 3, doc.querySelectorAll('.cb-assets__groupby .cb-tab').length);
+  check('素材库有四种分组方式（M10 加「按文件夹」）', doc.querySelectorAll('.cb-assets__groupby .cb-tab').length === 4, doc.querySelectorAll('.cb-assets__groupby .cb-tab').length);
   check('素材库按组渲染', doc.querySelectorAll('.cb-assets__group').length >= 1, doc.querySelectorAll('.cb-assets__group').length);
   check('素材组头显示组名与张数', /张/.test(doc.querySelector('.cb-assets__grouphead')?.textContent || ''), doc.querySelector('.cb-assets__grouphead')?.textContent);
+  check('素材库有新建文件夹入口（M10）', doc.querySelector('.cb-assets__folderops input') !== null && [...doc.querySelectorAll('.cb-assets__folderops .cb-link-btn')].some((b) => (b.textContent || '').includes('新建')));
 
   const m9ImageEl = doc.querySelector('.cb-free-image');
   if (m9ImageEl) m9ImageEl.click();
@@ -676,9 +686,9 @@ function check(name, condition, detail) {
   if (m9BoardTab) m9BoardTab.click();
   await sleep(300);
 
-  check('关系线连接点已放大到 14px', (() => {
+  check('关系线连接点放大到 18px（M10）', (() => {
     const rule = (cssText.match(/\.cb-handle\s*\{[^}]*\}/) || [''])[0];
-    return /width:\s*14px/.test(rule) && /height:\s*14px/.test(rule);
+    return /width:\s*18px/.test(rule) && /height:\s*18px/.test(rule);
   })(), (cssText.match(/\.cb-handle\s*\{[^}]*\}/) || [''])[0].slice(0, 160));
   check('样式表含 M9 新增区块', ['.cb-taglink', '.cb-tagedit', '.cb-geo', '.cb-map__pickbar', '.cb-assets__groupby'].every((sel) => srcCss.includes(sel)), ['.cb-taglink', '.cb-tagedit', '.cb-geo', '.cb-map__pickbar', '.cb-assets__groupby'].filter((sel) => !srcCss.includes(sel)));
   check('样式表不再出现启动密码锁屏样式', !/\.cb-lock\b/.test(srcCss) && !/\.cb-lock__/.test(srcCss));

@@ -38,6 +38,11 @@ export interface CaseNode {
   y: number;
   w: number;
   h: number;
+  /**
+   * 卡片层级（M10）：自由图片与卡片**共用同一层级空间**，缺省按 0 处理。
+   * 之前只有图片带 zIndex，导致图片的「置底 / 下移」相对卡片永远无效。
+   */
+  zIndex?: number;
   groupId?: string;
   /** 封面图 asset id */
   photo?: string;
@@ -162,9 +167,22 @@ export interface Asset {
   /** EXIF GPS：读取后仅提示定位风险，不清洗也不自动上图 */
   gps?: GeoPoint;
   addedAt?: string;
+  /** 所属素材文件夹（M10）：缺省 = 未归类（根目录） */
+  folderId?: string;
   annotations: Annotation[];
   aiGenerated?: boolean;
   aiMeta?: AiMeta;
+}
+
+/**
+ * 素材文件夹（M10）：扁平 + 可选上级，删除文件夹只把素材散回根目录、不删素材。
+ * 放在 `CaseDoc.assetFolders`，随案件一起走，不进素材库分区（zone）语义。
+ */
+export interface AssetFolder {
+  id: string;
+  title: string;
+  parentId?: string;
+  order: number;
 }
 
 export interface ImageNode {
@@ -181,9 +199,19 @@ export interface ImageNode {
   borderStyle?: 'photo' | 'plain' | 'polaroid';
   /** 吸附为头像 / 证据附件时的归属节点 */
   linkedNodeId?: string;
+  /** 吸附到归属卡片的哪个角（M10）：松手吸附时记录，跟随卡片移动时按角相对定位 */
+  dockCorner?: DockCorner;
+  /** 吸附时相对卡片左上角的偏移（M10）：旋转或改尺寸后仍能回到原处 */
+  dockOffset?: XY;
   /** 图钉装饰（白板照片质感） */
   pinned?: boolean;
 }
+
+/**
+ * 卡片四角（M10）：图片拖到卡片角附近即「吸附」到该角，
+ * 之后卡片移动时图片按角相对定位一起走（见 Board 的 attach 逻辑与 smoke [57]）。
+ */
+export type DockCorner = 'nw' | 'ne' | 'sw' | 'se';
 
 export interface View {
   id: string;
@@ -194,9 +222,58 @@ export interface View {
   steps?: unknown[];
 }
 
+/** 地图底图（M10）：导入一张素材当示意底图，按 bounds 铺满画布；不写像素、不请求瓦片 */
+export interface MapBackground {
+  assetId: string;
+  /** 底图覆盖的经纬度范围；缺省用当前点位范围 */
+  bounds?: GeoBounds;
+  /** 0.15–1，默认 0.85 */
+  opacity?: number;
+}
+
+/** 经纬度范围（M10）：地图投影与底图共用 */
+export interface GeoBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+  spanLat: number;
+  spanLng: number;
+}
+
+/** 时间线轨道（M10）：一条轨道 = 一屏并行泳道 */
+export type TimelineTrackKind = 'type' | 'entity';
+
+export interface TimelineTrack {
+  id: string;
+  title: string;
+  /** type = 按实体类型（人物/事件…）；entity = 指定某个实体的独立泳道（多人并行） */
+  kind: TimelineTrackKind;
+  /** kind='type' 时是 NodeType；kind='entity' 时是节点 id */
+  ref: string;
+  color?: string;
+  order: number;
+}
+
+export interface TimelinePrefs {
+  /** type = 沿用按类型分组；tracks = 用 tracks 列表 */
+  mode: 'type' | 'tracks';
+  /** 参与显示的轨道 id（空 = 全部） */
+  trackIds: string[];
+  /** 显示区间比例 0.1–1：越小越放大（比例调控） */
+  spanRatio: number;
+}
+
+export interface TimelineConfig {
+  tracks: TimelineTrack[];
+  prefs: TimelinePrefs;
+}
+
 export interface Settings {
   theme: string;
   lineLegend: Record<string, { label: string; style: LineStyle; color: string }>;
+  /** 地图底图（M10） */
+  mapBackground?: MapBackground;
 }
 
 /** 多假设里的证据立场（M7）：同一证据在不同假设中可支持或反驳 */
@@ -252,6 +329,10 @@ export interface CaseDoc {
   assets: Asset[];
   /** 自由图片节点：不依附卡片、直接钉在画布上的图片（M2-4） */
   imageNodes: ImageNode[];
+  /** 素材文件夹（M10）：缺省视为没有文件夹，全部素材在根目录 */
+  assetFolders?: AssetFolder[];
+  /** 时间线轨道与显示比例（M10）：缺省按实体类型分组 */
+  timeline?: TimelineConfig;
   views: View[];
   /** 多假设（M7）：共享同一份节点与素材，立场按假设分别记录 */
   hypotheses: Hypothesis[];

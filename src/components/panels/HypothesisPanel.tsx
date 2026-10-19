@@ -7,14 +7,16 @@
  * - 反驳按 REFUTE_WEIGHT 折价，避免「互相指责」把分数推高；
  * - 区域锚点只读，点击后跳到素材库并聚焦对应的框。
  */
-import { useMemo, useState } from 'react';
-import { addHypothesis, clearStance, deleteHypothesis, setStance } from '../../commands';
+import { useEffect, useMemo, useState } from 'react';
+import { addHypothesis, clearStance, deleteHypothesis, setStance, updateNode } from '../../commands';
 import { annotationsForNode } from '../../lib/annotation';
 import { buildEvidenceChain } from '../../lib/evidenceChain';
 import { STANCE_META, compareHypotheses, rankHypotheses, targetLabel } from '../../lib/hypothesis';
+import { STATUS_META } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
-import type { EvidenceStance } from '../../types';
+import { useViewModeStore } from '../../store/viewModeStore';
+import type { EvidenceStance, Status } from '../../types';
 
 interface HypothesisPanelProps {
   onClose: () => void;
@@ -23,6 +25,79 @@ interface HypothesisPanelProps {
 type Tab = 'compare' | 'chain';
 
 const STANCES: EvidenceStance[] = ['support', 'refute'];
+
+const STATUSES: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
+
+/**
+ * 证据链里的单个实体（M10）：原来只有一行只读文字，用户反馈「证据链页面没有实际功能」。
+ * 现在可以就地改标题、标记核实状态、跳到画布定位，全部走 Command（可撤销）。
+ */
+function ChainItem({
+  nodeId,
+  title,
+  weak,
+  evidenceCount,
+  onLocate,
+}: {
+  nodeId: string;
+  title: string;
+  weak: boolean;
+  evidenceCount: number;
+  onLocate: (nodeId: string) => void;
+}) {
+  const dispatch = useDocStore((s) => s.dispatch);
+  const node = useDocStore((s) => s.doc.nodes.find((item) => item.id === nodeId));
+  const [draft, setDraft] = useState(title);
+
+  useEffect(() => setDraft(title), [nodeId, title]);
+
+  const status: Status = node?.status ?? 'todo';
+
+  return (
+    <li className="cb-hyp__item">
+      <span className="cb-hyp__item-row">
+        <input
+          className="cb-hyp__item-title"
+          value={draft}
+          title="直接改标题，失焦后写入 Model（可撤销）"
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            const next = draft.trim();
+            if (next.length > 0 && next !== title) dispatch(updateNode(nodeId, { title: next }));
+            else setDraft(title);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') {
+              setDraft(title);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {weak ? <span className="cb-hyp__weak">待核实</span> : null}
+        {evidenceCount > 0 ? <span className="cb-hyp__evidence">证据 {evidenceCount}</span> : null}
+      </span>
+      <span className="cb-hyp__item-row">
+        <select
+          className="cb-hyp__status"
+          style={{ borderColor: STATUS_META[status].color }}
+          value={status}
+          title="标记核实状态（写入实体状态，可撤销）"
+          onChange={(event) => dispatch(updateNode(nodeId, { status: event.target.value as Status }))}
+        >
+          {STATUSES.map((item) => (
+            <option key={item} value={item}>
+              {STATUS_META[item].label}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="cb-link-btn" onClick={() => onLocate(nodeId)} title="在画布中选中这个实体">
+          在画布定位
+        </button>
+      </span>
+    </li>
+  );
+}
 
 function scoreText(score: number): string {
   return (score > 0 ? '+' : '') + score;
@@ -47,6 +122,8 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
   const setAnchorFocus = useUiStore((s) => s.setAnchorFocus);
   const selectAsset = useUiStore((s) => s.selectAsset);
   const setLeftTab = useUiStore((s) => s.setLeftTab);
+  const selectNode = useUiStore((s) => s.selectNode);
+  const setViewMode = useViewModeStore((s) => s.setMode);
   const [tab, setTab] = useState<Tab>('compare');
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
@@ -114,8 +191,13 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
     run(() => dispatch(clearStance(active.id, target.id, target.kind)));
   };
 
-  const jumpToAnchor = (assetId: string, annotationId: string) => {
-    selectAsset(assetId);
+  const locateNode = (nodeId: string) => {
+    selectNode(nodeId);
+    setViewMode('board');
+    onClose();
+  };
+
+  const jumpToAnchor = (assetId: string, annotationId: string) => {    selectAsset(assetId);
     setLeftTab('assets');
     setAnchorFocus({ assetId, annotationId });
   };
@@ -314,13 +396,14 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
                 <p className="cb-hyp__meta">{stage.hint}</p>
                 <ul>
                   {stage.items.map((item) => (
-                    <li key={item.nodeId}>
-                      {item.title}
-                      {item.weak ? <span className="cb-hyp__weak">待核实</span> : null}
-                      {item.evidenceIds.length > 0 ? (
-                        <span className="cb-hyp__evidence">证据 {item.evidenceIds.length}</span>
-                      ) : null}
-                    </li>
+                    <ChainItem
+                      key={item.nodeId}
+                      nodeId={item.nodeId}
+                      title={item.title}
+                      weak={item.weak}
+                      evidenceCount={item.evidenceIds.length}
+                      onLocate={locateNode}
+                    />
                   ))}
                 </ul>
               </li>

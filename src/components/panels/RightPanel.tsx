@@ -13,6 +13,7 @@ import {
   setImageLayer,
   updateImageNode,
   toggleGroupCollapsed,
+  moveAssetsToFolder,
   updateAsset,
   updateEdge,
   updateGroup,
@@ -29,11 +30,12 @@ import { useViewModeStore } from '../../store/viewModeStore';
 import { applyGeoFields, clearGeoFields, parseGeo } from '../../lib/map';
 import { fromDateTimeInput, timeRangeFromInput, toDateTimeInput } from '../../lib/datetime';
 import { formatBytes } from '../../lib/assetMeta';
+import { folderPath } from '../../lib/assetGroups';
 import { imageStore, thumbUrl } from '../../services/imageStore';
 import { AnnotationEditor } from './AnnotationEditor';
 import { TagEditor } from './TagEditor';
 import { maskAccount, parseOcrText } from '../../lib/ocr';
-import { recognizeAssetText } from '../../services/ocr';
+import { ocrEngineStatus, recognizeAssetText, warmOcrEngine, type OcrEngineStatus } from '../../services/ocr';
 import type { Asset, CaseEdge, CaseNode, Group, ImageNode, LineStyle, NodeType, Status } from '../../types';
 
 const BORDER_LABELS: Array<{ value: NonNullable<ImageNode['borderStyle']>; label: string }> = [
@@ -739,6 +741,19 @@ function GroupForm({ group }: { group: Group }) {
 }
 
 /** 素材详情：只看元数据，二进制在 IndexedDB；编号与来源可改，删除会同步摘掉节点附件引用 */
+const OCR_STAGE_LABELS: Record<string, string> = {
+  'loading tesseract core': '载入内核',
+  'initializing tesseract': '初始化引擎',
+  'loading language traineddata': '载入语言包',
+  'initializing api': '准备识别',
+  'recognizing text': '识别文字',
+  done: '完成',
+};
+
+function stageLabel(stage: string): string {
+  return OCR_STAGE_LABELS[stage] ?? '处理中';
+}
+
 function AssetForm({ asset }: { asset: Asset }) {
   const dispatch = useDocStore((s) => s.dispatch);
   const doc = useDocStore((s) => s.doc);
@@ -750,6 +765,8 @@ function AssetForm({ asset }: { asset: Asset }) {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrError, setOcrError] = useState('');
   const [ocrNotice, setOcrNotice] = useState('');
+  const [ocrStage, setOcrStage] = useState('');
+  const [engine, setEngine] = useState<OcrEngineStatus | null>(null);
   const [parsed, setParsed] = useState<ReturnType<typeof parseOcrText> | null>(null);
   const [amount, setAmount] = useState('');
   const [time, setTime] = useState('');
@@ -769,6 +786,21 @@ function AssetForm({ asset }: { asset: Asset }) {
   }, [asset.id]);
 
   const related = doc.nodes.filter((node) => node.attachments.includes(asset.id));
+
+  useEffect(() => {
+    let alive = true;
+    ocrEngineStatus()
+      .then((value) => {
+        if (!alive) return;
+        setEngine(value);
+        // 内置引擎是 WASM：提前预热，用户点「识别文字」时不用再等 20 秒载入内核
+        if (value.available && value.engine === 'bundled') void warmOcrEngine();
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <div className="cb-form">
@@ -801,6 +833,21 @@ function AssetForm({ asset }: { asset: Asset }) {
             if (next !== (asset.sourceLabel ?? '')) dispatch(updateAsset(asset.id, { sourceLabel: next || undefined }));
           }}
         />
+      </label>
+
+      <label className="cb-field">
+        <span>所属文件夹</span>
+        <select
+          value={asset.folderId ?? ''}
+          onChange={(event) => dispatch(moveAssetsToFolder([asset.id], event.target.value || null))}
+        >
+          <option value="">未分类</option>
+          {(doc.assetFolders ?? []).map((folder) => (
+            <option key={folder.id} value={folder.id}>
+              {folderPath(doc.assetFolders ?? [], folder.id)}
+            </option>
+          ))}
+        </select>
       </label>
 
       <dl className="cb-summary">
@@ -853,6 +900,14 @@ function AssetForm({ asset }: { asset: Asset }) {
 
       <div className="cb-form__section cb-ocr">
         <h3 className="cb-form__subtitle">文字识别与字段抽取</h3>
+        <p className="cb-form__subtle">
+          {engine === null
+            ? '正在探测 OCR 引擎…'
+            : engine.available
+              ? `引擎就绪：${engine.engine === 'system' ? '系统 Tesseract' : '内置 Tesseract（随安装包分发，离线可用）'}`
+              : '没有可用引擎：' + engine.hint}
+        </p>
+        {ocrStage ? <p className="cb-form__subtle">正在{ocrStage}</p> : null}
         <textarea
           className="cb-ocr__text"
           rows={4}
@@ -865,12 +920,13 @@ function AssetForm({ asset }: { asset: Asset }) {
             type="button"
             className="cb-btn"
             disabled={ocrBusy}
-            title="调用本机 Tesseract（需安装 chi_sim 语言包）；未安装时可用手工粘贴"
+            title={engine ? engine.hint || `当前引擎：${engine.engine === 'system' ? '系统 Tesseract' : '内置 WASM 内核'}` : '点击时自动选择可用引擎'}
             onClick={() => {
               setOcrBusy(true);
               setOcrError('');
               setOcrNotice('');
-              recognizeAssetText(asset)
+              setOcrStage('');
+              recognizeAssetText(asset, (value) => setOcrStage(`${stageLabel(value.stage)} ${Math.round(value.progress * 100)}%`))
                 .then((text) => {
                   setOcrText(text);
                   setOcrNotice('识别完成：共 ' + text.length + ' 字，核对后写入素材。');
@@ -878,7 +934,10 @@ function AssetForm({ asset }: { asset: Asset }) {
                 .catch((error: unknown) => {
                   setOcrError(error instanceof Error ? error.message : '识别失败');
                 })
-                .finally(() => setOcrBusy(false));
+                .finally(() => {
+                  setOcrBusy(false);
+                  setOcrStage('');
+                });
             }}
           >
             {ocrBusy ? '识别中…' : '识别文字'}

@@ -3,6 +3,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { useCodeSyncBridge } from './components/code/useCodeSyncBridge';
 import { Board } from './components/flow/Board';
 import { ImportWizard } from './components/panels/ImportWizard';
+import { CanvasLegend } from './components/panels/CanvasLegend';
 import { LeftPanel } from './components/panels/LeftPanel';
 import { RightPanel } from './components/panels/RightPanel';
 import { TopBar } from './components/panels/TopBar';
@@ -177,6 +178,7 @@ export default function App() {
       <ImportWizard />
       <NewNodeDialog />
       <TagLinkDialog />
+      {viewMode === 'board' ? <CanvasLegend /> : null}
       {paletteOpen ? <CommandPalette /> : null}
     </div>
   );

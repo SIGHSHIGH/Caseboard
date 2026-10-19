@@ -2,6 +2,23 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.10.0 · M10 交互打磨与内置能力
+
+### M10 整体验收通过（2026-10-20，tag ms/M10）
+
+- **顶栏与外壳**：删除顶栏「案情板」logo；删除常驻「线型语义」图例，改为右下角可折叠的「图示」按钮（展开仍是实线/虚线/点线三条 + 操作提示，且不提供绕过线型语义的开关，D66）；修掉案件编号 `A-2026-1018` 被压成竖排两行并被裁切的问题（`.cb-topbar__brand` 改 `nowrap` + `flex:0 0 auto`，工具区改可横向滚动）；MiniMap 缩到 150×100 并半透明，图示按钮上移到它上方，不再互相压住。
+- **画布连线**：关系线连接点由 14px 放大到 **18px 且常驻可见**（`opacity:.45`，hover `scale(1.2)`）；锚点从四边中点扩到**八端口**（四边 + 四角 `tl/tr/br/bl`），`bestAnchors` 在斜向时选对角，`.cb-node` 放开 `overflow` 让角端口不被裁（D64）。
+- **图片层级与吸附**：卡片与图片进入**共用层级空间**——卡片固定 `CARD_LAYER_Z=100`，图片 `zIndex` 分 1–99（卡片下）与 101–199（卡片上），`reorderLayers` 改带状重编号，图片「置顶/上移/下移/置底」首次真正生效（D62）；吸附判定改为「卡片外扩 140px 的角落区」，可吸到四角并记录 `dockCorner` / `dockOffset`；卡片移动时吸附图片由**命令层** `applyDockedMoves` 随动，`moveNode` / `moveNodes` / `moveGroup` 都带，撤销仍是一条命令（D63）。
+- **时间线**：新增多轨并行（按类型 / 多轨并行可切）、比例滑杆（`spanRatio` 0.1–1）、新建与删除时间线；轨道与偏好进入文档 `doc.timeline`（`TimelineTrack` / `TimelinePrefs`），切视图与重开不丢，且能进 undo（D67）；修掉时间滑杆贴最右侧被裁的样式问题。
+- **地图**：可导入背景图片（存 `settings.mapBackground` 指向素材库，带不透明度滑杆与移除），图钉可拖动、松手写回 `fields.经纬度`；`replaceDocument` 补上 `imageNodes` / `hypotheses` / `assetFolders` / `timeline`，打开项目不再丢图片节点。
+- **素材库**：新增**文件夹**树形分组（新建 / 重命名 / 删除、`parentId` 环检测），分组模式扩到「按文件夹 / 按来源 / 按日期 / 不分」；删除文件夹只做子级上提 + 素材回未分类，**永不删素材**（D68）；右栏素材表单可直接改所属文件夹。
+- **面板编辑**：假设面板「证据链」页签从只读快照改为可编辑（改标题、改状态、在画布定位），编辑仍走 `updateNode` 命令（D65）；演示页联动编辑补上 tag 编辑（复用 `TagEditor`）。
+- **内置 OCR**：打包 `tesseract.js`（WASM）worker + 三档 SIMD 内核 + `chi_sim` / `eng` 语言包进 `public/ocr`（15.7 MB），随 Vite 产物分发并由 Tauri 内嵌进 exe；探测顺序「系统 Tesseract → 内置 WASM」，右栏显示引擎来源、预热与逐张识别进度，离线干净机也能识别（D61）。原计划的 Tesseract CLI 方案因 winget/GitHub 下载被网络阻断而放弃（记为偏离）。
+- **数据迁移 v9**：`types` 新增 `CaseNode.zIndex`、`ImageNode.dockCorner`/`dockOffset`、`Asset.folderId`、`AssetFolder`、`MapBackground`、`TimelineConfig`；`migrate.ts` 新增 `normalizeAssetFolder` / `normalizeTimelineTrack` / `normalizeTimeline` / `normalizeMapBackground`，清理悬空父级、悬空 `trackIds`、越界 `spanRatio` 与无 `linkedNodeId` 的角标记。
+- **打包**：版本三处升 **0.10.0**（`package.json` / `tauri.conf.json` / `Cargo.toml`）；`tauri build --no-bundle` 重建 `caseboard.exe`；NSIS 安装包归档到仓库根 `release\CaseBoard_0.10.0_x64-setup.exe`。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **713 条全绿**（M10 新增 [56] 图片层级与吸附随动 / [57] 八端口连线 / [58] 时间线多轨与比例 / [59] 地图底图与拖动改坐标 / [60] 素材文件夹 / [61] 内置 OCR 随包 / [62] 数据迁移 v9 / [63] 卡片移动带吸附图片）、`pnpm ui-smoke` **298 条全绿**（改 4 处旧断言 + 新增顶栏 logo 与素材文件夹入口）、`pnpm bench` 1000 节点解析链 **75.5 ms**、`pnpm build` 成功且 `dist/ocr` 随包、桌面自检 **17 / 18 两轮 PASS**。
+- **文档**：`docs/MILESTONES.md` §1 M10 置 ✅、§3 新增 M10 目标/范围/10 条验收/拆步表 M10-1…M10-16/验收记录/偏离表、§6 新增 D61–D68、§7 一行；`docs/MANUAL-ACCEPTANCE.md` 新增 J 节人工复验清单。
+
 ## [未发布] v0.9.0 · M9 交互修订与安全精简
 
 ### M9 整体验收通过（2026-10-20，tag ms/M9）

@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { updateNode } from '../../commands';
 import { NODE_TYPE_META, STATUS_META } from '../../lib/theme';
 import { fieldEntriesOf } from '../../lib/nodeTemplates';
+import type { EdgeAnchor } from '../../lib/edgeCurve';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import type { CaseNode } from '../../types';
@@ -18,12 +19,17 @@ export type BaseNodeData = {
 };
 export type BaseFlowNode = Node<BaseNodeData, 'base'>;
 
-const SIDES = [
+/** 八个连接点（M10）：四边中点 + 四个角。角的横向位置用内联 left 覆盖 React Flow 的居中默认值。 */
+const SIDES: Array<{ id: EdgeAnchor; position: Position; left?: string }> = [
   { id: 'top', position: Position.Top },
   { id: 'right', position: Position.Right },
   { id: 'bottom', position: Position.Bottom },
   { id: 'left', position: Position.Left },
-] as const;
+  { id: 'tl', position: Position.Top, left: '0%' },
+  { id: 'tr', position: Position.Top, left: '100%' },
+  { id: 'bl', position: Position.Bottom, left: '0%' },
+  { id: 'br', position: Position.Bottom, left: '100%' },
+];
 
 function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const node = data.node;
@@ -66,15 +72,17 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
       style={{ width: node.w }}
       data-type={node.type}
     >
-      {/* 每边放两个连接点：target 只做几何锚点（React Flow 计算连线路径需要 target 侧边界），
-          source 负责拖拽发起；两者重叠，target 不接收指针事件，避免抢走拖拽。 */}
+      {/* 每个连接点放两个：target 只做几何锚点（React Flow 计算连线路径需要 target 侧边界），
+          source 负责拖拽发起；两者重叠，target 不接收指针事件，避免抢走拖拽。
+          M10：一共八处（四边中点 + 四角），关系线不再只能从四条边中间出来。 */}
       {SIDES.map((side) => (
         <Handle
           key={`t-${side.id}`}
           id={side.id}
           type="target"
           position={side.position}
-          className="cb-handle cb-handle--target"
+          className={`cb-handle cb-handle--target${side.left ? ' cb-handle--corner' : ''}`}
+          style={side.left ? { left: side.left } : undefined}
           isConnectable={false}
         />
       ))}
@@ -84,7 +92,8 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
           id={side.id}
           type="source"
           position={side.position}
-          className="cb-handle cb-handle--source"
+          className={`cb-handle cb-handle--source${side.left ? ' cb-handle--corner' : ''}`}
+          style={side.left ? { left: side.left } : undefined}
         />
       ))}
 

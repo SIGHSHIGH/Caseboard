@@ -3,7 +3,13 @@ export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addC
 export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
-export { replaceDocument } from './docCommands';
+export { replaceDocument, updateSettings, setMapBackground } from './docCommands';
+export {
+  setTimelinePrefs,
+  addTimelineTrack,
+  updateTimelineTrack,
+  removeTimelineTrack,
+} from './timelineCommands';
 export { composeCommands } from './compose';
 export { applyLayout } from './layoutCommands';
 export { restoreEntities } from './restoreCommands';
@@ -26,6 +32,13 @@ export {
 export type { AddGroupInput, GroupPatch } from './groupCommands';
 export { addAsset, addAssets, updateAsset, deleteAsset, importAssets } from './assetCommands';
 export type { AssetPatch, ImportBundle, EvidenceNodeDraft } from './assetCommands';
+export {
+  addAssetFolder,
+  updateAssetFolder,
+  deleteAssetFolder,
+  moveAssetsToFolder,
+} from './assetFolderCommands';
+export type { AddAssetFolderInput, AssetFolderPatch } from './assetFolderCommands';
 export {
   addImageNode,
   updateImageNode,

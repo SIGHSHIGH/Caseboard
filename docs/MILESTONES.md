@@ -48,6 +48,7 @@
 | M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ✅ 2026-10-19 |
 | M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ✅ 2026-10-19 |
 | M9 | 交互修订与安全精简 | 1 周 | 图片工具条竖排、混合拖动命令合成、组尺寸与成员清单、双击新建对话框、模态居中、地图取点、布局换锚点、时间线回退、演示联动编辑、tag 自动连线、素材库分组、导入 OCR；**删除启动密码/整库加密**；NSIS 归档 `release\` | 十条验收全部通过；全仓库 `vault` 零命中；`smoke` 658 / `ui-smoke` 296 全绿 | ✅ 2026-10-20 |
+| M10 | 交互打磨与内置能力 | 1 周 | 顶栏删 logo 与常驻图例、八端口连线与连接点放大、图片层级与吸附随动、多轨时间线与比例、地图底图与拖动改坐标、素材文件夹、证据链可编辑、演示 tag 编辑、**内置 OCR 引擎随包分发**；NSIS 归档 `release\` | 十项验收全部通过；`smoke` 713 / `ui-smoke` 298 全绿；`dist/ocr` 随包 | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -766,6 +767,87 @@
 | 干净机安装全流程 | 仍无第二台干净 Win10/11 | 只能人工，见 `docs/MANUAL-ACCEPTANCE.md` H 节 |
 | Windows Hello | 仍只有接入位说明 | M9 删掉启动密码后统一交给系统账户/BitLocker，记为下一期候选（D60） |
 
+### M10 · 交互打磨与内置能力（1 周）
+
+**目标**：按用户实测反馈把「看起来有、用起来不行」的控件全部修到能用，并把 OCR 从「依赖外部安装」改成「随安装包分发」。
+
+**范围**
+
+- 顶栏与外壳：删除「案情板」logo、删除常驻「线型语义」图例，改用右下角可折叠「图示」；`A-2026-1018` 案件编号不再被挤压成两行并被裁切；MiniMap 缩小并半透明，图示按钮让位。
+- 画布：关系线连接点从 14px 放大到 18px 且常驻可见；锚点从四边中点扩到**八端口**（四边 + 四角），连线不再只能走四条边；自动布局后按相对位置重算锚点。
+- 图片：卡片与图片共用层级空间（卡片固定 `CARD_LAYER_Z=100`，图片 1–199 分带），「上移/下移」真正生效；吸附判定从「中心点落进卡片」改为「卡片外扩 `DOCK_TOLERANCE=140` 的角落区」，可吸到边角并记录 `dockCorner` / `dockOffset`；卡片移动时吸附图片在命令层随动（`moveNode` / `moveNodes` / `moveGroup` 都带）。
+- 时间线：支持多条泳道并行（按类型 / 多轨并行可切）、轨道可新建与删除、比例滑杆（`spanRatio` 0.1–1）；修掉贴最右侧时时间滑杆被裁的样式问题。
+- 地图：可导入背景图片（存 `settings.mapBackground` 指向素材库），可拖动图钉直接改经纬度。
+- 素材库：文件夹分组（树形 `parentId` + 环检测），新建 / 重命名 / 删除文件夹，右栏可改所属文件夹。
+- 面板：假设面板「证据链」页签从只读改为可编辑（改标题、改状态、在画布定位）；演示页联动编辑补 tag 编辑。
+- 内置 OCR：`tesseract.js`（WASM）worker + 三档 SIMD 内核 + 中英语言包打进 `public/ocr`，随产物/安装包分发；引擎探测两级（系统 Tesseract 优先、内置兜底），右栏显示就绪状态与进度。
+
+**验收标准**
+1. 顶栏没有「案情板」logo 与常驻图例；右下角「图示」可展开看到三条线型，图例不可绕过。
+2. `A-2026-1018` 单行完整显示，未被顶栏裁切或竖排折行；右下角 MiniMap 不压住图示按钮。
+3. 节点八个连接点都能拉线；连接点常驻可见、hover 放大。
+4. 图片「上移/下移」有实际层级变化；卡片与图片层级可交叉。
+5. 图片能吸附到卡片四角（含偏移），卡片移动时吸附图片跟着走；取消吸附清掉角标记。
+6. 时间线可多轨并行、可新建/删除轨道、可调比例；时间滑杆不被右侧裁切。
+7. 地图可导入底图、可拖图钉改坐标，改动写回 `fields.经纬度`。
+8. 素材库可建文件夹并归类素材；删文件夹不删素材。
+9. 证据链可改标题/状态并定位；演示页可编辑 tag。
+10. 内置 OCR 在离线干净机可用（`public/ocr` 随包）；`typecheck` / `smoke` / `ui-smoke` / `bench` 全绿，桌面自检两轮 PASS，`release\` 下有 0.10.0 安装包。
+
+#### M10 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 | 状态 |
+|---|---|---|---|
+| M10-1 | **顶栏删 logo（第 1 项）**：`TopBar.tsx` 删 `<span className="cb-topbar__logo">案情板</span>` 与对应 CSS，brand 只留 `cb-topbar__case`（title 提示）+ `cb-topbar__no` | ui-smoke：`.cb-topbar__brand` 内无 `.cb-topbar__logo` | ✅ |
+| M10-2 | **删常驻图例（第 2 项）**：删 `TopBar` 的 `.cb-topbar__legend` 与 `LEGEND` / `LINE_STYLE_META` 引用；新增 `CanvasLegend.tsx`（右下角 `.cb-legend-fab` 按钮 + `.cb-legend-panel` 面板，点外部收起），挂进 `App.tsx` | ui-smoke：`.cb-topbar__legend` 为 null、`.cb-legend-fab` 的 `aria-expanded === 'false'` | ✅ |
+| M10-3 | **控件显示检查（第 3 项）**：`.cb-topbar__brand` 改 `align-items:center` + `flex:0 0 auto` + `white-space:nowrap`、`.cb-topbar__no` 加 `tabular-nums`、`.cb-topbar__tools/__io` 改 `flex:1 1 auto; min-width:0; overflow-x:auto`（案件编号不再被挤成竖排两行并被裁掉）；`MiniMap` 尺寸 150×100 + `opacity:.88`；`.cb-legend-fab-root` 从 `bottom:14px` 移到 `126px` 让位 | 截图 / ui-smoke：编号完整单行；MiniMap 与图示不重叠 | ✅ |
+| M10-4 | **证据链可编辑（第 4 项）**：`HypothesisPanel.tsx` 新增 `ChainItem`（标题 input 失焦提交、状态下拉按 `STATUS_META` 上色、「在画布定位」按钮），阶段 `ul` 不再只读 | 改标题/状态后 Model 立即更新；点定位选中实体并切回画布 | ✅ |
+| M10-5 | **图片上下移（第 5 项）**：`lib/imageNode.ts` 引入 `CARD_LAYER_Z=100` / `LAYER_Z_MIN=1` / `LAYER_Z_MAX=199`，`reorderLayers` 重写为带状排序（置顶/置底用哨兵值再按带内顺序重编号），`nextZIndex` 夹到卡片之上；`Board.tsx` 的卡片节点补 `zIndex: node.zIndex ?? CARD_LAYER_Z`；`CaseNode` 增加 `zIndex?`，迁移 `normalizeNode` 保留非零值 | smoke [56]：置顶后图层次序越过 `CARD_LAYER_Z`、最底层下移只归一化；ui-smoke 通过 | ✅ |
+| M10-6 | **吸附识别区与边角（第 6 项）**：`findDockTarget(image, nodes, DOCK_TOLERANCE=140)` 按「卡片外扩后的角落区」判定并给出 `corner` + 偏移；`Board.onNodeDrag` 用它点亮 `attachTarget`，落点写 `attachImageNode(id, target, {corner, offsetX, offsetY})` | smoke [56]：右上角吸附 `corner==='ne'`、太远不吸附；拖到角上再松手能吸住 | ✅ |
+| M10-7 | **吸附随动（第 7 项）**：`commands/nodeCommands.ts` 新增 `applyDockedMoves(draft, deltas)`，`moveNode` / `moveNodes` / `moveGroup` 位移后统一调用；`ImageNode` 增加 `dockCorner` / `dockOffset`，`imageNodeCommands.updateImageNode` 支持两个字段且取消吸附时一起清 | smoke [63]：移动卡片后吸附图片同步位移、移回也回位、解绑清标记 | ✅ |
+| M10-8 | **八端口连线（第 12 项）**：`lib/edgeCurve.ts` 的 `EdgeAnchor` 扩到 8 个（四边 + `tl/tr/br/bl`），`anchorPoint` 支持角点，`bestAnchors` 增加斜向判定（`Math.min(ax,ay) > Math.max(ax,ay)*0.45` 时取对角）；`BaseNode.tsx` 渲染 8 个 Handle（角上 `cb-handle--corner`）；`index.css` `.cb-handle` 18px 常驻 `.45` 透明度、hover `scale(1.2)`，`.cb-node` 改 `overflow: visible` 让角端口不被裁 | smoke [57]：8 个 id 全部合法、`tl`/`br` 坐标、正斜角 `br→tl`；ui-smoke：`.cb-handle` 命中 18px | ✅ |
+| M10-9 | **多轨时间线（第 10 项）**：`lib/timelineTracks.ts`（`buildTrackLanes` / `clampSpanRatio` / `trackWidthPct` / `TRACK_COLORS` / `defaultTracks`）+ `commands/timelineCommands.ts`（`setTimelinePrefs` / `addTimelineTrack` / `updateTimelineTrack` / `removeTimelineTrack`）+ `TimelineView.tsx` 重写（比例滑杆、按类型/多轨切换、新建时间线、泳道删除） | smoke [58]：比例夹取、`nextTrackId` 补空位、多轨按配置顺序、`entityTrackTitle`；时间线页可新建轨道并调比例 | ✅ |
+| M10-10 | **时间控件裁切（第 9 项）**：`.cb-timeline__scrub` 加 `box-sizing: border-box; padding: 0 9px; overflow: visible`，泳道首列 104px→148px | 时间滑杆贴右不再被裁（截图） | ✅ |
+| M10-11 | **地图底图与拖图钉（第 8 项）**：`types` 增 `MapBackground`，`docCommands` 增 `updateSettings` / `setMapBackground`（并修 `replaceDocument` 漏拷 `imageNodes` 等）；`MapView.tsx` 重写：导入底图（`fileService.pickFiles` → `imageService.save` → `importAssets` → `setMapBackground`）、底图不透明度滑杆、`beginPinDrag` 拖图钉松手写回 `applyGeoFields` | smoke [59]：底图保留且 `opacity` 夹到范围、素材不存在时丢弃；拖钉后 `parseGeo` 读到新坐标 | ✅ |
+| M10-12 | **素材文件夹（第 13 项）**：`commands/assetFolderCommands.ts`（`addAssetFolder` / `updateAssetFolder` 带 `createsCycle` / `deleteAssetFolder` 子级上提不删素材 / `moveAssetsToFolder`）+ `lib/assetGroups.ts` 加 `folder` 模式与 `folderPath`；`AssetLibrary.tsx` 文件夹 chip 栏与新建/重命名/删除入口；右栏 `AssetForm` 增「所属文件夹」下拉 | smoke [60]：父子路径、环检测、删除后上提、移回未分类；ui-smoke：4 种分组方式 + 新建文件夹入口 | ✅ |
+| M10-13 | **演示 tag 编辑（第 11 项）**：`PresentationView.tsx` 的 `PresentEdit` 加 `TagEditor`（复用 M9 组件），即时 `dispatch(updateNode(id,{tags}))` | 演示页可增删 tag，画布与右栏同步 | ✅ |
+| M10-14 | **内置 OCR（第 14 项）**：新增 `src/services/ocrBuiltin.ts`（`createWorker(['chi_sim','eng'], OEM.LSTM_ONLY, {workerBlobURL:false, gzip:true, cacheMethod:'none'})`，路径走 `OCR_BUNDLED_PATHS`）；`services/ocr.ts` 改两级（`invoke('ocr_available')` → 内置 WASM 兜底）；`public/ocr` 放 worker + 三档 SIMD 内核 + 中英语言包（15.7 MB）；`RightPanel.AssetForm` 显示引擎状态、预热与识别进度 | smoke [61]：worker / 三档内核 / 两个语言包 / dist 也随之拷贝；离线可用 | ✅ |
+| M10-15 | **数据迁移 v9**：`types` 增 `zIndex` / `dockCorner` / `dockOffset` / `AssetFolder` / `MapBackground` / `TimelineConfig`；`migrate.ts` 增 `normalizeAssetFolder` / `normalizeTimelineTrack` / `normalizeTimeline` / `normalizeMapBackground`，`normalizeDoc` 清理悬空父级与悬空 `trackIds` | smoke [62]：层级保留、非法轨道丢弃、`spanRatio` 夹取、悬空父级变顶层、无 `linkedNodeId` 不留角标记 | ✅ |
+| M10-16 | **打包**：版本三处 0.10.0；`tauri build --no-bundle` 重建 exe，`--bundles nsis` 出安装包并归档到仓库根 `release\` | `release\CaseBoard_0.10.0_x64-setup.exe` 存在且体积与 bundle 一致 | ✅ |
+
+#### M10 验收记录（2026-10-20，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| 类型检查 | `tsc --noEmit` 0 error |
+| 逻辑层 | `pnpm smoke` **713 PASS / 0 FAIL**（M9 基线 658，M10 新增 [56]-[63] 共 55 条） |
+| 打包层 | `pnpm ui-smoke` **298 PASS / 0 FAIL**（M9 基线 296；改 4 处旧断言、新增顶栏 logo 与素材文件夹入口 2 条） |
+| 性能 | `pnpm bench` 1000 节点解析链 **75.5 ms**（阈值 300 ms） |
+| 构建 | `pnpm build` 成功；`dist/ocr/` 含 worker、三档 SIMD 内核与中英语言包 |
+| 桌面产物 | `tauri build --no-bundle` 重建 `caseboard.exe`；`run-selftest.cjs` 两轮 PASS |
+| 验收 1 顶栏 | 无 logo、无 `.cb-topbar__legend`；右下角「图示」可展开三条线型 |
+| 验收 2 编号与 MiniMap | `A-2026-1018` 单行完整；MiniMap 150×100 半透明，图示按钮在其上方 |
+| 验收 3 八端口 | 8 个 Handle（4 边 + 4 角），18px 常驻可见，hover 放大 |
+| 验收 4 图片层级 | 卡片固定 100，图片 1–199；置顶 / 上移 / 下移 / 置底生效 |
+| 验收 5 吸附 | 角落吸附记录 `corner` + 偏移；卡片移动图片随动；解绑清标记 |
+| 验收 6 时间线 | 多轨并行、新建/删除轨道、比例滑杆；滑杆不再被右侧裁切 |
+| 验收 7 地图 | 可导入底图并调不透明度；拖图钉写回 `fields.经纬度` |
+| 验收 8 素材文件夹 | 新建/重命名/删除文件夹，素材归类，删除不删素材 |
+| 验收 9 面板编辑 | 证据链可改标题/状态并定位；演示页可编辑 tag |
+| 验收 10 内置 OCR | `public/ocr` 随包 15.7 MB；右栏显示引擎就绪与识别进度 |
+| 版本 | `package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 三处 **0.10.0** |
+
+#### M10 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 内置 OCR 引擎选型 | 首选打包 Tesseract CLI（winget 安装 + 复制进 `src-tauri/bin`），但本机 winget 下载被网络阻断（`InternetOpenUrl() failed 0x80072efd`），GitHub 直链也不可达 | 改用 npm 可获取的 `tesseract.js` WASM + 语言包，打进 `public/ocr` 由 Vite 随产物分发、Tauri 内嵌进 exe（D61） |
+| 卡片与图片层级 | 原来只有图片带 `zIndex`，卡片永远在 0 层，图片「置底」等于无效 | 引入共用层级空间：卡片固定 100，图片分 1–99（卡片下）与 101–199（卡片上）（D62） |
+| 吸附识别 | 原来按「图片中心是否落进卡片矩形」判定，几乎吸不住 | 改为卡片外扩 140px 的角落区判定，并记录角标记与偏移（D63） |
+| 关系线只能四边 | 用户要求「不局限于四边」 | 扩到八端口（四边中点 + 四角），`.cb-node` 放开 `overflow`（D64） |
+| 证据链「无实际功能」 | 原阶段列表是纯只读快照 | 改为可编辑行（标题/状态/定位），编辑仍走 `updateNode` 命令（D65） |
+
+
 
 ---
 
@@ -927,6 +1009,14 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D58 | 「按 tag 自动连线」一律**先出确认面板**，默认全选但不自动应用；生成的关系固定 `style:'dotted'` + `confidence:35` + `directed:false`，标签写成「同标签：<tag>」 | 同标签只是弱线索，直接落库等于让命名习惯升级成事实关系，违反 Gate 0-3/0-4；确认面板还顺便暴露「已有关系的实体对不再候选」这条口径 | `src/lib/tagLink.ts`、`TagLinkDialog.tsx`、`tagStore`、smoke [52] |
 | D59 | 素材库分组是**纯函数 `groupAssets(assets, mode)`**（按来源 / 按日期 / 不分），组件只渲染组；OCR 写回用一条 `composeCommands('导入后 OCR（N 张）')`，引擎缺失时把 `OCR_ENGINE_HINT` 落到 `ocrNotice` 面板提示而不是弹窗 | 分组口径必须能脱离 UI 断言（M8 的 `services/` 教训）；OCR 是导入的附加动作，失败不该打断导入流程，一条命令也让「撤销 OCR」只按一次 | `src/lib/assetGroups.ts`、`AssetLibrary.tsx`、`importStore.runOcrOnImported`、smoke [53] |
 | D60 | 数据安全责任**交还操作系统**：应用内不再提供解锁与加密，安全面板首块改成「本机存储」说明（建议系统账户权限 + BitLocker），Windows Hello 等接入位保留为后续候选 | 与 D53 配套；产品不再承诺自己做不到的事（无法防御有账户权限的本地访问），把话说清楚比给假安全感更专业 | `SecurityDialog.tsx` 首块、`README.md`、`AGENTS.md`、smoke [55] |
+| D61 | 内置 OCR 用 **`tesseract.js`（WASM）**：worker + 三档 SIMD 内核（relaxedsimd / simd / 通用）+ `chi_sim` / `eng` 语言包放 `public/ocr`，随 Vite 产物分发并被 Tauri 内嵌进 exe；探测顺序是「系统 Tesseract 优先 → 内置 WASM 兜底」，无外部安装也能离线识别 | 原计划把 Tesseract CLI 打进 `src-tauri/bin`，但本机 winget 与 GitHub 直链均被网络阻断（`InternetOpenUrl() failed 0x80072efd`），npm 可达；WASM 的好处是完全离线、无需管理员权限、跨机器一致，代价是首次载入约 4 MB 内核（已加预热） | `public/ocr/**`、`src/services/ocrBuiltin.ts`、`src/services/ocr.ts`、smoke [61] |
+| D62 | 卡片与图片**共用层级空间**：`CARD_LAYER_Z = 100` 固定给卡片，图片 `zIndex` 分 1–99（卡片之下）与 101–199（卡片之上），`reorderLayers` 在带内重编号、`nextZIndex` 夹到卡片之上；`CaseNode.zIndex` 随之进入模型与迁移 | M9 之前只有图片带 `zIndex`、卡片永远 0 层，图片「置底」等于无效（用户第 5 项反馈的根因）；把两者放进同一坐标系才能让「上移/下移」有语义，且不引入新的层级表 | `src/lib/imageNode.ts`、`CaseNode.zIndex`、`Board.tsx` 的 `zIndex: node.zIndex ?? CARD_LAYER_Z`、smoke [56] |
+| D63 | 吸附判定按**卡片外扩的角落区**（`DOCK_TOLERANCE = 140`）而非「图片中心落进卡片」；吸附结果记录 `dockCorner` + `dockOffset`，随动统一放在**命令层** `applyDockedMoves`，由 `moveNode` / `moveNodes` / `moveGroup` 调用 | 中心点判定几乎吸不住（用户第 6 项），而随动如果放渲染层，撤销栈里就只有卡片位移、图片会后错位（用户第 7 项）；放命令层才能保证「一次移动 = 一条命令 = 一次撤销」 | `src/lib/imageNode.ts`、`src/commands/nodeCommands.ts`、`groupCommands.ts`、smoke [63] |
+| D64 | 关系线锚点扩到**八端口**（四边中点 + 四角 `tl/tr/br/bl`），`bestAnchors` 在斜向时选择对角；`.cb-node` 从 `overflow:hidden` 改为 `visible` 让角端口不被裁 | 用户第 12 项要求「不局限于四边」；只加角端口不改 `overflow` 会导致一半热区被裁、点不到。放开 `overflow` 后卡片内部仍需 `overflow` 约束，于是把圆角补到 `.cb-node__bar` / `__foot` | `src/lib/edgeCurve.ts`、`BaseNode.tsx`、`index.css`、smoke [57] |
+| D65 | 证据链的编辑**仍然走命令**：`ChainItem` 里改标题/状态都是 `dispatch(updateNode(...))`，不维护本地影子副本（输入框只做受控草稿，失焦才提交，空值/Esc 回滚） | 用户第 4 项说「证据链页面无实际功能」；但把它做成独立可写面板会绕开 Command 体系（Gate 0-2），所以只补「能改、能定位」，写入口仍唯一 | `HypothesisPanel.tsx` 的 `ChainItem` |
+| D66 | 线型图例从顶栏常驻改为**右下角可折叠「图示」**（`CanvasLegend`），但三条线型语义仍然固定、不可关闭 | 用户第 2 项要求删掉常驻图例；Gate 0-3 又要求「图例常驻、不提供绕过开关」——两者折中：图例默认折叠但不提供任何「隐藏线型语义」的开关，展开即见完整说明 | `CanvasLegend.tsx`、`TopBar.tsx`、ui-smoke 图例断言 |
+| D67 | 时间线多轨与比例是**数据**（`doc.timeline.tracks` + `doc.timeline.prefs`），不再是组件内部状态；默认仍是「按类型」两条泳道，`spanRatio` 夹在 0.1–1 | 用户第 10 项要多轨、比例、新建时间线；这些偏好如果只活在组件里，切视图/重开就丢，也无法进 undo。放进文档后顺带由 `migrate` 兜住脏数据（悬空 `trackIds`、非法轨道） | `src/lib/timelineTracks.ts`、`commands/timelineCommands.ts`、`smoke [58]`/`[62]` |
+| D68 | 素材文件夹是**树**（`AssetFolder.parentId` + 环检测），删除文件夹只做「子级上提 + 素材回未分类」，**永不删素材**；分组纯函数 `groupAssets(assets, mode, folders)` 负责路径拼接 | 用户第 13 项要「新建文件夹管理素材」；用树而不是标签，是因为案卷素材通常是「现场照片 / 书证」这类层级。删文件夹连带删素材对取证工具是不可接受的数据损失 | `src/commands/assetFolderCommands.ts`、`src/lib/assetGroups.ts`、`AssetLibrary.tsx`、smoke [60] |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -954,3 +1044,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M5 整体验收通过**（✅ 打 tag `ms/M5`）：分析视图五步落地——图内核（路径/中心度/五种布局/时间线）、过滤与聚焦、路径与中心度可视化、一键整理、时间线回放与演示模式；`pnpm smoke` **460 条**（M5 新增 101）、`pnpm ui-smoke` **142 条**（新增 52）、`pnpm build` 811 modules；§1 总表 M5 置 ✅，§3 写入 M5 拆步与验收记录（含与计划的五项偏离），新增 D38（演示模式先做逐步讲解）、D39（1× = 60 秒、UTC 口径）、D40（自写确定性 BFS/Brandes）。 |
 | 2026-10-19 | **M8 整体验收通过**（✅ 打 tag `ms/M8`）：保险库加密与启动密码（自检第 3 轮 7/7）、脱敏全链路（像素 + 文本 + 清单）、AI 合规审计导出、打印样式与 PDF 页眉页脚、全局搜索与 Ctrl+K 命令面板、NSIS 安装包与签名脚本；`pnpm smoke` **598 条**（M8 新增 25）、`pnpm ui-smoke` **256 条**（新增 22）、桌面自检 **17 / 18 / 7**、版本 **0.8.0**；§1 M8 置 ✅、§3 写入拆步/验收/偏离三表，新增 D49–D52；`scripts/sign-installer.ps1` 就绪但本机无代码签名证书。 |
 | 2026-10-20 | **M9 整体验收通过**（✅ 打 tag `ms/M9`）：交互修订——图片工具条改右侧竖排让出旋转手柄（A2）、混合多选拖动用 `composeCommands` 合成一条命令（A4/D54）、组右下角改尺寸与组头/右栏成员清单（A4）、双击空白弹「新建节点」对话框并关闭双击缩放（A5/D57）、假设与生图面板改居中模态（T1/T2/T5/T6）、区域锚点高亮改为「悬停 ∪ 多选 ∪ 锚点焦点」且可点击（T3）、地图点选取坐标与右栏经纬度字段（T7/D55）、布局后自动重算锚点与标签避让（S3/D56）、时间线回退读 `发生时刻` 等字段（S4）、演示页联动编辑（S5）、发生时刻日期时间控件、统一 tag 编辑与「按 tag 自动连线」确认面板（D58）、关系线连接点放大、素材库分组（D59）、导入后自动 OCR 与引擎缺失指引；安全精简——按 H3 彻底删除应用解锁与整库加密（D53/D60），自检第 3 轮随之移除；`pnpm smoke` **658 条**（新增 [49]–[55] 七段）、`pnpm ui-smoke` **296 条**（新增约 40 条）、`pnpm bench` **75.3 ms**、桌面自检 **17 / 18**（PASS）、`tauri build --no-bundle` 1m44s、NSIS 安装包（3,614,153 字节）归档到仓库根 `release\CaseBoard_0.9.0_x64-setup.exe`；版本三处升 **0.9.0**；§1 M9 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D53–D60、`docs/MANUAL-ACCEPTANCE.md` 新增 I 节（并把 H3 标为作废）。 |
+| 2026-10-20 | **M10 整体验收通过**（✅ 打 tag `ms/M10`）：交互打磨与内置能力——顶栏删「案情板」logo 与常驻线型图例、图例收进右下角可折叠「图示」（D66），案件编号 `A-2026-1018` 不再被挤压竖排（`.cb-topbar__brand` nowrap），MiniMap 150×100 半透明并让位；关系线连接点 14px→18px 且常驻可见，锚点扩到**八端口**（四边 + 四角，D64）；卡片与图片共用层级空间（卡片固定 100、图片分带 1–199，图片「上移/下移」首次真正生效，D62），吸附判定改卡片外扩 140px 角落区、记录角标记与偏移，卡片移动时吸附图片在**命令层**随动（`applyDockedMoves`，D63）；时间线支持多轨并行 + 比例滑杆 + 新建/删除轨道（偏好进 `doc.timeline`，D67），修掉时间滑杆贴右被裁；地图可导入底图（`settings.mapBackground`）并拖图钉直接改经纬度；素材库新增**文件夹**树形分组（新建/重命名/删除、环检测、删文件夹不删素材，D68），右栏可改所属文件夹；假设面板「证据链」页签从只读改为可编辑（改标题/改状态/画布定位，D65），演示页联动编辑补 tag；**内置 OCR 引擎随包分发**——`tesseract.js` WASM worker + 三档 SIMD 内核 + 中英语言包入 `public/ocr`（15.7 MB），探测顺序「系统 Tesseract → 内置 WASM」，右栏显示就绪状态与识别进度（D61）。数据迁移 v9（`zIndex` / `dockCorner` / `dockOffset` / `assetFolders` / `timeline` / `settings.mapBackground`）由 `migrate.ts` 兜住脏数据。版本三处升 **0.10.0**，NSIS 归档 `release\CaseBoard_0.10.0_x64-setup.exe`。机器验收：`typecheck` 0 error、`smoke` **713**、`ui-smoke` **298**、`bench` 1000 节点解析链 **75.5 ms**、`pnpm build` 成功且 `dist/ocr` 随包、桌面自检两轮 PASS。 |

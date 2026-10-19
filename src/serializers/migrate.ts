@@ -2,20 +2,27 @@ import type {
   Annotation,
   AnnotationGeom,
   Asset,
+  AssetFolder,
   CaseDoc,
   CaseEdge,
   CaseNode,
+  DockCorner,
   EdgePath,
   Group,
   Hypothesis,
   HypothesisStance,
   ImageNode,
   LineStyle,
+  MapBackground,
   NodeComment,
   NodeType,
   Settings,
   Status,
   TimeRange,
+  TimelineConfig,
+  TimelinePrefs,
+  TimelineTrack,
+  TimelineTrackKind,
   View,
 } from '../types';
 import { ANNOTATION_SHAPES, DEFAULT_ANNOTATION_COLOR, normalizeGeom } from '../lib/annotation';
@@ -35,6 +42,14 @@ const STATUSES = new Set<Status>(['todo', 'checking', 'confirmed', 'ruledout']);
 const STYLES = new Set<LineStyle>(['solid', 'dashed', 'dotted']);
 const PATHS = new Set<EdgePath>(['bezier', 'straight', 'step']);
 const ASSET_KINDS = new Set<Asset['kind']>(['image', 'pdf', 'video', 'audio', 'file']);
+const DOCK_CORNERS = new Set<DockCorner>(['nw', 'ne', 'sw', 'se']);
+
+/** 时间线缺省口径：按实体类型分组（与 M9 之前的行为一致，迁移零变化） */
+export const DEFAULT_TIMELINE_PREFS: TimelinePrefs = { mode: 'type', trackIds: [], spanRatio: 1 };
+
+/** 比例调控的允许区间：0.1 = 只看总区间的 1/10（放大），1 = 看全部 */
+export const TIMELINE_SPAN_MIN = 0.1;
+export const TIMELINE_SPAN_MAX = 1;
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'whiteboard',
@@ -129,6 +144,9 @@ function normalizeNode(raw: unknown, index: number): CaseNode | null {
   };
   const groupId = str(raw.groupId);
   if (groupId.length > 0) node.groupId = groupId;
+  // 卡片层级（M10）：与自由图片共用层级空间，0 表示缺省（不写字段，保持老文档字节稳定）
+  const zIndex = num(raw.zIndex, 0);
+  if (Number.isFinite(zIndex) && zIndex !== 0) node.zIndex = Math.round(zIndex);
   const photo = str(raw.photo);
   if (photo.length > 0) node.photo = photo;
   const aliases = strArray(raw.aliases);
@@ -247,6 +265,9 @@ function normalizeAsset(raw: unknown, index: number): Asset | null {
   }
   const addedAt = str(raw.addedAt);
   if (addedAt) asset.addedAt = addedAt;
+  // 所属素材文件夹（M10）：引用不存在的文件夹时由 normalizeDoc 统一清空
+  const folderId = str(raw.folderId);
+  if (folderId) asset.folderId = folderId;
   if (raw.aiGenerated === true) asset.aiGenerated = true;
   if (isRecord(raw.aiMeta)) asset.aiMeta = raw.aiMeta as unknown as Asset['aiMeta'];
   void index;
@@ -312,6 +333,15 @@ function normalizeImageNode(
   }
   const linkedNodeId = str(raw.linkedNodeId);
   if (linkedNodeId.length > 0 && nodeIds.has(linkedNodeId)) node.linkedNodeId = linkedNodeId;
+  // 吸附角与偏移（M10）：只有真的吸附在某张卡片上时才有意义
+  if (node.linkedNodeId && DOCK_CORNERS.has(str(raw.dockCorner) as DockCorner)) {
+    node.dockCorner = raw.dockCorner as DockCorner;
+    if (isRecord(raw.dockOffset)) {
+      const dx = num(raw.dockOffset.x, NaN);
+      const dy = num(raw.dockOffset.y, NaN);
+      if (Number.isFinite(dx) && Number.isFinite(dy)) node.dockOffset = { x: dx, y: dy };
+    }
+  }
   if (raw.pinned === true) node.pinned = true;
   return node;
 }
@@ -379,6 +409,91 @@ function normalizeHypothesis(raw: unknown, index: number): Hypothesis | null {
   return hypothesis;
 }
 
+/** 素材文件夹（M10）：title 缺失给「新建文件夹」，order 缺省按顺序 */
+function normalizeAssetFolder(raw: unknown, index: number): AssetFolder | null {
+  if (!isRecord(raw)) return null;
+  const id = str(raw.id);
+  if (id.length === 0) return null;
+  const folder: AssetFolder = {
+    id,
+    title: str(raw.title, '文件夹 ' + (index + 1)),
+    order: Math.round(num(raw.order, index)),
+  };
+  const parentId = str(raw.parentId);
+  if (parentId.length > 0 && parentId !== id) folder.parentId = parentId;
+  return folder;
+}
+
+/** 时间线轨道（M10）：ref 必须在允许集合里，否则这条轨道没意义，直接丢 */
+function normalizeTimelineTrack(raw: unknown, index: number): TimelineTrack | null {
+  if (!isRecord(raw)) return null;
+  const kind: TimelineTrackKind = raw.kind === 'entity' ? 'entity' : 'type';
+  const ref = str(raw.ref);
+  if (ref.length === 0) return null;
+  if (kind === 'type' && !NODE_TYPES.has(ref)) return null;
+  const track: TimelineTrack = {
+    id: str(raw.id) || 'track-' + (index + 1),
+    title: str(raw.title, kind === 'type' ? '按类型：' + ref : '实体轨道'),
+    kind,
+    ref,
+    order: Math.round(num(raw.order, index)),
+  };
+  const color = str(raw.color);
+  if (color.length > 0) track.color = color;
+  return track;
+}
+
+/**
+ * 时间线配置（M10）：轨道列表 + 显示比例。
+ * 老文档没有这个字段 → 返回缺省值（按类型分组、比例 1），迁移前后观感一致。
+ */
+export function normalizeTimeline(raw: unknown): TimelineConfig {
+  if (!isRecord(raw)) return { tracks: [], prefs: { ...DEFAULT_TIMELINE_PREFS } };
+  const tracks = (Array.isArray(raw.tracks) ? raw.tracks : [])
+    .map((item, i) => normalizeTimelineTrack(item, i))
+    .filter((item): item is TimelineTrack => item !== null);
+  const prefsRaw = isRecord(raw.prefs) ? raw.prefs : null;
+  const mode: TimelinePrefs['mode'] = prefsRaw?.mode === 'tracks' ? 'tracks' : 'type';
+  const trackIds = prefsRaw ? strArray(prefsRaw.trackIds) : [];
+  const rawRatio = prefsRaw ? num(prefsRaw.spanRatio, 1) : 1;
+  const spanRatio =
+    Number.isFinite(rawRatio) && rawRatio >= TIMELINE_SPAN_MIN && rawRatio <= TIMELINE_SPAN_MAX
+      ? Math.round(rawRatio * 100) / 100
+      : 1;
+  const known = new Set(tracks.map((track) => track.id));
+  return {
+    tracks,
+    prefs: { mode, trackIds: trackIds.filter((id) => known.has(id)), spanRatio },
+  };
+}
+
+/** 地图底图（M10）：素材 id 必须存在（由调用方用 assetIds 过滤） */
+function normalizeMapBackground(raw: unknown, assetIds: ReadonlySet<string>): MapBackground | null {
+  if (!isRecord(raw)) return null;
+  const assetId = str(raw.assetId);
+  if (assetId.length === 0 || !assetIds.has(assetId)) return null;
+  const background: MapBackground = { assetId };
+  if (isRecord(raw.bounds)) {
+    const b = raw.bounds;
+    const bounds = {
+      minLat: num(b.minLat, 0),
+      maxLat: num(b.maxLat, 0),
+      minLng: num(b.minLng, 0),
+      maxLng: num(b.maxLng, 0),
+      spanLat: num(b.spanLat, 0),
+      spanLng: num(b.spanLng, 0),
+    };
+    if (Number.isFinite(bounds.minLat) && Number.isFinite(bounds.maxLat) && bounds.maxLat > bounds.minLat) {
+      if (bounds.spanLat <= 0) bounds.spanLat = bounds.maxLat - bounds.minLat;
+      if (bounds.spanLng <= 0) bounds.spanLng = Math.max(0.002, bounds.maxLng - bounds.minLng);
+      background.bounds = bounds;
+    }
+  }
+  const opacity = num(raw.opacity, NaN);
+  if (Number.isFinite(opacity)) background.opacity = Math.min(1, Math.max(0.15, opacity));
+  return background;
+}
+
 export function normalizeDoc(input: unknown): CaseDoc {
   if (!isRecord(input)) throw new DocMigrateError('文档根节点不是对象');
   if (!isRecord(input.meta)) throw new DocMigrateError('缺少 meta 字段');
@@ -435,8 +550,26 @@ export function normalizeDoc(input: unknown): CaseDoc {
     .map((raw, index) => normalizeView(raw, index))
     .filter((item): item is View => item !== null);
 
+  // 素材文件夹（M10）：先收文件夹，再回头清理素材上指向不存在文件夹的引用
+  const assetFolders = (Array.isArray(input.assetFolders) ? input.assetFolders : [])
+    .map((raw, index) => normalizeAssetFolder(raw, index))
+    .filter((item): item is AssetFolder => item !== null)
+    .filter((folder, index, list) => list.findIndex((item) => item.id === folder.id) === index);
+  const folderIds = new Set(assetFolders.map((folder) => folder.id));
+  assetFolders.forEach((folder) => {
+    if (folder.parentId && (!folderIds.has(folder.parentId) || folder.parentId === folder.id)) {
+      delete folder.parentId;
+    }
+  });
+  assets.forEach((asset) => {
+    if (asset.folderId && !folderIds.has(asset.folderId)) delete asset.folderId;
+  });
+
+  const timeline = normalizeTimeline(input.timeline);
+
   const settings = isRecord(input.settings) ? input.settings : null;
   const lineLegend = settings && isRecord(settings.lineLegend) ? settings.lineLegend : null;
+  const mapBackground = settings ? normalizeMapBackground(settings.mapBackground, assetIds) : null;
 
   return {
     meta: {
@@ -450,14 +583,17 @@ export function normalizeDoc(input: unknown): CaseDoc {
     edges,
     groups,
     assets,
+    assetFolders,
     imageNodes,
     views,
     hypotheses,
+    timeline,
     settings: {
       theme: settings ? str(settings.theme, DEFAULT_SETTINGS.theme) : DEFAULT_SETTINGS.theme,
       lineLegend: lineLegend
         ? (lineLegend as unknown as Settings['lineLegend'])
         : DEFAULT_SETTINGS.lineLegend,
+      ...(mapBackground ? { mapBackground } : {}),
     },
   };
 }

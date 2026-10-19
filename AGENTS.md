@@ -2,7 +2,7 @@
 
 本仓库是 Windows 桌面应用「案情板 CaseBoard」。
 **唯一权威规格**：[docs/CaseBoard-SPEC.md](docs/CaseBoard-SPEC.md)（产品构思 + P0–P7 提示词库）
-**执行契约**：[docs/MILESTONES.md](docs/MILESTONES.md)（M1–M9 范围 / 交付物 / 验收标准 / 决策记录）
+**执行契约**：[docs/MILESTONES.md](docs/MILESTONES.md)（M1–M10 范围 / 交付物 / 验收标准 / 决策记录）
 
 ## 技术栈（锁定，不得擅自更换）
 

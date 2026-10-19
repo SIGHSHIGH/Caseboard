@@ -5,6 +5,7 @@ import { LINE_STYLE_META, NODE_TYPE_META, STATUS_META, relLabel } from '../../li
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { useViewModeStore } from '../../store/viewModeStore';
+import { TagEditor } from '../panels/TagEditor';
 import type { CaseNode, Status } from '../../types';
 
 const STATUS_ORDER: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
@@ -69,6 +70,13 @@ function PresentEdit({ node }: { node: CaseNode }) {
           ))}
         </select>
       </label>
+      <div className="cb-field cb-field--wide">
+        <span>标签（演示时也能改 tag，回车添加）</span>
+        <TagEditor
+          value={node.tags}
+          onChange={(next) => dispatch(updateNode(node.id, { tags: next.length > 0 ? next : undefined }))}
+        />
+      </div>
       <label className="cb-field cb-field--wide">
         <span>备注</span>
         <textarea

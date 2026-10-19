@@ -276,6 +276,10 @@ const { computeThumbSize, dedupeCandidates, formatAssetNo, formatBytes, nextAsse
 const { normalizeExifDate, parseExif } = require(path.join(out, 'services', 'exif.js'));
 const { deleteAsset, importAssets, updateAsset } = require(path.join(out, 'commands', 'assetCommands.js'));
 const {
+  CARD_LAYER_Z,
+  DOCK_TOLERANCE,
+  dockedMoves,
+  findDockTarget,
   fitImageSize,
   nextZIndex,
   reorderLayers,
@@ -465,10 +469,11 @@ check('等比缩放保持 2:1', corner.w === 240 && corner.h === 120, corner);
 const center = resizeImageRect({ x: 100, y: 100, w: 100, h: 100 }, 'e', 20, 0, { fromCenter: true });
 check('从中心对称缩放', center.w === 140 && center.x === 80, center);
 const layers = reorderLayers([{ id: 'a', zIndex: 1 }, { id: 'b', zIndex: 2 }, { id: 'c', zIndex: 3 }], 'a', 'front');
-check('置顶后 a 最大', layers.a === 3 && layers.b === 1 && layers.c === 2, layers);
+// M10 起层级是「卡片 100 为基准」的带状空间：图片 <100 在卡片下、>100 在卡片上
+check('置顶后 a 跑到卡片之上', layers.a > CARD_LAYER_Z && layers.b < layers.c && layers.c < CARD_LAYER_Z, layers);
 const upLayers = reorderLayers([{ id: 'a', zIndex: 1 }, { id: 'b', zIndex: 2 }, { id: 'c', zIndex: 3 }], 'b', 'up');
-check('上移一层与 c 交换', upLayers.b === 3 && upLayers.c === 2, upLayers);
-check('nextZIndex 取最大值 +1', nextZIndex([{ zIndex: 3 }, { zIndex: 7 }]) === 8);
+check('上移一层与 c 交换', upLayers.b > upLayers.c && upLayers.a < upLayers.c, upLayers);
+check('nextZIndex 不低于卡片之上', nextZIndex([{ zIndex: 3 }, { zIndex: 7 }]) === CARD_LAYER_Z + 1, nextZIndex([{ zIndex: 3 }, { zIndex: 7 }]));
 const aligned = snapImageRect({ x: 100, y: 100, w: 50, h: 50 }, [{ x: 100, y: 300, w: 50, h: 50 }]);
 check('左边对齐吸附', aligned.rect.x === 100 && aligned.snap === 'align', aligned);
 check('对齐时产出竖向参考线', aligned.guides.length === 1 && aligned.guides[0].axis === 'x' && aligned.guides[0].pos === 100, aligned.guides);
@@ -488,7 +493,7 @@ const imagesBefore = doc().imageNodes.length;
 state().dispatch(addImageNode({ id: 'img-a', assetId: 'a-smoke', x: 100, y: 100, assetWidth: 1200, assetHeight: 900 }));
 const imgA = doc().imageNodes.find((item) => item.id === 'img-a');
 check('新增图片节点', doc().imageNodes.length === imagesBefore + 1 && imgA.kind === 'freeImage');
-check('新增按素材比例定尺寸', imgA.w === 320 && imgA.h === 240 && imgA.zIndex === 1, imgA);
+check('新增按素材比例定尺寸', imgA.w === 320 && imgA.h === 240 && imgA.zIndex === CARD_LAYER_Z + 1, imgA);
 state().dispatch(updateImageNode('img-a', { rotation: -90, borderStyle: 'polaroid', pinned: true }));
 const rotated = doc().imageNodes.find((item) => item.id === 'img-a');
 check('角度归一 + 边框 + 图钉', rotated.rotation === 270 && rotated.borderStyle === 'polaroid' && rotated.pinned === true, rotated);
@@ -496,11 +501,11 @@ state().dispatch(resizeImageNode('img-a', { x: 120, y: 130, w: 400, h: 300 }));
 const resized = doc().imageNodes.find((item) => item.id === 'img-a');
 check('缩放与位置写入', resized.x === 120 && resized.w === 400 && resized.h === 300, resized);
 state().dispatch(addImageNode({ id: 'img-b', assetId: 'a-smoke', x: 600, y: 200, siblings: doc().imageNodes }));
-check('第二张图片层级递增', doc().imageNodes.find((item) => item.id === 'img-b').zIndex === 2, doc().imageNodes.map((i) => i.zIndex));
+check('第二张图片层级递增', doc().imageNodes.find((item) => item.id === 'img-b').zIndex === CARD_LAYER_Z + 2, doc().imageNodes.map((i) => i.zIndex));
 state().dispatch(setImageLayer('img-a', 'front'));
-check('置顶后层级换序', doc().imageNodes.find((item) => item.id === 'img-a').zIndex === 2 && doc().imageNodes.find((item) => item.id === 'img-b').zIndex === 1);
+check('置顶后层级换序', doc().imageNodes.find((item) => item.id === 'img-a').zIndex > doc().imageNodes.find((item) => item.id === 'img-b').zIndex);
 state().undo();
-check('撤销置顶恢复层级', doc().imageNodes.find((item) => item.id === 'img-a').zIndex === 1);
+check('撤销置顶恢复层级', doc().imageNodes.find((item) => item.id === 'img-a').zIndex === CARD_LAYER_Z + 1);
 state().dispatch(moveImageNodes([{ id: 'img-a', x: 10, y: 20 }, { id: 'img-b', x: 30, y: 40 }]));
 const movedBoth = doc().imageNodes.every((item) => (item.id === 'img-a' ? item.x === 10 && item.y === 20 : item.x === 30 && item.y === 40));
 check('多选移动一条命令改两张', movedBoth, doc().imageNodes.map((i) => [i.x, i.y]));
@@ -2920,7 +2925,10 @@ async function main() {
       { id: '3', zone: 'evidence', source: 'watch', addedAt: '2026-09-03T11:00:00' },
       { id: '4', zone: 'evidence' },
     ];
-    check('三种分组模式固定为 按来源 / 按日期 / 不分', JSON.stringify(ASSET_GROUP_MODES.map((item) => item.id)) === JSON.stringify(['source', 'date', 'none']));
+    check(
+  '四种分组模式固定为 按文件夹 / 按来源 / 按日期 / 不分',
+  JSON.stringify(ASSET_GROUP_MODES.map((item) => item.id)) === JSON.stringify(['folder', 'source', 'date', 'none']),
+);
     check('按来源分组：两个来源 + 未标注', (() => {
       const groups = groupAssets(assets, 'source');
       return groups.length === 3 && groups.some((group) => group.label === '手动导入' && group.items.length === 2) && groups.some((group) => group.label === '未标注');
@@ -2951,7 +2959,13 @@ async function main() {
     const up = bestAnchors(box(0, 400), box(0, 0));
     check('左右相邻用 right→left / left→right', left.source === 'right' && left.target === 'left' && right.source === 'left' && right.target === 'right');
     check('上下相邻用 bottom→top / top→bottom', down.source === 'bottom' && down.target === 'top' && up.source === 'top' && up.target === 'bottom');
-    check('斜向优先按主轴（45° 以上看上下）', bestAnchors(box(0, 0), box(200, 200)).source === 'right' && bestAnchors(box(0, 0), box(120, 300)).source === 'bottom');
+    check(
+  '斜向优先按主轴，正斜角用对角锚点',
+  bestAnchors(box(0, 0), box(300, 120)).source === 'right' &&
+    bestAnchors(box(0, 0), box(60, 200)).source === 'bottom' &&
+    bestAnchors(box(0, 0), box(200, 200)).source === 'br' &&
+    bestAnchors(box(0, 0), box(200, 200)).target === 'tl',
+);
     check('锚点落在卡片四条边的中点上', (() => {
       const rect = box(10, 20, 100, 60);
       const top = anchorPoint(rect, 'top');
@@ -3014,6 +3028,239 @@ async function main() {
     check('Cargo 依赖不再有 aes-gcm / argon2 / rand', !/aes-gcm|argon2|^rand\s*=/m.test(cargo));
     check('自检脚本只跑第 1/2 轮（没有 vaultapp 数据目录）', !/vaultapp/.test(fs.readFileSync(path.join(root, 'scripts', 'run-selftest.cjs'), 'utf8')));
     check('文档里不再承诺启动密码 / 加密保险库', !/启动密码|加密保险库/.test(fs.readFileSync(path.join(root, 'README.md'), 'utf8') + fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8')));
+  }
+
+  // ================= M10：交互修订与内置能力 =================
+  console.log('[56] 图片层级带状空间与吸附随动（M10）');
+  {
+    check('卡片基准层级是 100', CARD_LAYER_Z === 100);
+    const back = reorderLayers([{ id: 'a', zIndex: 101 }, { id: 'b', zIndex: 102 }, { id: 'c', zIndex: 103 }], 'c', 'back');
+    check('置底后 c 落到卡片之下', back.c < CARD_LAYER_Z && back.a > back.c, back);
+    const down = reorderLayers([{ id: 'a', zIndex: 1 }, { id: 'b', zIndex: 2 }], 'a', 'down');
+    check('已在最底层时下移只归一化', down.a > 0 && down.b > down.a, down);
+
+    const card = { id: 'n1', x: 0, y: 0, w: 200, h: 100 };
+    const nearCorner = { x: 170, y: -60, w: 60, h: 60 };
+    const dock = findDockTarget(nearCorner, [card], DOCK_TOLERANCE);
+    check('图片靠近卡片右上角时能吸附', dock !== null && dock.nodeId === 'n1' && dock.corner === 'ne', dock);
+    check('吸附点在卡片角外侧', dock !== null && dock.x > card.x + card.w - 40, dock);
+    const farAway = { x: 900, y: 900, w: 60, h: 60 };
+    check('离得太远不吸附', findDockTarget(farAway, [card], DOCK_TOLERANCE) === null);
+
+    const images = [
+      { id: 'img1', linkedNodeId: 'n1', x: 10, y: 10 },
+      { id: 'img2', linkedNodeId: 'n2', x: 300, y: 10 },
+      { id: 'img3', x: 500, y: 10 },
+    ];
+    const moved = dockedMoves(images, new Set(['n1']), 40, -20);
+    check('随动只移动被移动卡片上的图片', moved.length === 1 && moved[0].id === 'img1' && moved[0].x === 50 && moved[0].y === -10, moved);
+    check('未吸附的图片不随动', dockedMoves(images, new Set(['n1']), 40, -20).every((item) => item.id !== 'img3'));
+  }
+
+  console.log('[57] 八端口连线（M10）');
+  {
+    const edgeCurve = require(path.join(out, 'lib', 'edgeCurve.js'));
+    check('锚点共有 8 个（四边 + 四角）', edgeCurve.ANCHORS.length === 8);
+    check('四边与四角都能被识别', ['top', 'right', 'bottom', 'left', 'tl', 'tr', 'br', 'bl'].every((id) => edgeCurve.isEdgeAnchor(id)));
+    check('非法锚点被拒绝', !edgeCurve.isEdgeAnchor('middle') && !edgeCurve.isEdgeAnchor(null));
+    const rect = { x: 10, y: 20, w: 100, h: 60 };
+    const tl = edgeCurve.anchorPoint(rect, 'tl');
+    const br = edgeCurve.anchorPoint(rect, 'br');
+    check('左上角锚点就是矩形左上角', tl.x === 10 && tl.y === 20, tl);
+    check('右下角锚点就是矩形右下角', br.x === 110 && br.y === 80, br);
+    const straight = edgeCurve.bestAnchors({ x: 0, y: 0, w: 100, h: 60 }, { x: 400, y: 0, w: 100, h: 60 });
+    check('正右方仍走左右边', straight.source === 'right' && straight.target === 'left', straight);
+    const diagonal = edgeCurve.bestAnchors({ x: 0, y: 0, w: 100, h: 100 }, { x: 300, y: 300, w: 100, h: 100 });
+    check('正斜角走对角锚点', diagonal.source === 'br' && diagonal.target === 'tl', diagonal);
+  }
+
+  console.log('[58] 时间线多轨与比例（M10）');
+  {
+    const tracks = require(path.join(out, 'lib', 'timelineTracks.js'));
+    check('比例夹在 0.1–1', tracks.clampSpanRatio(5) === 1 && tracks.clampSpanRatio(0) === 0.1 && tracks.clampSpanRatio(0.5) === 0.5);
+    check('轨道宽度按比例放大', Math.round(tracks.trackWidthPct(0.5)) === 200 && Math.round(tracks.trackWidthPct(1)) === 100);
+    check('颜色表至少 8 色', tracks.TRACK_COLORS.length >= 8);
+    check('轨道 id 按顺序取空位', tracks.nextTrackId([{ id: 'tr-1' }, { id: 'tr-3' }]) === 'tr-2');
+
+    const items = [
+      { id: 'n1', nodeId: 'n1', title: '张建国', type: 'person', at: Date.UTC(2026, 8, 3, 20, 10) },
+      { id: 'e1', nodeId: 'e1', title: '9月3日首次接触', type: 'event', at: Date.UTC(2026, 8, 3, 21, 0) },
+    ];
+    const typeLanes = tracks.buildTrackLanes(
+      [{ id: 'n1', type: 'person', title: '张建国' }, { id: 'e1', type: 'event', title: '9月3日首次接触' }],
+      items,
+      { tracks: [], prefs: { mode: 'type', trackIds: [], spanRatio: 1 } },
+    );
+    check('按类型模式：人物与事件各一条泳道', typeLanes.length === 2, typeLanes.map((lane) => lane.id));
+    check('泳道内只放本类型的条目', typeLanes.every((lane) => lane.items.every((item) => item.type === lane.ref)));
+
+    const entityLanes = tracks.buildTrackLanes(
+      [{ id: 'n1', type: 'person', title: '张建国' }, { id: 'e1', type: 'event', title: '9月3日首次接触' }],
+      items,
+      {
+        tracks: [{ id: 't-a', title: '张建国', kind: 'entity', ref: 'n1' }],
+        prefs: { mode: 'tracks', trackIds: ['t-a'], spanRatio: 0.5 },
+      },
+    );
+    check('多轨模式按配置顺序输出', entityLanes.length === 1 && entityLanes[0].id === 't-a', entityLanes.map((lane) => lane.id));
+    check('多轨泳道只收该实体的条目', entityLanes[0].items.length === 1 && entityLanes[0].items[0].nodeId === 'n1', entityLanes[0].items);
+    check('多轨标题取自实体', tracks.entityTrackTitle({ id: 'n1', title: '张建国', type: 'person' }) === '人物 · 张建国');
+  }
+
+  console.log('[59] 地图底图与拖动改坐标（M10）');
+  {
+    const mapLib = require(path.join(out, 'lib', 'map.js'));
+    const rawWithBg = JSON.parse(JSON.stringify(doc()));
+    rawWithBg.assets = [
+      ...(rawWithBg.assets ?? []),
+      { id: 'a-bg', path: 'assets/a-bg', kind: 'image', hash: 'abc12345', thumbnails: [], source: 'import', annotations: [] },
+    ];
+    rawWithBg.settings = { ...rawWithBg.settings, mapBackground: { assetId: 'a-bg', opacity: 9 } };
+    const migrated = normalizeDoc(rawWithBg);
+    check(
+      '底图设置被保留并夹取不透明度',
+      migrated.settings.mapBackground?.assetId === 'a-bg' && migrated.settings.mapBackground?.opacity === 1,
+      migrated.settings.mapBackground,
+    );
+    const danglingRaw = JSON.parse(JSON.stringify(doc()));
+    danglingRaw.settings = { ...danglingRaw.settings, mapBackground: { assetId: 'no-such-asset' } };
+    const dangling = normalizeDoc(danglingRaw);
+    check('底图素材不存在时丢弃', dangling.settings.mapBackground === undefined);
+
+    const geoNode = doc().nodes[0];
+    const before = geoNode.fields;
+    state().dispatch(updateNode(geoNode.id, { fields: mapLib.applyGeoFields(before, 31.7, 119.9) }));
+    const next = doc().nodes.find((node) => node.id === geoNode.id).fields;
+    check('拖动图钉写回经纬度', mapLib.parseGeo(next).lat === 31.7, mapLib.parseGeo(next));
+    state().undo();
+  }
+
+  console.log('[60] 素材文件夹（M10）');
+  {
+    const folderCmds = require(path.join(out, 'commands', 'assetFolderCommands.js'));
+    const groups = require(path.join(out, 'lib', 'assetGroups.js'));
+    state().dispatch(
+      importAssets({
+        assets: [
+          {
+            id: 'a-folder',
+            path: 'assets/a-folder',
+            kind: 'image',
+            hash: 'beef'.repeat(16),
+            thumbnails: [],
+            source: 'import',
+            zone: 'evidence',
+            name: '文件夹试验.png',
+            no: 'IMG-0901',
+            annotations: [],
+          },
+        ],
+        evidenceNodes: [],
+      }),
+    );
+    check('测试素材入库', doc().assets.some((asset) => asset.id === 'a-folder'));
+    state().dispatch(folderCmds.addAssetFolder({ id: 'fld-1', title: '现场照片' }));
+    state().dispatch(folderCmds.addAssetFolder({ id: 'fld-2', title: '书证', parentId: 'fld-1' }));
+    check('新建两级文件夹', doc().assetFolders.length === 2 && doc().assetFolders[1].parentId === 'fld-1');
+    check('文件夹显示路径是「父 / 子」', groups.folderPath(doc().assetFolders, 'fld-2') === '现场照片 / 书证', groups.folderPath(doc().assetFolders, 'fld-2'));
+
+    state().dispatch(folderCmds.moveAssetsToFolder(['a-folder'], 'fld-2'));
+    check('素材移入文件夹', doc().assets.find((asset) => asset.id === 'a-folder').folderId === 'fld-2');
+    const byFolder = groups.groupAssets(doc().assets, 'folder', doc().assetFolders);
+    check('按文件夹分组：出现「现场照片 / 书证」组', byFolder.some((group) => group.label === '现场照片 / 书证'));
+    check('未分类排最后', byFolder[byFolder.length - 1].key === groups.NO_FOLDER_KEY);
+    check('分组总数守恒', groups.countGrouped(byFolder) === doc().assets.length);
+
+    state().dispatch(folderCmds.updateAssetFolder('fld-1', { parentId: 'fld-2' }));
+    check('拒绝把文件夹挪进自己的子文件夹', doc().assetFolders.find((folder) => folder.id === 'fld-1').parentId === undefined);
+
+    state().dispatch(folderCmds.deleteAssetFolder('fld-1'));
+    check('删父级时子文件夹上提', doc().assetFolders.length === 1 && doc().assetFolders[0].id === 'fld-2');
+    state().dispatch(folderCmds.moveAssetsToFolder(['a-folder'], null));
+    check('移出文件夹回到未分类', doc().assets.find((asset) => asset.id === 'a-folder').folderId === undefined);
+  }
+
+  console.log('[61] 内置 OCR 引擎随包分发（M10）');
+  {
+    const ocrDir = path.join(root, 'public', 'ocr');
+    check('内置 OCR 资源目录存在', fs.existsSync(ocrDir));
+    const worker = path.join(ocrDir, 'worker.min.js');
+    check('worker 脚本已随包', fs.existsSync(worker) && fs.statSync(worker).size > 50_000);
+    const cores = ['tesseract-core-lstm.wasm.js', 'tesseract-core-simd-lstm.wasm.js', 'tesseract-core-relaxedsimd-lstm.wasm.js'];
+    check(
+      '三种 SIMD 档位内核都在（按设备能力自动挑）',
+      cores.every((name) => fs.existsSync(path.join(ocrDir, 'core', name))),
+    );
+    check(
+      '中英文语言包都在',
+      fs.existsSync(path.join(ocrDir, 'lang', 'chi_sim.traineddata.gz')) &&
+        fs.existsSync(path.join(ocrDir, 'lang', 'eng.traineddata.gz')),
+    );
+    const bundled = fs.readFileSync(path.join(root, 'src', 'services', 'ocrBuiltin.ts'), 'utf8');
+    check('语言包配置含中文', /OCR_BUNDLED_LANGS\s*=\s*\[[^\]]*chi_sim/.test(bundled));
+    const distOcr = path.join(root, 'dist', 'ocr');
+    if (fs.existsSync(path.join(root, 'dist'))) {
+      check('构建产物里带了 OCR 资源（安装包据此内嵌）', fs.existsSync(distOcr) && fs.existsSync(path.join(distOcr, 'lang', 'chi_sim.traineddata.gz')));
+    }
+  }
+
+  console.log('[62] 数据迁移 v9（M10）');
+  {
+    const migrate = require(path.join(out, 'serializers', 'migrate.js'));
+    check('默认时间线偏好是按类型 + 比例 1', migrate.DEFAULT_TIMELINE_PREFS.mode === 'type' && migrate.DEFAULT_TIMELINE_PREFS.spanRatio === 1);
+    const raw = JSON.parse(JSON.stringify(doc()));
+    raw.nodes[0].zIndex = 42;
+    raw.timeline = {
+      tracks: [
+        { id: 't1', title: '张建国', kind: 'entity', ref: 'n1' },
+        { id: 't2', title: '不存在的类型', kind: 'type', ref: 'ufo' },
+      ],
+      prefs: { mode: 'tracks', trackIds: ['t1', 't9'], spanRatio: 3 },
+    };
+    raw.assetFolders = [{ id: 'f1', title: '现场' }, { id: 'f2', title: '子', parentId: 'nope' }];
+    raw.imageNodes = [
+      {
+        id: 'img-dock',
+        kind: 'freeImage',
+        assetId: 'a-folder',
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 100,
+        rotation: 0,
+        zIndex: 5,
+        dockCorner: 'ne',
+        dockOffset: { x: 1, y: 2 },
+      },
+    ];
+    const fixed = migrate.normalizeDoc(raw);
+    check('实体层级被保留', fixed.nodes[0].zIndex === 42, fixed.nodes[0].zIndex);
+    check('非法类型轨道被丢弃', fixed.timeline.tracks.length === 1 && fixed.timeline.tracks[0].id === 't1');
+    check('不存在的轨道 id 被摘掉', fixed.timeline.prefs.trackIds.length === 1 && fixed.timeline.prefs.trackIds[0] === 't1');
+    check('比例被夹回 0.1–1', fixed.timeline.prefs.spanRatio === 1);
+    check('悬空父级的素材文件夹变顶层', (fixed.assetFolders ?? []).find((folder) => folder.id === 'f2').parentId === undefined);
+    check('没有吸附目标的图片不留角标记', fixed.imageNodes[0].dockCorner === undefined, fixed.imageNodes[0]);
+  }
+
+  console.log('[63] 卡片移动带着吸附图片（M10）');
+  {
+    const imageCmds = require(path.join(out, 'commands', 'imageNodeCommands.js'));
+    const anchorNode = doc().nodes[0];
+    state().dispatch(addImageNode({ id: 'img-dock-1', assetId: 'a-folder', x: 400, y: 400, assetWidth: 400, assetHeight: 300 }));
+    const beforeImg = doc().imageNodes.find((item) => item.id === 'img-dock-1');
+    check('测试图片节点已建立', beforeImg !== undefined);
+    state().dispatch(attachImageNode('img-dock-1', anchorNode.id, { corner: 'ne', offsetX: 12, offsetY: -8 }));
+    const docked = doc().imageNodes.find((item) => item.id === 'img-dock-1');
+    check('吸附时记录角与偏移', docked.linkedNodeId === anchorNode.id && docked.dockCorner === 'ne' && docked.dockOffset.x === 12, docked);
+    state().dispatch(moveNode(anchorNode.id, anchorNode.x + 100, anchorNode.y + 50));
+    const movedImg = doc().imageNodes.find((item) => item.id === 'img-dock-1');
+    check('移动卡片时吸附图片跟着走', movedImg.x === beforeImg.x + 100 && movedImg.y === beforeImg.y + 50, movedImg);
+    state().dispatch(moveNode(anchorNode.id, anchorNode.x, anchorNode.y));
+    const backImg = doc().imageNodes.find((item) => item.id === 'img-dock-1');
+    check('移回后图片也回到原位', backImg.x === beforeImg.x && backImg.y === beforeImg.y);
+    state().dispatch(imageCmds.attachImageNode('img-dock-1', null));
+    const detached = doc().imageNodes.find((item) => item.id === 'img-dock-1');
+    check('取消吸附清掉角标记', detached.linkedNodeId === undefined && detached.dockCorner === undefined);
   }
 
   console.log('');

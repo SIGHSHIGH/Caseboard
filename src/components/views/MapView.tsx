@@ -1,67 +1,192 @@
-import { useMemo } from 'react';
-import { updateNode } from '../../commands';
+import { useMemo, useRef, useState } from 'react';
+import { importAssets, setMapBackground, updateNode } from '../../commands';
 import { NODE_TYPE_META } from '../../lib/theme';
 import {
   DEFAULT_GEO_BOUNDS,
   MAP_H,
   MAP_W,
   applyGeoFields,
+  formatGeo,
   geoBounds,
   geoPoints,
   parseGeo,
   projectGeo,
   unprojectGeo,
 } from '../../lib/map';
+import { assetFileUrl } from '../../services/platform';
+import { fileService } from '../../services/file';
+import { imageService } from '../../services/image';
 import { useDocStore } from '../../store/docStore';
 import { useMapStore } from '../../store/mapStore';
 import { useUiStore } from '../../store/uiStore';
+import type { GeoPoint } from '../../lib/map';
+import type { Asset } from '../../types';
+
+interface PinDrag {
+  id: string;
+  x: number;
+  y: number;
+  moved: boolean;
+}
 
 /**
- * 地图视图（M7）：离线示意板，不请求任何瓦片服务；没有坐标的实体不上图。
- * T7 增补：可直接在地图上点选给实体设坐标，左侧列出「还没坐标」的实体作为入口。
+ * 地图视图（M7）：离线示意板，不请求任何在线瓦片；没有坐标的实体不上图。
+ * T7：点选设坐标 + 左栏「还没有坐标」入口。
+ * M10：可导入底图（照片/平面图/现场示意图）当背景，并把图钉拖动改坐标。
  */
 export function MapView() {
-  const nodes = useDocStore((s) => s.doc.nodes);
+  const doc = useDocStore((s) => s.doc);
+  const nodes = doc.nodes;
   const dispatch = useDocStore((s) => s.dispatch);
   const selectNode = useUiStore((s) => s.selectNode);
   const pickNodeId = useMapStore((s) => s.pickNodeId);
   const requestPick = useMapStore((s) => s.requestPick);
   const cancelPick = useMapStore((s) => s.cancelPick);
+  const [drag, setDrag] = useState<PinDrag | null>(null);
+  const [bgBusy, setBgBusy] = useState(false);
+  const [bgError, setBgError] = useState<string | null>(null);
+  const dragMoved = useRef(false);
 
   const points = useMemo(() => geoPoints(nodes), [nodes]);
   const bounds = useMemo(() => (points.length > 0 ? geoBounds(points) : DEFAULT_GEO_BOUNDS), [points]);
   const positions = useMemo(() => projectGeo(points, bounds), [points, bounds]);
   const waiting = useMemo(() => nodes.filter((node) => parseGeo(node.fields) === null), [nodes]);
   const picking = pickNodeId ? (nodes.find((node) => node.id === pickNodeId) ?? null) : null;
+  const background = doc.settings.mapBackground;
+  const bgAsset: Asset | null = background
+    ? (doc.assets.find((asset) => asset.id === background.assetId) ?? null)
+    : null;
 
-  const onMapClick = (event: React.MouseEvent<SVGSVGElement>) => {
-    if (!picking) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    // 屏幕像素 → viewBox 坐标（preserveAspectRatio=xMidYMid meet 时按等比缩放取较大者）
+  /** 屏幕像素 → viewBox 坐标（preserveAspectRatio=xMidYMid meet 时按等比缩放取较大者） */
+  const toLocal = (svg: SVGSVGElement, clientX: number, clientY: number) => {
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
     const scale = Math.min(rect.width / MAP_W, rect.height / MAP_H);
     const offsetX = (rect.width - MAP_W * scale) / 2;
     const offsetY = (rect.height - MAP_H * scale) / 2;
-    const x = (event.clientX - rect.left - offsetX) / scale;
-    const y = (event.clientY - rect.top - offsetY) / scale;
-    const geo = unprojectGeo(x, y, bounds);
+    return { x: (clientX - rect.left - offsetX) / scale, y: (clientY - rect.top - offsetY) / scale };
+  };
+
+  const onMapClick = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (dragMoved.current) {
+      dragMoved.current = false;
+      return;
+    }
+    if (!picking) return;
+    const local = toLocal(event.currentTarget, event.clientX, event.clientY);
+    if (!local) return;
+    const geo = unprojectGeo(local.x, local.y, bounds);
     dispatch(updateNode(picking.id, { fields: applyGeoFields(picking.fields, geo.lat, geo.lng) }));
     selectNode(picking.id);
     cancelPick();
   };
+
+  /** 拖动图钉：松手时把新位置写回经纬度（「联动更改已有节点经纬度」） */
+  const beginPinDrag = (event: React.PointerEvent, point: GeoPoint) => {
+    if (picking) return;
+    event.stopPropagation();
+    const svg = (event.currentTarget as unknown as { ownerSVGElement: SVGSVGElement | null }).ownerSVGElement;
+    const pos = positions.get(point.node.id);
+    if (!svg || !pos) return;
+    dragMoved.current = false;
+    setDrag({ id: point.node.id, x: pos.x, y: pos.y, moved: false });
+    const onMove = (moveEvent: PointerEvent) => {
+      const local = toLocal(svg, moveEvent.clientX, moveEvent.clientY);
+      if (!local) return;
+      dragMoved.current = true;
+      setDrag((current) => (current ? { ...current, x: local.x, y: local.y, moved: true } : current));
+    };
+    const onUp = (upEvent: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const local = toLocal(svg, upEvent.clientX, upEvent.clientY);
+      setDrag(null);
+      if (!local || !dragMoved.current) return;
+      const geo = unprojectGeo(local.x, local.y, bounds);
+      dispatch(updateNode(point.node.id, { fields: applyGeoFields(point.node.fields, geo.lat, geo.lng) }));
+      selectNode(point.node.id);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const importBackground = async () => {
+    if (bgBusy) return;
+    setBgBusy(true);
+    setBgError(null);
+    try {
+      const files = await fileService.pickFiles('image/*', false);
+      if (files.length === 0) return;
+      const prepared = await imageService.prepare(files.slice(0, 1));
+      const first = prepared.prepared[0];
+      if (!first) {
+        setBgError(prepared.failed[0]?.error ?? '这张图片无法读取');
+        return;
+      }
+      const assets = await imageService.save([first], {
+        source: 'import',
+        zone: 'evidence',
+        sourceLabel: '地图底图',
+      });
+      const asset = assets[0];
+      if (!asset) {
+        setBgError('底图没有保存成功');
+        return;
+      }
+      dispatch(importAssets({ assets }));
+      dispatch(setMapBackground({ assetId: asset.id, opacity: 0.55 }));
+    } catch (error) {
+      setBgError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBgBusy(false);
+    }
+  };
+
+  const pid = drag?.id ?? null;
+  void pid;
 
   return (
     <div className={`cb-map${picking ? ' is-picking' : ''}`}>
       <div className="cb-map__head">
         <div>
           <h2>离线示意地图</h2>
-          <p>按右栏「经纬度」字段摆放实体（格式 31.2304,121.4737）；不请求任何在线瓦片。</p>
+          <p>按右栏「地图坐标」摆放实体；拖动图钉即可改坐标。不请求任何在线瓦片。</p>
         </div>
         <div className="cb-map__meta">
           <span>{points.length} 个带坐标的实体</span>
-          <button type="button" className="cb-btn cb-btn--tiny" disabled title="离线瓦片在 M8 之后接入">加载离线瓦片</button>
+          <button type="button" className="cb-btn cb-btn--tiny" onClick={() => void importBackground()} disabled={bgBusy}>
+            {bgAsset ? '更换底图…' : '导入底图…'}
+          </button>
+          {background ? (
+            <>
+              <label className="cb-map__opacity" title="底图不透明度">
+                底图
+                <input
+                  type="range"
+                  min={15}
+                  max={100}
+                  step={5}
+                  value={Math.round((background.opacity ?? 0.55) * 100)}
+                  onChange={(event) =>
+                    dispatch(
+                      setMapBackground({ ...background, opacity: Number(event.target.value) / 100 }),
+                    )
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="cb-btn cb-btn--tiny cb-btn--ghost"
+                onClick={() => dispatch(setMapBackground(null))}
+              >
+                移除底图
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
+
+      {bgError ? <p className="cb-map__error">底图导入失败：{bgError}</p> : null}
 
       {picking ? (
         <div className="cb-map__pickbar">
@@ -100,7 +225,7 @@ export function MapView() {
               ))}
             </ul>
           )}
-          <p className="cb-form__subtle">也可以先在右栏「地图坐标」里直接填纬度 / 经度。</p>
+          <p className="cb-form__subtle">也可以在右栏「地图坐标」里直接填纬度 / 经度。</p>
         </aside>
 
         {points.length === 0 && !picking ? (
@@ -122,18 +247,44 @@ export function MapView() {
                   <path d="M 40 0 L 0 0 0 40" fill="none" style={{ stroke: 'var(--cb-border)' }} strokeWidth="1" />
                 </pattern>
               </defs>
-              <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#cbmap-grid)" />
+              {bgAsset ? (
+                <image
+                  className="cb-map__bgimage"
+                  href={assetFileUrl(bgAsset.path)}
+                  x={0}
+                  y={0}
+                  width={MAP_W}
+                  height={MAP_H}
+                  opacity={background?.opacity ?? 0.55}
+                  preserveAspectRatio="none"
+                />
+              ) : null}
+              <rect
+                x="0"
+                y="0"
+                width={MAP_W}
+                height={MAP_H}
+                fill={bgAsset ? 'none' : 'url(#cbmap-grid)'}
+                opacity={bgAsset ? 0.25 : 1}
+              />
               {points.map((point) => {
-                const pos = positions.get(point.node.id);
+                const dragging = drag && drag.id === point.node.id;
+                const pos = dragging ? { x: drag.x, y: drag.y } : positions.get(point.node.id);
                 if (!pos) return null;
                 const color = NODE_TYPE_META[point.node.type].color;
+                const geo = dragging ? unprojectGeo(pos.x, pos.y, bounds) : null;
                 return (
                   <g
                     key={point.node.id}
-                    className={`cb-map__pin${point.node.id === pickNodeId ? ' is-picking' : ''}`}
+                    className={`cb-map__pin${point.node.id === pickNodeId ? ' is-picking' : ''}${dragging ? ' is-dragging' : ''}`}
                     transform={'translate(' + pos.x + ',' + pos.y + ')'}
+                    onPointerDown={(event) => beginPinDrag(event, point)}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (dragMoved.current) {
+                        dragMoved.current = false;
+                        return;
+                      }
                       if (picking) {
                         // 点已有坐标的实体：把它的坐标复制给正在取点的实体，方便「就在旁边」
                         dispatch(
@@ -148,20 +299,25 @@ export function MapView() {
                       selectNode(point.node.id);
                     }}
                   >
-                    <circle r="9" fill={color} style={{ stroke: 'var(--cb-panel)' }} strokeWidth="3" />
-                    <circle r="16" fill="none" stroke={color} strokeWidth="1" strokeDasharray="2 4" opacity="0.5" />
-                    <text x="0" y="30" textAnchor="middle" className="cb-map__label">{point.node.title}</text>
-                    <text x="0" y="46" textAnchor="middle" className="cb-map__coord">{point.lat.toFixed(4)},{point.lng.toFixed(4)}</text>
+                    <circle r="11" fill={color} style={{ stroke: 'var(--cb-panel)' }} strokeWidth="3" />
+                    <circle r="18" fill="none" stroke={color} strokeWidth="1" strokeDasharray="2 4" opacity="0.5" />
+                    <text x="0" y="32" textAnchor="middle" className="cb-map__label">{point.node.title}</text>
+                    <text x="0" y="48" textAnchor="middle" className="cb-map__coord">
+                      {geo ? formatGeo(geo.lat, geo.lng) : formatGeo(point.lat, point.lng)}
+                    </text>
                   </g>
                 );
               })}
             </svg>
+            <span className="cb-map__hintline">
+              拖动图钉改坐标 · 单击实体选中{picking ? ' · 正在取点' : ''}
+            </span>
           </div>
         )}
       </div>
 
       <div className="cb-map__legend">
-        <span>离线示意地图 · 未加载瓦片（坐标只用于相对位置）</span>
+        <span>{bgAsset ? '底图：' + (bgAsset.name ?? bgAsset.path) : '离线示意地图 · 未加载瓦片（坐标只用于相对位置）'}</span>
         <span>没有坐标的实体不上图</span>
       </div>
     </div>

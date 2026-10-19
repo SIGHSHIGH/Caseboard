@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useDocStore } from '../../store/docStore';
 import { useImportStore } from '../../store/importStore';
 import { useUiStore } from '../../store/uiStore';
-import { fileService } from '../../services/file';
+import { addAssetFolder, deleteAssetFolder, updateAssetFolder } from '../../commands';import { fileService } from '../../services/file';
 import { thumbUrl } from '../../services/imageStore';
 import { startDirectoryWatch, supportsDirectoryWatch, type WatchHandle } from '../../services/watch';
 import { formatBytes } from '../../lib/assetMeta';
 import { ASSET_GROUP_MODES, groupAssets, type AssetGroupMode } from '../../lib/assetGroups';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
+import { newId } from '../../lib/id';
 import { ExtractDialog } from './ExtractDialog';
 import type { Asset } from '../../types';
 
@@ -57,6 +58,8 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
 /** 素材库：证据素材 / AI 生成 两个分区，索引进 doc.assets，图片二进制在 IndexedDB */
 export function AssetLibrary() {
   const assets = useDocStore((s) => s.doc.assets);
+  const folders = useDocStore((s) => s.doc.assetFolders);
+  const dispatch = useDocStore((s) => s.dispatch);
   const selectedAssetId = useUiStore((s) => s.selectedAssetId);
   const selectAsset = useUiStore((s) => s.selectAsset);
   const startImport = useImportStore((s) => s.startImport);
@@ -67,12 +70,37 @@ export function AssetLibrary() {
   const clearOcrNotice = useImportStore((s) => s.clearOcrNotice);
 
   const [zone, setZone] = useState<Zone>('evidence');
-  const [groupMode, setGroupMode] = useState<AssetGroupMode>('source');
+  const [groupMode, setGroupMode] = useState<AssetGroupMode>('folder');
   const [extractOpen, setExtractOpen] = useState(false);
   const [watching, setWatching] = useState<string | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+  const [newFolder, setNewFolder] = useState('');
+  const [renaming, setRenaming] = useState<string | null>(null);
   const watchRef = useRef<WatchHandle | null>(null);
   const supported = supportsDirectoryWatch();
+
+  const folderList = folders ?? [];
+  const activeTitle = folderList.find((item) => item.id === activeFolder)?.title ?? '';
+
+  const handleAddFolder = () => {
+    const title = newFolder.trim();
+    if (title.length === 0) return;
+    dispatch(addAssetFolder({ id: newId('fld'), title, parentId: activeFolder }));
+    setNewFolder('');
+  };
+
+  const handleRenameFolder = () => {
+    if (!activeFolder) return;
+    const title = newFolder.trim();
+    if (title.length === 0) {
+      setRenaming(null);
+      return;
+    }
+    dispatch(updateAssetFolder(activeFolder, { title }));
+    setRenaming(null);
+    setNewFolder('');
+  };
 
   useEffect(
     () => () => {
@@ -142,6 +170,104 @@ export function AssetLibrary() {
         ))}
       </div>
 
+      {groupMode === 'folder' ? (
+        <div className="cb-assets__folders">
+          <div className="cb-assets__folderlist">
+            <button
+              type="button"
+              className={activeFolder === null ? 'cb-folder-chip cb-folder-chip--active' : 'cb-folder-chip'}
+              onClick={() => {
+                setActiveFolder(null);
+                setRenaming(null);
+              }}
+              title="不选中任何文件夹时，新建的文件夹是顶层文件夹"
+            >
+              顶层
+            </button>
+            {folderList.map((folder) => {
+              const count = assets.filter((asset) => asset.folderId === folder.id).length;
+              return (
+                <button
+                  key={folder.id}
+                  type="button"
+                  className={activeFolder === folder.id ? 'cb-folder-chip cb-folder-chip--active' : 'cb-folder-chip'}
+                  onClick={() => {
+                    setActiveFolder(folder.id);
+                    setRenaming(null);
+                  }}
+                  title={`${folder.title} · ${count} 张`}
+                >
+                  {folder.title} · {count}
+                </button>
+              );
+            })}
+          </div>
+          <div className="cb-assets__folderops">
+            {renaming === activeFolder && activeFolder ? (
+              <>
+                <input
+                  className="cb-assets__folderinput"
+                  value={newFolder}
+                  autoFocus
+                  placeholder={activeTitle}
+                  onChange={(event) => setNewFolder(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') handleRenameFolder();
+                    if (event.key === 'Escape') {
+                      setRenaming(null);
+                      setNewFolder('');
+                    }
+                  }}
+                />
+                <button type="button" className="cb-link-btn" onClick={handleRenameFolder}>
+                  保存
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  className="cb-assets__folderinput"
+                  value={newFolder}
+                  placeholder={activeFolder ? `在「${activeTitle}」下新建` : '新建文件夹'}
+                  onChange={(event) => setNewFolder(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') handleAddFolder();
+                  }}
+                />
+                <button type="button" className="cb-link-btn" onClick={handleAddFolder} disabled={newFolder.trim().length === 0}>
+                  新建
+                </button>
+                {activeFolder ? (
+                  <>
+                    <button
+                      type="button"
+                      className="cb-link-btn"
+                      onClick={() => {
+                        setNewFolder(activeTitle);
+                        setRenaming(activeFolder);
+                      }}
+                    >
+                      重命名
+                    </button>
+                    <button
+                      type="button"
+                      className="cb-link-btn"
+                      onClick={() => {
+                        dispatch(deleteAssetFolder(activeFolder));
+                        setActiveFolder(null);
+                      }}
+                      title="删除文件夹：子文件夹上提，素材回到未分类"
+                    >
+                      删除
+                    </button>
+                  </>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <div className="cb-assets__actions">
         <button type="button" className="cb-btn" onClick={handlePick} disabled={busy}>
           导入图片
@@ -185,14 +311,14 @@ export function AssetLibrary() {
         </p>
       ) : (
         <div className="cb-assets__groups">
-          {groupAssets(list, groupMode).map((group) => (
+          {groupAssets(list, groupMode, folderList).map((group) => (
             <section key={group.key} className="cb-assets__group">
-              {groupMode === 'none' ? null : (
-                <div className="cb-assets__grouphead">
-                  <span>{group.label}</span>
-                  <span className="cb-assets__groupcount">{group.items.length} 张</span>
-                </div>
-              )}
+          {groupMode === 'none' ? null : (
+            <div className="cb-assets__grouphead">
+              <span>{group.label}</span>
+              <span className="cb-assets__groupcount">{group.items.length} 张</span>
+            </div>
+          )}
               <div className="cb-assets__grid">
                 {group.items.map((asset) => (
                   <AssetTile

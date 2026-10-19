@@ -1,8 +1,31 @@
-import type { CaseNode, NodeComment, NodeType, Status } from '../types';
+import type { CaseDoc, CaseNode, NodeComment, NodeType, Status } from '../types';
 import { blocksConfirmed } from '../lib/aiImage';
 import { newId } from '../lib/id';
 import { NODE_TYPE_META } from '../lib/theme';
 import type { Command } from './types';
+
+/**
+ * 吸附随动（M10）：卡片位移后，挂在它身上的图片同步平移。
+ * 放在命令层而不是画布层，是为了让拖动、方向键、布局、组移动、撤销全都一致——
+ * 否则「吸附后图片不跟卡片走」会在某个入口漏掉（M10 反馈原话就是漏在拖动上）。
+ */
+export function applyDockedMoves(
+  draft: Pick<CaseDoc, 'imageNodes'>,
+  deltas: ReadonlyMap<string, { dx: number; dy: number }>,
+): number {
+  if (deltas.size === 0) return 0;
+  let moved = 0;
+  for (const image of draft.imageNodes) {
+    const host = image.linkedNodeId;
+    if (!host) continue;
+    const delta = deltas.get(host);
+    if (!delta || (delta.dx === 0 && delta.dy === 0)) continue;
+    image.x = Math.round(image.x + delta.dx);
+    image.y = Math.round(image.y + delta.dy);
+    moved += 1;
+  }
+  return moved;
+}
 
 export interface AddNodeInput {
   type: NodeType;
@@ -73,8 +96,12 @@ export function moveNode(id: string, x: number, y: number): Command {
     apply(draft) {
       const node = draft.nodes.find((n) => n.id === id);
       if (!node) return;
+      const dx = x - node.x;
+      const dy = y - node.y;
       node.x = x;
       node.y = y;
+      // 吸附随动（M10）：吸在这张卡片上的图片跟着走，仍是一条命令一次撤销
+      applyDockedMoves(draft, new Map([[id, { dx, dy }]]));
       draft.meta.updatedAt = new Date().toISOString();
     },
   };
@@ -86,14 +113,20 @@ export function moveNodes(positions: Array<{ id: string; x: number; y: number }>
     label: positions.length > 1 ? '移动 ' + positions.length + ' 个实体' : '移动节点',
     apply(draft) {
       let changed = false;
+      const deltas = new Map<string, { dx: number; dy: number }>();
       for (const item of positions) {
         const node = draft.nodes.find((n) => n.id === item.id);
         if (!node) continue;
-        if (node.x === item.x && node.y === item.y) continue;
+        const dx = item.x - node.x;
+        const dy = item.y - node.y;
+        if (dx === 0 && dy === 0) continue;
         node.x = item.x;
         node.y = item.y;
+        deltas.set(item.id, { dx, dy });
         changed = true;
       }
+      // 吸附随动（M10）：只对真的位移过的卡片生效
+      applyDockedMoves(draft, deltas);
       if (changed) draft.meta.updatedAt = new Date().toISOString();
     },
   };

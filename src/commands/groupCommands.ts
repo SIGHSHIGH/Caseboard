@@ -1,5 +1,6 @@
 import { newId } from '../lib/id';
 import { descendantGroupIdsOf, findGroup } from '../lib/groups';
+import { applyDockedMoves } from './nodeCommands';
 import type { Command } from './types';
 
 /** 组的默认底色不透明度与配色板（主色仍是中性深灰 + 证据红） */
@@ -165,6 +166,13 @@ export function moveGroup(id: string, dx: number, dy: number): Command {
         node.x += stepX;
         node.y += stepY;
       }
+      // 吸附随动（M10）：组里的卡片带着吸在它身上的图片一起走
+      const deltas = new Map<string, { dx: number; dy: number }>();
+      for (const node of draft.nodes) {
+        if (!node.groupId || !affectedGroups.has(node.groupId)) continue;
+        deltas.set(node.id, { dx: stepX, dy: stepY });
+      }
+      applyDockedMoves(draft, deltas);
       draft.meta.updatedAt = new Date().toISOString();
     },
   };

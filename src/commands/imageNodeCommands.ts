@@ -1,4 +1,4 @@
-import type { ImageNode } from '../types';
+import type { DockCorner, ImageNode } from '../types';
 import {
   fitImageSize,
   nextZIndex,
@@ -65,6 +65,9 @@ export interface ImageNodePatch {
   rotation?: number;
   borderStyle?: ImageNode['borderStyle'] | null;
   linkedNodeId?: string | null;
+  /** 吸附角（M10）：null = 清掉角标记，退回普通关联 */
+  dockCorner?: DockCorner | null;
+  dockOffset?: { x: number; y: number } | null;
   pinned?: boolean;
 }
 
@@ -84,8 +87,22 @@ export function updateImageNode(id: string, patch: ImageNodePatch): Command {
         else node.borderStyle = patch.borderStyle;
       }
       if (patch.linkedNodeId !== undefined) {
-        if (patch.linkedNodeId === null) delete node.linkedNodeId;
-        else node.linkedNodeId = patch.linkedNodeId;
+        if (patch.linkedNodeId === null) {
+          delete node.linkedNodeId;
+          // 取消吸附时角标记一起清掉，否则下次移动会跟着旧卡片走
+          delete node.dockCorner;
+          delete node.dockOffset;
+        } else {
+          node.linkedNodeId = patch.linkedNodeId;
+        }
+      }
+      if (patch.dockCorner !== undefined) {
+        if (patch.dockCorner === null) delete node.dockCorner;
+        else node.dockCorner = patch.dockCorner;
+      }
+      if (patch.dockOffset !== undefined) {
+        if (patch.dockOffset === null) delete node.dockOffset;
+        else node.dockOffset = { x: Math.round(patch.dockOffset.x), y: Math.round(patch.dockOffset.y) };
       }
       if (patch.pinned !== undefined) node.pinned = patch.pinned ? true : undefined;
     },
@@ -156,19 +173,32 @@ export function deleteImageNodes(ids: readonly string[]): Command {
  * 人物节点写 photo（头像），其余节点把素材 id 并入 attachments——
  * 与 M2-3 导入向导「关联实体」同一条规则，右栏能看到同一份关联。
  */
-export function attachImageNode(imageId: string, targetNodeId: string | null): Command {
+export function attachImageNode(
+  imageId: string,
+  targetNodeId: string | null,
+  dock?: { corner: DockCorner; offsetX: number; offsetY: number } | null,
+): Command {
   return {
-    label: targetNodeId ? '吸附图片到卡片' : '取消图片吸附',
+    label: targetNodeId ? (dock ? '吸附图片到卡片角' : '吸附图片到卡片') : '取消图片吸附',
     apply(draft) {
       const image = draft.imageNodes.find((item) => item.id === imageId);
       if (!image) return;
       if (!targetNodeId) {
         delete image.linkedNodeId;
+        delete image.dockCorner;
+        delete image.dockOffset;
         return;
       }
       const target = draft.nodes.find((item) => item.id === targetNodeId);
       if (!target) return;
       image.linkedNodeId = target.id;
+      if (dock) {
+        image.dockCorner = dock.corner;
+        image.dockOffset = { x: Math.round(dock.offsetX), y: Math.round(dock.offsetY) };
+      } else {
+        delete image.dockCorner;
+        delete image.dockOffset;
+      }
       if (target.type === 'person') {
         target.photo = image.assetId;
       } else if (!target.attachments.includes(image.assetId)) {

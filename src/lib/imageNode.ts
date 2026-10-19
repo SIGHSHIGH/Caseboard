@@ -1,4 +1,4 @@
-import type { ImageNode } from '../types';
+import type { DockCorner, ImageNode } from '../types';
 import type { Rect } from './groups';
 
 /**
@@ -122,7 +122,7 @@ export function resizeImageRect(start: Rect, handle: ResizeHandle, dx: number, d
 
 export type LayerAction = 'front' | 'back' | 'up' | 'down';
 
-/** 层级重排后每个图片节点的新 zIndex（画布上图片与卡片共用层级空间） */
+/** 层级重排后每个图片节点的新 zIndex（画布上图片与卡片共用层级空间，见 CARD_LAYER_Z） */
 export function reorderLayers(
   nodes: readonly Pick<ImageNode, 'id' | 'zIndex'>[],
   id: string,
@@ -133,34 +133,147 @@ export function reorderLayers(
   const result: Record<string, number> = {};
   if (index < 0) return result;
   const target = ordered[index];
-  const maxZ = ordered.length > 0 ? ordered[ordered.length - 1].zIndex : 1;
-  const minZ = ordered.length > 0 ? ordered[0].zIndex : 1;
+
+  // 先用「远在带外」的临时值表达置顶/置底，再统一重排，避免和卡片层边界打架
+  const moved: Record<string, number> = {};
+  ordered.forEach((item) => {
+    moved[item.id] = item.zIndex;
+  });
 
   if (action === 'front') {
-    ordered.splice(index, 1);
-    ordered.push(target);
+    moved[id] = Number.MAX_SAFE_INTEGER;
   } else if (action === 'back') {
-    ordered.splice(index, 1);
-    ordered.unshift(target);
+    moved[id] = Number.MIN_SAFE_INTEGER;
   } else {
     const swapWith = action === 'up' ? index + 1 : index - 1;
-    if (swapWith < 0 || swapWith >= ordered.length) return result;
+    if (swapWith < 0 || swapWith >= ordered.length) {
+      // 已经在最上层 / 最下层：只做一次归一化，顺序不变
+      ordered.forEach((item, order) => {
+        const below = ordered.filter((other) => other.zIndex < CARD_LAYER_Z).length;
+        result[item.id] =
+          order < below ? CARD_LAYER_Z - (below - order) : CARD_LAYER_Z + 1 + (order - below);
+      });
+      return result;
+    }
     const other = ordered[swapWith];
-    ordered[swapWith] = target;
-    ordered[index] = other;
+    moved[other.id] = target.zIndex;
+    moved[id] = other.zIndex;
   }
 
-  // 重新编号时保留原有区间，只保证顺序：最大值 / 最小值不够用时才向外扩
-  const base = Math.max(1, minZ);
-  ordered.forEach((item, order) => {
-    result[item.id] = base + order;
+  const sorted = [...ordered].sort((a, b) => moved[a.id] - moved[b.id]);
+  const belowCount = sorted.filter((item) => moved[item.id] < CARD_LAYER_Z).length;
+  sorted.forEach((item, order) => {
+    const z = order < belowCount ? CARD_LAYER_Z - (belowCount - order) : CARD_LAYER_Z + 1 + (order - belowCount);
+    result[item.id] = Math.min(LAYER_Z_MAX, Math.max(LAYER_Z_MIN, z));
   });
-  void maxZ;
   return result;
 }
 
+/**
+ * 吸附随动（M10）：卡片移动时，吸附在它身上的图片要一起走。
+ * 返回需要平移的图片动作；被显式选中拖动的那批图片由调用方排除，避免位移两次。
+ */
+export function dockedMoves(
+  images: readonly ImageNode[],
+  movedNodeIds: ReadonlySet<string>,
+  dx: number,
+  dy: number,
+  excludeImageIds?: ReadonlySet<string>,
+): Array<{ id: string; x: number; y: number }> {
+  if (dx === 0 && dy === 0) return [];
+  const moves: Array<{ id: string; x: number; y: number }> = [];
+  for (const image of images) {
+    const host = image.linkedNodeId;
+    if (!host || !movedNodeIds.has(host)) continue;
+    if (excludeImageIds?.has(image.id)) continue;
+    moves.push({ id: image.id, x: image.x + dx, y: image.y + dy });
+  }
+  return moves;
+}
+
+/**
+ * 拖到卡片四角附近时决定吸附到哪个角（M10）。
+ * 判定用「图片中心相对卡片中心的方向」，比只看中心点是否落在矩形内宽松得多，
+ * 差半张卡片也能吸住（原来的 bug：偏移一点就脱靶）。
+ */
+export interface DockTarget {
+  nodeId: string;
+  corner: DockCorner;
+  /** 吸附后图片左上角应有的位置（世界坐标） */
+  x: number;
+  y: number;
+  /** 相对卡片左上角的偏移，存进 dockOffset 供恢复 */
+  offsetX: number;
+  offsetY: number;
+  /** 0–1，越大越靠近卡片 */
+  distance: number;
+}
+
+export interface DockNodeRect {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const DOCK_CORNER_GAP = 6;
+
+/** 吸附判定半径（世界坐标，M10）：卡片外围这么远之内都算「要吸附」 */
+export const DOCK_TOLERANCE = 140;
+
+export function findDockTarget(
+  image: { x: number; y: number; w: number; h: number },
+  nodes: readonly DockNodeRect[],
+  tolerance = DOCK_TOLERANCE,
+): DockTarget | null {
+  const cx = image.x + image.w / 2;
+  const cy = image.y + image.h / 2;
+  let best: DockTarget | null = null;
+  for (const node of nodes) {
+    const nx = node.x + node.w / 2;
+    const ny = node.y + node.h / 2;
+    const dx = cx - nx;
+    const dy = cy - ny;
+    // 到卡片边界的外扩距离：进到卡片内部算 0，越远越大
+    const outX = Math.max(0, Math.abs(dx) - node.w / 2);
+    const outY = Math.max(0, Math.abs(dy) - node.h / 2);
+    const out = Math.max(outX, outY);
+    if (out > tolerance) continue;
+    const corner: DockCorner = dx >= 0 ? (dy >= 0 ? 'se' : 'ne') : dy >= 0 ? 'sw' : 'nw';
+    const right = corner === 'ne' || corner === 'se';
+    const bottom = corner === 'sw' || corner === 'se';
+    const x = right ? node.x + node.w - image.w * 0.25 : node.x - image.w * 0.75;
+    const y = bottom ? node.y + node.h - image.h * 0.25 : node.y - image.h * 0.75;
+    const distance = Math.max(0, Math.min(1, 1 - out / tolerance));
+    if (!best || distance > best.distance) {
+      best = {
+        nodeId: node.id,
+        corner,
+        x: Math.round(x + (right ? DOCK_CORNER_GAP : -DOCK_CORNER_GAP)),
+        y: Math.round(y + (bottom ? DOCK_CORNER_GAP : -DOCK_CORNER_GAP)),
+        offsetX: Math.round(x + (right ? DOCK_CORNER_GAP : -DOCK_CORNER_GAP) - node.x),
+        offsetY: Math.round(y + (bottom ? DOCK_CORNER_GAP : -DOCK_CORNER_GAP) - node.y),
+        distance,
+      };
+    }
+  }
+  return best;
+}
+
+/**
+ * 卡片层的层级占位（M10）。
+ * 卡片与自由图片共用同一个层级空间：卡片固定 100，图片在 1–99 表示「在卡片下面」、
+ * 101–199 表示「在卡片上面」。之前只有图片带 zIndex、卡片没有，所以图片的
+ * 「置底 / 下移」相对卡片永远无效（这正是 M10 反馈里「图片上下移没功能」的根因）。
+ */
+export const CARD_LAYER_Z = 100;
+const LAYER_Z_MIN = 1;
+const LAYER_Z_MAX = 199;
+
 export function nextZIndex(nodes: readonly Pick<ImageNode, 'zIndex'>[]): number {
-  return nodes.reduce((max, item) => Math.max(max, item.zIndex), 0) + 1;
+  const max = nodes.reduce((value, item) => Math.max(value, item.zIndex), CARD_LAYER_Z);
+  return Math.min(LAYER_Z_MAX, Math.max(CARD_LAYER_Z + 1, max + 1));
 }
 
 export interface AlignGuide {

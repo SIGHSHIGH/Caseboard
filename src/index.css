@@ -154,29 +154,28 @@ button {
 }
 
 /* ---------- 顶栏 ---------- */
+/* M10：顶栏只放「当前案件 + 视图 + 操作」，线型图例搬去右下角「图示」；
+   所有按钮一律 nowrap 且不收缩——M9 时带 favicon 式 logo 与常驻图例把顶栏挤爆，
+   案件编号被压成竖排文字还被下面一行裁掉。 */
 .cb-topbar {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 10px;
   height: 52px;
-  padding: 0 16px;
+  padding: 0 12px;
   background: var(--cb-panel);
   border-bottom: 1px solid var(--cb-border);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .cb-topbar__brand {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  white-space: nowrap;
   min-width: 0;
-}
-
-.cb-topbar__logo {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--cb-accent);
 }
 
 .cb-topbar__case {
@@ -186,7 +185,7 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 22ch;
+  max-width: 24ch;
 }
 
 .cb-topbar__no {
@@ -195,19 +194,25 @@ button {
   padding: 1px 6px;
   border: 1px solid var(--cb-border);
   border-radius: 4px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .cb-topbar__tools,
 .cb-topbar__io {
   display: flex;
   gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.cb-topbar__legend {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
+.cb-topbar__tools > *,
+.cb-topbar__io > * {
+  flex: 0 0 auto;
 }
 
 .cb-legend__caption {
@@ -222,6 +227,81 @@ button {
   gap: 5px;
   font-size: 11px;
   color: var(--cb-muted);
+}
+
+/* ---------- 画布图示（M10）：右下角「图示」标签，点开才显示线型语义与操作提示 ---------- */
+.cb-legend-fab-root {
+  position: fixed;
+  right: 14px;
+  bottom: 126px;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.cb-legend-fab {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--cb-muted);
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-radius: 999px;
+  box-shadow: var(--cb-shadow);
+  cursor: pointer;
+}
+
+.cb-legend-fab:hover,
+.cb-legend-fab.is-open {
+  color: var(--cb-text);
+  border-color: var(--cb-border-strong);
+}
+
+.cb-legend-panel {
+  width: 316px;
+  padding: 10px 12px 11px;
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-top: 3px solid var(--cb-accent);
+  border-radius: 10px;
+  box-shadow: var(--cb-shadow);
+}
+
+.cb-legend-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.cb-legend-panel__close {
+  border: 0;
+  background: transparent;
+  color: var(--cb-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cb-legend-panel__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 7px;
+  border-bottom: 1px dashed var(--cb-border);
+}
+
+.cb-legend-panel__hints {
+  padding-top: 6px;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--cb-muted);
+}
+
+.cb-legend-panel__hints p {
+  margin: 0;
 }
 
 /* ---------- 按钮 ---------- */
@@ -469,7 +549,9 @@ button {
   border: 1px solid var(--cb-border);
   border-radius: var(--cb-radius);
   box-shadow: var(--cb-shadow);
-  overflow: hidden;
+  /* M10：连接点有八个（含四个角），一半在卡片外面，必须放开裁剪才看得见、点得到；
+     内部条带自己带圆角，视觉与原来一致。 */
+  overflow: visible;
   transition: box-shadow 0.12s ease, border-color 0.12s ease;
 }
 
@@ -480,6 +562,7 @@ button {
 
 .cb-node__bar {
   height: 4px;
+  border-radius: var(--cb-radius) var(--cb-radius) 0 0;
 }
 
 .cb-node__body {
@@ -550,6 +633,7 @@ button {
   color: var(--cb-muted);
   background: var(--cb-panel);
   border-top: 1px dashed var(--cb-border);
+  border-radius: 0 0 var(--cb-radius) var(--cb-radius);
 }
 
 .cb-node__status {
@@ -561,20 +645,22 @@ button {
 }
 
 /* ---------- 连接点 ---------- */
-/* M9：连接点放大（9px → 14px，hover 16px），拖关系线更容易命中；
-   卡片本身 overflow:hidden，露出的内侧一半仍然比原来大一倍左右。 */
+/* M9：连接点放大（9px → 14px）。M10：再放到 18px、五个热区可见（四边中点 + 四角），
+   并且常驻半透明，不必先 hover 才知道哪里能拉线。 */
 .cb-handle {
-  width: 14px !important;
-  height: 14px !important;
-  min-width: 14px !important;
-  min-height: 14px !important;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
   background: var(--cb-surface) !important;
   border: 2px solid var(--cb-border-strong) !important;
   box-shadow: 0 0 0 2px var(--cb-surface);
-  opacity: 0;
+  opacity: 0.45;
   transition:
     opacity 0.12s ease,
-    transform 0.12s ease;
+    transform 0.12s ease,
+    background 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .react-flow__node:hover .cb-handle,
@@ -583,10 +669,20 @@ button {
   opacity: 1;
 }
 
+/* 角上的连接点再小一点，贴边不显笨重 */
+.cb-handle--corner {
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+  border-width: 1.5px !important;
+}
+
 .cb-handle:hover {
-  transform: scale(1.15);
+  transform: scale(1.2);
   border-color: var(--cb-accent) !important;
   background: var(--cb-accent) !important;
+  opacity: 1;
 }
 
 /* target 锚点只用于连线几何计算，不参与交互也不显示 */
@@ -771,7 +867,11 @@ button {
 .react-flow__minimap {
   border-radius: 6px;
   overflow: hidden;
+  opacity: 0.88;
+  transition: opacity 0.15s ease;
 }
+
+.react-flow__minimap:hover { opacity: 1; }
 
 .react-flow__edge.selected .react-flow__edge-path {
   filter: drop-shadow(0 0 2px rgba(192, 57, 43, 0.5));
@@ -1341,6 +1441,37 @@ button.cb-members__title--link:hover {
 }
 .cb-assets__grouphead > span:first-child { color: var(--cb-text); font-weight: 600; }
 .cb-assets__groupcount { font-variant-numeric: tabular-nums; }
+
+/* M10：素材文件夹（新建 / 重命名 / 删除 / 按文件夹分组） */
+.cb-assets__folders { display: flex; flex-direction: column; gap: 4px; }
+.cb-assets__folderlist { display: flex; flex-wrap: wrap; gap: 4px; }
+.cb-folder-chip {
+  max-width: 100%;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--cb-text);
+  background: var(--cb-surface-2);
+  border: 1px solid var(--cb-border);
+  border-radius: 999px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-folder-chip:hover { border-color: var(--cb-border-strong); }
+.cb-folder-chip--active { color: #fff; background: var(--cb-accent); border-color: var(--cb-accent); }
+.cb-assets__folderops { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cb-assets__folderinput {
+  flex: 1 1 90px;
+  min-width: 70px;
+  padding: 3px 7px;
+  font-size: 11px;
+  color: var(--cb-text);
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+}
+.cb-assets__folderinput:focus { outline: none; border-color: var(--cb-accent); }
 
 .cb-asset {
   display: flex;
@@ -2964,6 +3095,92 @@ button.cb-members__title--link:hover {
   width: 100%;
   accent-color: var(--cb-accent);
   cursor: pointer;
+  /* M10：贴到最右边时滑杆拇指不再被容器裁掉 */
+  box-sizing: border-box;
+  padding: 0 9px;
+  overflow: visible;
+}
+
+/* ---------- M10：时间线多轨 / 比例 / 新建时间线 ---------- */
+.cb-timeline__zoom {
+  width: 92px;
+  accent-color: var(--cb-accent);
+  cursor: pointer;
+}
+
+.cb-timeline__zoom-val {
+  min-width: 34px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--cb-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cb-timeline__modes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  background: var(--cb-surface-2);
+}
+
+.cb-timeline__modes .cb-tab {
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+.cb-timeline__addtrack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px dashed var(--cb-border-strong);
+  border-radius: 10px;
+  background: var(--cb-surface-2);
+}
+
+.cb-timeline__addtrack .cb-input {
+  min-width: 190px;
+}
+
+.cb-timeline__lane {
+  grid-template-columns: 148px minmax(0, 1fr);
+}
+
+.cb-timeline__lane-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cb-timeline__lane-del {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cb-muted);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cb-timeline__lane-del:hover {
+  border-color: var(--cb-accent);
+  color: var(--cb-accent);
+}
+
+.cb-timeline__track-view {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0;
+  scrollbar-width: thin;
 }
 
 .cb-timeline__lanes {
@@ -3751,6 +3968,31 @@ button.cb-members__title--link:hover {
 .cb-hyp__badge.is-missing { color: #C0392B; border-color: #C0392B; }
 .cb-hyp__stage ul { margin: 6px 0 0; padding-left: 16px; font-size: 12px; line-height: 1.6; }
 .cb-hyp__weak, .cb-hyp__evidence { margin-left: 6px; font-size: 10px; color: var(--cb-muted); border: 1px solid var(--cb-border); border-radius: 8px; padding: 0 4px; }
+/* M10：证据链可编辑（改标题 / 标记核实状态 / 定位） */
+.cb-hyp__stage ul { list-style: none; padding-left: 0; }
+.cb-hyp__item { display: flex; flex-direction: column; gap: 3px; padding: 4px 0; border-bottom: 1px dashed var(--cb-border); }
+.cb-hyp__item:last-child { border-bottom: 0; }
+.cb-hyp__item-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.cb-hyp__item-title {
+  flex: 1 1 90px;
+  min-width: 70px;
+  padding: 2px 5px;
+  font-size: 12px;
+  color: var(--cb-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+.cb-hyp__item-title:hover { border-color: var(--cb-border); }
+.cb-hyp__item-title:focus { outline: none; background: var(--cb-surface); border-color: var(--cb-accent); }
+.cb-hyp__status {
+  padding: 1px 4px;
+  font-size: 11px;
+  color: var(--cb-text);
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+}
 .cb-free-image__anchor { position: absolute; border: 1.5px dashed rgba(192, 57, 43, .55); border-radius: 4px; pointer-events: auto; cursor: pointer; z-index: 2; transition: box-shadow .12s ease, border-color .12s ease; }
 .cb-free-image__anchor:hover { border-style: solid; box-shadow: 0 0 0 2px rgba(192, 57, 43, .22); }
 .cb-free-image__anchor.is-hlit { border-style: solid; border-width: 2px; box-shadow: 0 0 0 3px rgba(192, 57, 43, .28), inset 0 0 0 1px rgba(255, 255, 255, .6); }
@@ -3870,6 +4112,41 @@ button.cb-members__title--link:hover {
 /* ---------- M9 / T7：右栏地图坐标 ---------- */
 .cb-geo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .cb-geo__ops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+
+/* ---------- M10 / T7 增补：地图底图 + 拖动图钉 ---------- */
+.cb-map__canvas { position: relative; }
+.cb-map__bgimage { pointer-events: none; }
+.cb-map__pin.is-dragging { cursor: grabbing; }
+.cb-map__pin.is-dragging circle:first-of-type { stroke: var(--cb-accent); stroke-width: 4; }
+.cb-map__opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+.cb-map__opacity input { width: 74px; accent-color: var(--cb-accent); }
+.cb-map__error {
+  margin: 0 20px 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--cb-accent);
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.32);
+  border-radius: 8px;
+}
+.cb-map__hintline {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--cb-muted);
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-radius: 999px;
+  pointer-events: none;
+}
 /* ===== 安全与合规面板（M8，M9 起只剩本机存储说明 / AI 审计 / 脱敏） ===== */
 .cb-security { width: min(620px, 94vw); }
 .cb-security__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--cb-border); }

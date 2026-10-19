@@ -43,7 +43,14 @@ import {
 } from '../../lib/groups';
 import { bestAnchors, fanOutLabels, type EdgeAnchor } from '../../lib/edgeCurve';
 import { newId } from '../../lib/id';
-import { fitImageSize, snapImageRect, type AlignGuide } from '../../lib/imageNode';
+import {
+  CARD_LAYER_Z,
+  DOCK_TOLERANCE,
+  fitImageSize,
+  findDockTarget,
+  snapImageRect,
+  type AlignGuide,
+} from '../../lib/imageNode';
 import { BOARD_GRID } from '../../lib/themeMode';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { useAnalysisStore } from '../../store/analysisStore';
@@ -270,6 +277,8 @@ export function Board() {
           onPath: highlight.nodes.has(node.id),
         },
         selected: selectedNodeIds.includes(node.id),
+        // M10：卡片也进层级空间（固定 CARD_LAYER_Z），图片才能真的被压到卡片下面
+        zIndex: node.zIndex ?? CARD_LAYER_Z,
         style: { width: node.w },
         };
       });
@@ -421,15 +430,11 @@ export function Board() {
       const moving = { x: node.position.x, y: node.position.y, w: image.w, h: image.h };
       const result = snapImageRect(moving, otherRectsFor(image.id));
       setGuides(result.guides);
-      // 图片中心落到某张卡片上 → 高亮，松手吸附为头像/附件
-      const centerX = moving.x + moving.w / 2;
-      const centerY = moving.y + moving.h / 2;
-      const hit = model.nodes.find(
-        (item) => centerX >= item.x && centerX <= item.x + item.w && centerY >= item.y && centerY <= item.y + item.h,
-      );
-      setAttachTarget(hit ? hit.id : null);
+      // 吸附（M10）：判定外扩到卡片外围一圈，并给出建议的角落位置，偏移一点也能吸住
+      const dock = findDockTarget(moving, model.nodes, DOCK_TOLERANCE);
+      setAttachTarget(dock ? dock.nodeId : null);
     },
-    [doc.imageNodes, model.nodes, otherRectsFor, setAttachTarget, setGuides],
+    [doc, model.nodes, otherRectsFor, setAttachTarget, setGuides],
   );
 
   const onNodeDragStop = useCallback(
@@ -446,10 +451,6 @@ export function Board() {
             .filter((id) => id !== node.id)
             .map((id) => doc.imageNodes.find((item) => item.id === id))
             .filter((item): item is ImageNode => item !== undefined);
-          const imageMoves = [
-            { id: node.id, x: result.rect.x, y: result.rect.y },
-            ...companions.map((item) => ({ id: item.id, x: item.x + dx, y: item.y + dy })),
-          ];
           // A4：混合多选（图片 + 卡片）一起拖动时，位移必须合成一条命令，撤销才是「一步退回」
           const mixedNodes = selectedNodeIds
             .map((id) => doc.nodes.find((item) => item.id === id))
@@ -462,15 +463,42 @@ export function Board() {
                 y: Math.round((pending ? pending.y : item.y) + dy),
               };
             });
-          const imageCmd = companions.length > 0 ? moveImageNodes(imageMoves) : moveImageNode(node.id, result.rect.x, result.rect.y);
+          const docking = findDockTarget(result.rect, model.nodes, DOCK_TOLERANCE);
+          // 卡片被一起拖动时，吸在它们身上的图片由命令层随动，这里必须排除，否则位移两次
+          const mixedNodeIds = new Set(mixedNodes.map((item) => item.id));
+          const followIds = new Set(
+            doc.imageNodes
+              .filter((item) => item.linkedNodeId && mixedNodeIds.has(item.linkedNodeId))
+              .map((item) => item.id),
+          );
+          const soloMoves = [
+            { id: node.id, x: result.rect.x, y: result.rect.y },
+            ...companions
+              .filter((item) => !followIds.has(item.id))
+              .map((item) => ({ id: item.id, x: item.x + dx, y: item.y + dy })),
+          ];
+          const imageCmd =
+            soloMoves.length > 1
+              ? moveImageNodes(soloMoves)
+              : moveImageNode(node.id, result.rect.x, result.rect.y);
           if (mixedNodes.length > 0) {
             dispatch(composeCommands('移动所选（图片 + 实体）', [imageCmd, moveNodes(mixedNodes)]));
             for (const position of mixedNodes) setDragPos(position.id, null);
           } else {
             dispatch(imageCmd);
           }
-          if (attachTargetId && attachTargetId !== image.linkedNodeId) {
-            dispatch(attachImageNode(node.id, attachTargetId));
+          // 吸附（M10）：记录吸附到哪张卡片的哪个角 + 相对偏移；
+          // 拖离所有卡片时取消吸附（只有「拖上去过」的角吸附才自动解绑，普通关联保留）
+          if (docking && docking.nodeId !== image.linkedNodeId) {
+            dispatch(
+              attachImageNode(node.id, docking.nodeId, {
+                corner: docking.corner,
+                offsetX: docking.offsetX,
+                offsetY: docking.offsetY,
+              }),
+            );
+          } else if (!docking && image.dockCorner) {
+            dispatch(attachImageNode(node.id, null));
           }
           setDragPos(node.id, null);
           setGuides([]);
@@ -500,10 +528,13 @@ export function Board() {
       const anchor = doc.nodes.find((item) => item.id === node.id);
       const dx = anchor ? Math.round(node.position.x) - anchor.x : 0;
       const dy = anchor ? Math.round(node.position.y) - anchor.y : 0;
-      // A4：卡片被拖动时，选中的图片要跟着一起走，并且与卡片位移合成同一条命令
+      // A4：卡片被拖动时，选中的图片要跟着一起走，并且与卡片位移合成同一条命令；
+      // M10：吸在本次移动卡片上的图片由命令层随动，这里排除掉避免位移两次
+      const movingIdSet = new Set(movingNodeIds);
       const mixedImages = selectedImageIds
         .map((id) => doc.imageNodes.find((item) => item.id === id))
         .filter((item): item is ImageNode => item !== undefined)
+        .filter((item) => !(item.linkedNodeId && movingIdSet.has(item.linkedNodeId)))
         .map((item) => ({ id: item.id, x: item.x + dx, y: item.y + dy }));
       const nodeCmd =
         positions.length > 1
@@ -803,7 +834,7 @@ export function Board() {
             return NODE_TYPE_META[flow.data.node.type]?.color ?? '#6E6862';
           }}
           maskColor={grid.mask}
-          style={{ background: 'var(--cb-panel)', border: '1px solid var(--cb-border)' }}
+          style={{ width: 150, height: 100, background: 'var(--cb-panel)', border: '1px solid var(--cb-border)' }}
         />
       </ReactFlow>
 

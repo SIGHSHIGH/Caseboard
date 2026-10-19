@@ -6,8 +6,6 @@ import { fileService } from '../../services/file';
 import { closeCodeView, openCodeView, useCodeStore } from '../../store/codeStore';
 import { useBackend, useDocStore, useLastSavedAt } from '../../store/docStore';
 import { useViewModeStore, type ViewMode } from '../../store/viewModeStore';
-import { LINE_STYLE_META } from '../../lib/theme';
-import type { LineStyle } from '../../types';
 import { ExportDialog } from './ExportDialog';
 import { HistoryDialog } from './HistoryDialog';
 import { AiPanel } from './AiPanel';
@@ -17,8 +15,6 @@ import { SecurityDialog } from './SecurityDialog';
 import { usePaletteStore } from '../../store/paletteStore';
 import { useThemeStore } from '../../store/themeStore';
 import { THEME_META, nextThemeMode } from '../../lib/themeMode';
-
-const LEGEND: LineStyle[] = ['solid', 'dashed', 'dotted'];
 
 const VIEW_TABS: Array<{ id: ViewMode; label: string; hint: string }> = [
   { id: 'board', label: '画布', hint: '图形视图：拖拽、连线、分组' },
@@ -101,9 +97,14 @@ export function TopBar() {
   return (
     <header className="cb-topbar">
       <div className="cb-topbar__brand">
-        <span className="cb-topbar__logo">案情板</span>
-        <span className="cb-topbar__case">{doc.meta.title}</span>
-        {doc.meta.caseNo ? <span className="cb-topbar__no">{doc.meta.caseNo}</span> : null}
+        <span className="cb-topbar__case" title={doc.meta.title}>
+          {doc.meta.title}
+        </span>
+        {doc.meta.caseNo ? (
+          <span className="cb-topbar__no" title={'案件编号 ' + doc.meta.caseNo}>
+            {doc.meta.caseNo}
+          </span>
+        ) : null}
       </div>
 
       <div className="cb-viewtabs" role="group" aria-label="视图切换">
@@ -139,28 +140,6 @@ export function TopBar() {
         >
           ↷ 重做
         </button>
-      </div>
-
-      <div className="cb-topbar__legend" title="线型即语义，固定不可关闭">
-        <span className="cb-legend__caption">线型语义</span>
-        {LEGEND.map((style) => (
-          <span key={style} className="cb-legend__item">
-            <svg width="34" height="10" aria-hidden="true">
-              <line
-                x1="1"
-                y1="5"
-                x2="33"
-                y2="5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeDasharray={LINE_STYLE_META[style].dash}
-              />
-            </svg>
-            <span>
-              {LINE_STYLE_META[style].label} = {LINE_STYLE_META[style].meaning}
-            </span>
-          </span>
-        ))}
       </div>
 
       <div className="cb-topbar__io">
