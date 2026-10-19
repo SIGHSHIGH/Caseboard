@@ -1,14 +1,86 @@
 import { useEffect, useMemo, useState } from 'react';
+import { updateNode } from '../../commands';
 import { presentationDeck } from '../../lib/present';
 import { LINE_STYLE_META, NODE_TYPE_META, STATUS_META, relLabel } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
 import { useViewModeStore } from '../../store/viewModeStore';
+import type { CaseNode, Status } from '../../types';
+
+const STATUS_ORDER: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
 
 function fieldRows(fields: Record<string, string | number | boolean>): Array<[string, string]> {
   return Object.entries(fields)
     .filter(([, value]) => value !== '' && value !== undefined && value !== null)
     .map(([key, value]) => [key, String(value)]);
+}
+
+/**
+ * M9 / S5：演示页的联动编辑控件。
+ * 演示时经常发现标题不准确、状态没更新、备注漏了——不用切回画布，
+ * 改完直接写回 Model（走 updateNode 命令，撤销栈照常记一笔）。
+ */
+function PresentEdit({ node }: { node: CaseNode }) {
+  const dispatch = useDocStore((s) => s.dispatch);
+  const [title, setTitle] = useState(node.title);
+  const [notes, setNotes] = useState(node.notes ?? '');
+
+  useEffect(() => setTitle(node.title), [node.id, node.title]);
+  useEffect(() => setNotes(node.notes ?? ''), [node.id, node.notes]);
+
+  const commitTitle = () => {
+    const next = title.trim();
+    if (next.length === 0) {
+      setTitle(node.title);
+      return;
+    }
+    if (next !== node.title) dispatch(updateNode(node.id, { title: next }));
+  };
+
+  const commitNotes = () => {
+    const next = notes.trim();
+    if (next === (node.notes ?? '')) return;
+    dispatch(updateNode(node.id, { notes: next.length > 0 ? next : undefined }));
+  };
+
+  return (
+    <div className="cb-present__edit">
+      <label className="cb-field">
+        <span>标题</span>
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onBlur={commitTitle}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+      </label>
+      <label className="cb-field">
+        <span>状态</span>
+        <select
+          value={node.status}
+          onChange={(event) => dispatch(updateNode(node.id, { status: event.target.value as Status }))}
+        >
+          {STATUS_ORDER.map((item) => (
+            <option key={item} value={item}>
+              {STATUS_META[item].label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="cb-field cb-field--wide">
+        <span>备注</span>
+        <textarea
+          rows={2}
+          value={notes}
+          placeholder="讲解要点、待核实的疑点……"
+          onChange={(event) => setNotes(event.target.value)}
+          onBlur={commitNotes}
+        />
+      </label>
+    </div>
+  );
 }
 
 /** 演示视图：按固定讲解顺序逐项过实体与关联（M5-5） */
@@ -100,6 +172,8 @@ export function PresentationView() {
         ) : null}
 
         {slide.node.notes ? <p className="cb-present__notes">{slide.node.notes}</p> : null}
+
+        <PresentEdit key={slide.node.id} node={slide.node} />
 
         <div className="cb-present__related">
           <div className="cb-present__related-head">关联关系 {slide.related.length} 条</div>

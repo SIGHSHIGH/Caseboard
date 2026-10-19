@@ -1,4 +1,5 @@
-// 桌面端自检运行器：连跑两轮真实进程，覆盖「建数据 → 关闭 → 重开看数据还在」。
+﻿// 桌面端自检运行器：连跑两轮真实进程，覆盖「建数据 → 关闭 → 重开看数据还在」。
+// （M9 起按 H3 删除保险库，第 3 轮 vault 自检一并移除，只剩第 1/2 轮。）
 //
 // 三条本机沙箱约束决定了它长这样：
 //  1) 管道 stdio 被禁止 → detached spawn + stdio 指向文件描述符；
@@ -16,14 +17,13 @@ const path = require('node:path');
 const repo = path.join(__dirname, '..');
 const exe = path.join(repo, 'src-tauri', 'target', 'release', 'caseboard.exe');
 const tmp = path.join(repo, '.tmp-esbuild');
-// 第 1/2 轮共用「重启后数据还在」的目录；第 3 轮验保险库，必须用干净目录（要反复加密/解密一个明文库）。
-function dataDirFor(phase) {
+// 第 1/2 轮共用「重启后数据还在」的目录。
+function dataDirFor(_phase) {
   if (process.env.CB_DATA_DIR) return process.env.CB_DATA_DIR;
-  if (phase >= 3) return path.join(tmp, 'vaultapp', 'app.caseboard.desktop');
   return path.join(tmp, 'appdata', 'app.caseboard.desktop');
 }
 const timeoutMs = Number(process.env.CB_SELFTEST_TIMEOUT || 120000);
-const phases = (process.env.CB_PHASES || '1,2,3').split(',').map((value) => Number(value.trim())).filter((value) => value > 0);
+const phases = (process.env.CB_PHASES || '1,2').split(',').map((value) => Number(value.trim())).filter((value) => value > 0);
 
 fs.mkdirSync(tmp, { recursive: true });
 
@@ -40,7 +40,6 @@ function runPhase(phase) {
   return new Promise((resolve) => {
     const dataDir = dataDirFor(phase);
     const reportPath = path.join(dataDir, 'selftest.json');
-    if (phase >= 3) fs.rmSync(dataDir, { recursive: true, force: true });
     fs.mkdirSync(dataDir, { recursive: true });
     try { fs.rmSync(reportPath, { force: true }); } catch {}
     const wv2 = path.join(tmp, 'webview2-' + Date.now());

@@ -121,7 +121,8 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
   };
 
   return (
-    <div className="cb-modal cb-hyp" role="dialog" aria-label="假设与证据链">
+    <div className="cb-modal__mask" role="dialog" aria-modal="true" aria-label="假设与证据链">
+      <div className="cb-modal cb-hyp">
       <div className="cb-hyp__head">
         <div>
           <h2>假设与证据链</h2>
@@ -327,6 +328,7 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
           </ol>
         </div>
       )}
+      </div>
     </div>
   );
 }

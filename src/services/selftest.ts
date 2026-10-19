@@ -1,4 +1,4 @@
-/**
+﻿/**
  * M4 自检（--selftest 启动参数触发）：在真实 WebView2 里跑完整闭环，把结果写成 JSON。
  *
  * 这是无头浏览器被宿主拦截（D9）后的自动化验收通道：
@@ -31,8 +31,7 @@ import { boardToSvg } from '../serializers/svg';
 import { docBounds } from '../serializers/svg';
 import { buildImagePackageBytes, MANIFEST_HEADER, redactAssetBytes } from './exporters';
 import { imageStore } from './imageStore';
-import { debugLog, ensureDbFile, getAppInfo, readFileBytes, reportSelftest, writeFileBytes, type AppInfo } from './platform';
-import { vaultService } from './vault';
+import { debugLog, getAppInfo, readFileBytes, reportSelftest, writeFileBytes, type AppInfo } from './platform';
 import {
   createSnapshot,
   listSnapshotsInStorage,
@@ -507,129 +506,4 @@ export async function runSelftest(): Promise<SelftestReport> {
   }
   console.log('[caseboard] selftest', report.ok ? 'PASS' : 'FAIL');
   return report;
-}
-
-/** 保险库自检用的密码：只写在测试数据目录里，不会进用户数据。 */
-const VAULT_TEST_PASSWORD = 'caseboard-selftest';
-const VAULT_TEST_PASSWORD_2 = 'caseboard-selftest-2';
-const SQLITE_HEADER = '53514C69746520666F726D6174203300';
-const VAULT_MAGIC = '43425631';
-
-async function expectReject(label: string, run: () => Promise<unknown>, contains: string): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    const text = errorText(error);
-    if (!text.includes(contains)) throw new Error(label + ' 的错误文案不对：' + text);
-    return;
-  }
-  throw new Error(label + ' 没有被拒绝');
-}
-
-/**
- * M8 验收 2 的自检轮（--selftest=3）：整库加密 → 错误密码被拒 → 正确密码解锁 → 换密码/关闭。
- * 这一轮必须在 bootstrapDoc 之前跑：明文库一旦被 sqlx 打开，Windows 下就删不掉，加密会失败。
- */
-export async function runVaultSelftest(): Promise<void> {
-  const startedAt = new Date().toISOString();
-  const checks: SelftestCheck[] = [];
-  const app = await getAppInfo().catch(() => null);
-  const dbPath = app?.dbPath ?? '';
-  const record = async (name: string, run: () => Promise<string>): Promise<void> => {
-    const at = Date.now();
-    try {
-      const detail = await run();
-      checks.push({ name, ok: true, detail: detail + ' · ' + (Date.now() - at) + 'ms' });
-    } catch (error) {
-      checks.push({ name, ok: false, detail: errorText(error) });
-      await debugLog('vault selftest 失败 ' + name + '：' + errorText(error));
-    }
-  };
-
-  await record('启用启动密码（明文库加密成 CBV1 保险库）', async () => {
-    await ensureDbFile();
-    const before = await vaultService.status();
-    if (before.enabled) throw new Error('测试数据目录里已经存在保险库：' + before.path);
-    const plain = await vaultService.header(dbPath);
-    if (!plain.startsWith(SQLITE_HEADER.slice(0, 16))) throw new Error('明文库文件头不是 SQLite：' + plain);
-    const after = await vaultService.enable(VAULT_TEST_PASSWORD);
-    if (!after.enabled) throw new Error('启用后 vault_status 仍是未启用');
-    const vault = await vaultService.header(after.path);
-    if (!vault.startsWith(VAULT_MAGIC)) throw new Error('保险库文件头不是 CBV1：' + vault);
-    return '明文 ' + plain.slice(0, 16) + '… → 密文 ' + vault.slice(0, 8) + '…';
-  });
-
-  await record('磁盘上只剩密文（SQLite 工具打不开）', async () => {
-    await expectReject('读取明文库', () => vaultService.header(dbPath), '无法读取文件');
-    const status = await vaultService.status();
-    if (!status.enabled) throw new Error('保险库未启用');
-    const vault = await vaultService.header(status.path);
-    if (vault.startsWith(SQLITE_HEADER.slice(0, 16))) throw new Error('保险库居然还是 SQLite 明文');
-    return '明文库已删除，保险库头 ' + vault.slice(0, 8) + '（不是 SQLite 头）';
-  });
-
-  await record('错误密码无法解锁', async () => {
-    await expectReject('错误密码解锁', () => vaultService.unlock('definitely-wrong'), '启动密码不正确');
-    const status = await vaultService.status();
-    if (!status.enabled || status.unlocked) throw new Error('错误密码后状态异常：' + JSON.stringify(status));
-    const vault = await vaultService.header(status.path);
-    if (!vault.startsWith(VAULT_MAGIC)) throw new Error('错误密码把保险库弄坏了：' + vault);
-    return '拒绝并提示「启动密码不正确」，保险库完好';
-  });
-
-  await record('正确密码解锁（密文 → 明文 SQLite）', async () => {
-    const status = await vaultService.unlock(VAULT_TEST_PASSWORD);
-    if (!status.unlocked) throw new Error('正确密码没有解锁');
-    const plain = await vaultService.header(dbPath);
-    if (!plain.startsWith(SQLITE_HEADER.slice(0, 16))) throw new Error('解锁后文件头不对：' + plain);
-    return '解锁成功，明文库文件头 ' + plain.slice(0, 16) + '…';
-  });
-
-  await record('立即锁定（明文再次从磁盘消失）', async () => {
-    const status = await vaultService.lock(VAULT_TEST_PASSWORD);
-    if (!status.enabled || status.unlocked) throw new Error('锁定后状态异常：' + JSON.stringify(status));
-    await expectReject('锁定后读取明文库', () => vaultService.header(dbPath), '无法读取文件');
-    return '明文库已删除，界面回到锁屏';
-  });
-
-  await record('更换启动密码（旧密码失效）', async () => {
-    await vaultService.unlock(VAULT_TEST_PASSWORD);
-    await expectReject('旧密码错误', () => vaultService.changePassword('not-the-password', VAULT_TEST_PASSWORD_2), '启动密码不正确');
-    const status = await vaultService.changePassword(VAULT_TEST_PASSWORD, VAULT_TEST_PASSWORD_2);
-    if (!status.enabled || status.unlocked) throw new Error('换密码后状态异常：' + JSON.stringify(status));
-    await expectReject('旧密码解锁', () => vaultService.unlock(VAULT_TEST_PASSWORD), '启动密码不正确');
-    const again = await vaultService.unlock(VAULT_TEST_PASSWORD_2);
-    if (!again.unlocked) throw new Error('新密码解锁失败');
-    return '旧密码被拒、新密码可解锁，换密码前后明文库都即时删除';
-  });
-
-  await record('关闭启动密码（恢复明文、保险库删除）', async () => {
-    await expectReject('错误密码关闭', () => vaultService.disable('definitely-wrong'), '启动密码不正确');
-    const status = await vaultService.disable(VAULT_TEST_PASSWORD_2);
-    if (status.enabled) throw new Error('关闭后仍显示已启用');
-    const plain = await vaultService.header(dbPath);
-    if (!plain.startsWith(SQLITE_HEADER.slice(0, 16))) throw new Error('关闭后文件头不对：' + plain);
-    await expectReject('读取保险库', () => vaultService.header(status.path), '无法读取文件');
-    return '错误密码被拒；正确密码关闭后恢复 SQLite 明文、保险库文件已删除';
-  });
-
-  const finishedAt = new Date().toISOString();
-  const report: SelftestReport = {
-    phase: 3,
-    startedAt,
-    finishedAt,
-    ok: checks.every((check) => check.ok),
-    app,
-    externalRequests: [],
-    checks,
-  };
-  const text = JSON.stringify(report, null, 2);
-  try {
-    await reportSelftest(text);
-    await debugLog('vault selftest 报告已写盘 ok=' + report.ok);
-  } catch (error) {
-    console.error('[caseboard] 保险库自检报告写盘失败', error);
-    await debugLog('vault selftest 报告写盘失败 ' + errorText(error));
-  }
-  console.log('[caseboard] vault selftest', report.ok ? 'PASS' : 'FAIL');
 }

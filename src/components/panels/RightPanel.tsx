@@ -19,12 +19,19 @@ import {
   updateNode,
 } from '../../commands';
 import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } from '../../lib/theme';
+import { memberNodeIds } from '../../lib/groups';
 import { NODE_TYPE_ORDER, NODE_TEMPLATES, templateOf, type NodeFieldDef } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
+import { useTagLinkStore } from '../../store/tagLinkStore';
+import { useMapStore } from '../../store/mapStore';
+import { useViewModeStore } from '../../store/viewModeStore';
+import { applyGeoFields, clearGeoFields, parseGeo } from '../../lib/map';
+import { fromDateTimeInput, timeRangeFromInput, toDateTimeInput } from '../../lib/datetime';
 import { formatBytes } from '../../lib/assetMeta';
 import { imageStore, thumbUrl } from '../../services/imageStore';
 import { AnnotationEditor } from './AnnotationEditor';
+import { TagEditor } from './TagEditor';
 import { maskAccount, parseOcrText } from '../../lib/ocr';
 import { recognizeAssetText } from '../../services/ocr';
 import type { Asset, CaseEdge, CaseNode, Group, ImageNode, LineStyle, NodeType, Status } from '../../types';
@@ -98,6 +105,22 @@ function TemplateField({
     );
   }
 
+  if (field.kind === 'datetime') {
+    // 事件「发生时刻」：原生日期时间控件，值以 `YYYY-MM-DD HH:mm` 存进 fields，
+    // 同时由 NodeForm.commitField 同步写 node.time，时间线/播放才有数据可用
+    return (
+      <label className={className}>
+        <span>{field.label}</span>
+        <input
+          type="datetime-local"
+          value={toDateTimeInput(draft)}
+          onChange={(event) => setDraft(fromDateTimeInput(event.target.value))}
+          onBlur={commit}
+        />
+      </label>
+    );
+  }
+
   return (
     <label className={className}>
       <span>{field.label}</span>
@@ -121,16 +144,25 @@ function NodeForm({ node }: { node: CaseNode }) {
   const groups = useDocStore((s) => s.doc.groups);
   const [title, setTitle] = useState(node.title);
   const [aliases, setAliases] = useState((node.aliases ?? []).join('、'));
-  const [tags, setTags] = useState(node.tags.join('、'));
   const [notes, setNotes] = useState(node.notes ?? '');
   const [confidence, setConfidence] = useState(node.confidence);
   const [commentText, setCommentText] = useState('');
+  const openTagLink = useTagLinkStore((s) => s.openDialog);
+  const requestPick = useMapStore((s) => s.requestPick);
+  const setViewMode = useViewModeStore((s) => s.setMode);
+  const geo = parseGeo(node.fields);
+  const [latText, setLatText] = useState(geo ? String(geo.lat) : '');
+  const [lngText, setLngText] = useState(geo ? String(geo.lng) : '');
 
   useEffect(() => setTitle(node.title), [node.id, node.title]);
   useEffect(() => setAliases((node.aliases ?? []).join('、')), [node.id, node.aliases]);
-  useEffect(() => setTags(node.tags.join('、')), [node.id, node.tags]);
   useEffect(() => setNotes(node.notes ?? ''), [node.id, node.notes]);
   useEffect(() => setConfidence(node.confidence), [node.id, node.confidence]);
+  useEffect(() => {
+    const next = parseGeo(node.fields);
+    setLatText(next ? String(next.lat) : '');
+    setLngText(next ? String(next.lng) : '');
+  }, [node.id, node.fields]);
 
   const template = templateOf(node.type);
 
@@ -145,10 +177,6 @@ function NodeForm({ node }: { node: CaseNode }) {
     dispatch(updateNode(node.id, { aliases: next.length > 0 ? next : undefined }));
   };
 
-  const commitTags = () => {
-    dispatch(updateNode(node.id, { tags: splitTags(tags) }));
-  };
-
   const commitNotes = () => {
     const next = notes.trim();
     if (next !== (node.notes ?? '')) {
@@ -158,6 +186,21 @@ function NodeForm({ node }: { node: CaseNode }) {
 
   const commitConfidence = () => {
     if (confidence !== node.confidence) dispatch(updateNode(node.id, { confidence }));
+  };
+
+  /** T7：纬度/经度两个输入框写回「经纬度」字段；两个都空视为清除坐标 */
+  const commitGeo = () => {
+    const lat = Number(latText);
+    const lng = Number(lngText);
+    const empty = latText.trim().length === 0 && lngText.trim().length === 0;
+    if (empty) {
+      if (geo) dispatch(updateNode(node.id, { fields: clearGeoFields(node.fields) }));
+      return;
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+    if (geo && geo.lat === lat && geo.lng === lng) return;
+    dispatch(updateNode(node.id, { fields: applyGeoFields(node.fields, lat, lng) }));
   };
 
   /** 字段提交：数字字段优先存 number，空字符串视为删除该字段。 */
@@ -173,6 +216,15 @@ function NodeForm({ node }: { node: CaseNode }) {
     } else {
       next[key] = trimmed;
     }
+    if (field && field.kind === 'datetime') {
+      // 发生时刻：fields 存展示文本，同时把 node.time 更新成 ISO（空值即清掉时间）
+      const time = timeRangeFromInput(trimmed);
+      const timeChanged = JSON.stringify(time) !== JSON.stringify(node.time ?? null);
+      if (JSON.stringify(next) !== JSON.stringify(node.fields) || timeChanged) {
+        dispatch(updateNode(node.id, time ? { fields: next, time } : { fields: next, time: undefined }));
+      }
+      return;
+    }
     if (JSON.stringify(next) !== JSON.stringify(node.fields)) {
       dispatch(updateNode(node.id, { fields: next }));
     }
@@ -185,8 +237,7 @@ function NodeForm({ node }: { node: CaseNode }) {
     setCommentText('');
   };
 
-  const valueOf = (key: string): string => {
-    const value = node.fields[key];
+  const valueOf = (key: string): string => {    const value = node.fields[key];
     return value === undefined || value === null ? '' : String(value);
   };
 
@@ -271,10 +322,76 @@ function NodeForm({ node }: { node: CaseNode }) {
         />
       </label>
 
-      <label className="cb-field">
-        <span>标签（顿号或逗号分隔）</span>
-        <input value={tags} onChange={(event) => setTags(event.target.value)} onBlur={commitTags} />
-      </label>
+      <div className="cb-field cb-field--block">
+        <span>标签（统一 tag 编辑）</span>
+        <TagEditor value={node.tags} onChange={(next) => dispatch(updateNode(node.id, { tags: next }))} />
+        <button
+          type="button"
+          className="cb-btn cb-btn--ghost"
+          title="按标签找候选关系，人工确认后才连线"
+          onClick={() => openTagLink(node.tags)}
+        >
+          按 tag 自动连线…
+        </button>
+      </div>
+
+      <div className="cb-form__section">
+        <h3 className="cb-form__subtitle">
+          地图坐标
+          <span className="cb-form__subtle">写回「经纬度」字段，留空即从地图上移除</span>
+        </h3>
+        <div className="cb-geo">
+          <label className="cb-field">
+            <span>纬度</span>
+            <input
+              value={latText}
+              inputMode="decimal"
+              placeholder="31.7833"
+              onChange={(event) => setLatText(event.target.value)}
+              onBlur={commitGeo}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+              }}
+            />
+          </label>
+          <label className="cb-field">
+            <span>经度</span>
+            <input
+              value={lngText}
+              inputMode="decimal"
+              placeholder="119.9500"
+              onChange={(event) => setLngText(event.target.value)}
+              onBlur={commitGeo}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+              }}
+            />
+          </label>
+        </div>
+        <div className="cb-geo__ops">
+          <button
+            type="button"
+            className="cb-btn cb-btn--ghost"
+            title="切到地图视图，在地图上点一下设坐标"
+            onClick={() => {
+              requestPick(node.id);
+              setViewMode('map');
+            }}
+          >
+            在地图上点选设坐标…
+          </button>
+          {geo ? (
+            <button
+              type="button"
+              className="cb-link-btn"
+              onClick={() => dispatch(updateNode(node.id, { fields: clearGeoFields(node.fields) }))}
+              title="清空经纬度字段"
+            >
+              清除坐标
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       <div className="cb-form__section">
         <h3 className="cb-form__subtitle">
@@ -478,13 +595,21 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
 function GroupForm({ group }: { group: Group }) {
   const doc = useDocStore((s) => s.doc);
   const dispatch = useDocStore((s) => s.dispatch);
+  const selectNode = useUiStore((s) => s.selectNode);
   const [title, setTitle] = useState(group.title);
   const [opacity, setOpacity] = useState(group.opacity ?? DEFAULT_GROUP_OPACITY);
 
   useEffect(() => setTitle(group.title), [group.id, group.title]);
   useEffect(() => setOpacity(group.opacity ?? DEFAULT_GROUP_OPACITY), [group.id, group.opacity]);
 
-  const members = doc.nodes.filter((node) => node.groupId === group.id);
+  // A4：组成员清单统一走 memberNodeIds(includeDescendants) —— 子组里的实体也算成员，
+  // 「移出」只对直接成员显示（子组成员要移出得进对应子组，避免一次误操作掏空嵌套结构）
+  const directMembers = doc.nodes.filter((node) => node.groupId === group.id);
+  const allMemberIds = memberNodeIds(doc, group.id, true);
+  const members = allMemberIds
+    .map((id) => doc.nodes.find((node) => node.id === id))
+    .filter((node): node is CaseNode => node !== undefined);
+  const indirectCount = members.length - directMembers.length;
   const childGroups = doc.groups.filter((item) => item.parentId === group.id);
   const parentOptions = doc.groups.filter((item) => canParentGroup(doc, group.id, item.id));
 
@@ -563,7 +688,10 @@ function GroupForm({ group }: { group: Group }) {
       </label>
 
       <div className="cb-form__section">
-        <h3 className="cb-form__subtitle">组内对象（{members.length}）</h3>
+        <h3 className="cb-form__subtitle">
+          组成员清单（{members.length}）
+          {indirectCount > 0 ? <span className="cb-form__subtle"> · 其中 {indirectCount} 个来自子组</span> : null}
+        </h3>
         {members.length === 0 ? (
           <p className="cb-form__subtle">空分组：可直接拖入节点，或在节点属性里选择「所属分组」。</p>
         ) : (
@@ -571,22 +699,31 @@ function GroupForm({ group }: { group: Group }) {
             {members.map((node) => (
               <li key={node.id} className="cb-members__item">
                 <span className="cb-members__dot" style={{ background: NODE_TYPE_META[node.type].color }} />
-                <span className="cb-members__title">{node.title}</span>
                 <button
                   type="button"
-                  className="cb-link-btn"
-                  onClick={() => dispatch(assignNodesToGroup([node.id], null))}
+                  className="cb-members__title cb-members__title--link"
+                  title="在画布中定位"
+                  onClick={() => selectNode(node.id)}
                 >
-                  移出
+                  {node.title}
                 </button>
+                {node.groupId === group.id ? (
+                  <button
+                    type="button"
+                    className="cb-link-btn"
+                    onClick={() => dispatch(assignNodesToGroup([node.id], null))}
+                  >
+                    移出
+                  </button>
+                ) : (
+                  <span className="cb-members__indirect">子组</span>
+                )}
               </li>
             ))}
           </ul>
         )}
         {childGroups.length > 0 ? (
-          <p className="cb-form__subtle">
-            含子组：{childGroups.map((item) => item.title).join('、')}
-          </p>
+          <p className="cb-form__subtle">含子组：{childGroups.map((item) => item.title).join('、')}</p>
         ) : null}
       </div>
 

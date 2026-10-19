@@ -227,7 +227,7 @@ export function TopBar() {
         <button
           type="button"
           className={`cb-btn${securityOpen ? ' is-active' : ''}`}
-          title="安全：启动密码（数据库加密）、立即锁定、脱敏说明"
+          title="安全与合规：本机存储说明（M9 起无启动密码）、AI 生成图审计、脱敏"
           onClick={() => setSecurityOpen(true)}
         >
           安全

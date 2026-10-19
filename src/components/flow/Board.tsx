@@ -18,6 +18,7 @@ import {
   addImageNode,
   addNode,
   attachImageNode,
+  composeCommands,
   deleteGroup,
   deleteImageNode,
   moveGroup,
@@ -40,6 +41,7 @@ import {
   nodeIdsInRect,
   parseBoardNodeId,
 } from '../../lib/groups';
+import { bestAnchors, fanOutLabels, type EdgeAnchor } from '../../lib/edgeCurve';
 import { newId } from '../../lib/id';
 import { fitImageSize, snapImageRect, type AlignGuide } from '../../lib/imageNode';
 import { BOARD_GRID } from '../../lib/themeMode';
@@ -134,6 +136,7 @@ export function Board() {
   const selectImage = useUiStore((s) => s.selectImage);
   const consumeAdd = useUiStore((s) => s.consumeAdd);
   const consumeGroup = useUiStore((s) => s.consumeGroup);
+  const requestNewNode = useUiStore((s) => s.requestNewNode);
   const setMode = useUiStore((s) => s.setMode);
   const setNodeSelection = useUiStore((s) => s.setNodeSelection);
   const applyImageSelection = useUiStore((s) => s.applyImageSelection);
@@ -306,6 +309,32 @@ export function Board() {
     highlight,
   ]);
 
+  /** S3：没有显式锚点的关系按两端相对位置挑「面对面」的连接点，布局后也不会绕到卡片背后 */
+  const autoAnchors = useMemo(() => {
+    const rects = new Map(doc.nodes.map((node) => [node.id, { x: node.x, y: node.y, w: node.w, h: node.h }]));
+    const out = new Map<string, { source: EdgeAnchor; target: EdgeAnchor }>();
+    for (const edge of model.edges) {
+      const source = rects.get(edge.source);
+      const target = rects.get(edge.target);
+      if (!source || !target) continue;
+      out.set(edge.id, bestAnchors(source, target));
+    }
+    return out;
+  }, [doc.nodes, model.edges]);
+
+  /** S3 标签避让：曲线中点落在同一格的标签按序号向下错开 */
+  const labelDys = useMemo(() => {
+    const centers = new Map(doc.nodes.map((node) => [node.id, { x: node.x + node.w / 2, y: node.y + node.h / 2 }]));
+    const points: Array<{ id: string; x: number; y: number }> = [];
+    for (const edge of model.edges) {
+      const source = centers.get(edge.source);
+      const target = centers.get(edge.target);
+      if (!source || !target) continue;
+      points.push({ id: edge.id, x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 });
+    }
+    return fanOutLabels(points);
+  }, [doc.nodes, model.edges]);
+
   const edges = useMemo<CaseFlowEdge[]>(() => {
     const stateOf = (id: string): { hidden: boolean; dim: boolean } =>
       isSuperId(id)
@@ -321,19 +350,20 @@ export function Board() {
       .map((edge) => {
         const dimmed =
           view.dimEdges.has(edge.id) || stateOf(edge.source).dim || stateOf(edge.target).dim;
+        const auto = autoAnchors.get(edge.id);
         return {
           id: edge.id,
           type: 'bezier' as const,
           source: edge.source,
           target: edge.target,
-          sourceHandle: edge.sourceHandle ?? 'right',
-          targetHandle: edge.targetHandle ?? 'left',
-          data: { edge, dimmed, highlighted: highlight.edges.has(edge.id) },
+          sourceHandle: edge.sourceHandle ?? auto?.source ?? 'right',
+          targetHandle: edge.targetHandle ?? auto?.target ?? 'left',
+          data: { edge, dimmed, highlighted: highlight.edges.has(edge.id), labelDy: labelDys.get(edge.id) ?? 0 },
           selected: edge.id === selectedEdgeId,
           markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 16, height: 16 } : undefined,
         };
       });
-  }, [model.edges, selectedEdgeId, view, memberState, doc, highlight]);
+  }, [model.edges, selectedEdgeId, view, memberState, doc, highlight, autoAnchors, labelDys]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<BoardFlowNode>[]) => {
@@ -416,15 +446,28 @@ export function Board() {
             .filter((id) => id !== node.id)
             .map((id) => doc.imageNodes.find((item) => item.id === id))
             .filter((item): item is ImageNode => item !== undefined);
-          if (companions.length > 0) {
-            dispatch(
-              moveImageNodes([
-                { id: node.id, x: result.rect.x, y: result.rect.y },
-                ...companions.map((item) => ({ id: item.id, x: item.x + dx, y: item.y + dy })),
-              ]),
-            );
+          const imageMoves = [
+            { id: node.id, x: result.rect.x, y: result.rect.y },
+            ...companions.map((item) => ({ id: item.id, x: item.x + dx, y: item.y + dy })),
+          ];
+          // A4：混合多选（图片 + 卡片）一起拖动时，位移必须合成一条命令，撤销才是「一步退回」
+          const mixedNodes = selectedNodeIds
+            .map((id) => doc.nodes.find((item) => item.id === id))
+            .filter((item): item is CaseNode => item !== undefined)
+            .map((item) => {
+              const pending = dragPos[item.id];
+              return {
+                id: item.id,
+                x: Math.round((pending ? pending.x : item.x) + dx),
+                y: Math.round((pending ? pending.y : item.y) + dy),
+              };
+            });
+          const imageCmd = companions.length > 0 ? moveImageNodes(imageMoves) : moveImageNode(node.id, result.rect.x, result.rect.y);
+          if (mixedNodes.length > 0) {
+            dispatch(composeCommands('移动所选（图片 + 实体）', [imageCmd, moveNodes(mixedNodes)]));
+            for (const position of mixedNodes) setDragPos(position.id, null);
           } else {
-            dispatch(moveImageNode(node.id, result.rect.x, result.rect.y));
+            dispatch(imageCmd);
           }
           if (attachTargetId && attachTargetId !== image.linkedNodeId) {
             dispatch(attachImageNode(node.id, attachTargetId));
@@ -445,19 +488,33 @@ export function Board() {
         }
         return;
       }
-      if (selectedNodeIds.length > 1 && selectedNodeIds.includes(node.id)) {
-        const positions = selectedNodeIds
-          .map((id) => doc.nodes.find((item) => item.id === id))
-          .filter((item): item is CaseNode => item !== undefined)
-          .map((item) => {
-            const pending = dragPos[item.id];
-            return { id: item.id, x: Math.round(pending ? pending.x : item.x), y: Math.round(pending ? pending.y : item.y) };
-          });
-        dispatch(moveNodes(positions));
-        for (const position of positions) setDragPos(position.id, null);
-        return;
+      const multi = selectedNodeIds.length > 1 && selectedNodeIds.includes(node.id);
+      const movingNodeIds = multi ? selectedNodeIds : [node.id];
+      const positions = movingNodeIds
+        .map((id) => doc.nodes.find((item) => item.id === id))
+        .filter((item): item is CaseNode => item !== undefined)
+        .map((item) => {
+          const pending = dragPos[item.id];
+          return { id: item.id, x: Math.round(pending ? pending.x : item.x), y: Math.round(pending ? pending.y : item.y) };
+        });
+      const anchor = doc.nodes.find((item) => item.id === node.id);
+      const dx = anchor ? Math.round(node.position.x) - anchor.x : 0;
+      const dy = anchor ? Math.round(node.position.y) - anchor.y : 0;
+      // A4：卡片被拖动时，选中的图片要跟着一起走，并且与卡片位移合成同一条命令
+      const mixedImages = selectedImageIds
+        .map((id) => doc.imageNodes.find((item) => item.id === id))
+        .filter((item): item is ImageNode => item !== undefined)
+        .map((item) => ({ id: item.id, x: item.x + dx, y: item.y + dy }));
+      const nodeCmd =
+        positions.length > 1
+          ? moveNodes(positions)
+          : moveNode(node.id, Math.round(node.position.x), Math.round(node.position.y));
+      if (mixedImages.length > 0) {
+        dispatch(composeCommands('移动所选（实体 + 图片）', [nodeCmd, moveImageNodes(mixedImages)]));
+      } else {
+        dispatch(nodeCmd);
       }
-      dispatch(moveNode(node.id, Math.round(node.position.x), Math.round(node.position.y)));
+      for (const position of positions) setDragPos(position.id, null);
       setDragPos(node.id, null);
     },
     [
@@ -505,20 +562,34 @@ export function Board() {
     (event: React.MouseEvent) => {
       if (mode === 'lasso') return;
       if (event.detail === 2) {
+        // A5：双击空白不再直接插便签，而是记下落点的世界坐标并弹「新建节点」对话框
         const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        dispatch(
-          addNode({
-            type: 'note',
-            title: '新便签',
-            x: Math.round(position.x - 104),
-            y: Math.round(position.y - 48),
-          }),
-        );
+        requestNewNode({ x: Math.round(position.x), y: Math.round(position.y) });
         return;
       }
       clearSelection();
     },
-    [clearSelection, dispatch, mode, screenToFlowPosition],
+    [clearSelection, mode, requestNewNode, screenToFlowPosition],
+  );
+
+  /**
+   * A5：双击空白弹「新建节点」对话框（兜底通道）。
+   * React Flow 的 onPaneClick 依赖完整的指针序列（pointerdown → pointerup → click），
+   * 自动化环境或某些触控板手势下可能只给到 dblclick；这里在画布容器上再判一次，
+   * 目标必须落在画布本身，命中节点 / 连线 / 控制条时一律不动，避免误建。
+   */
+  const onCanvasDoubleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (mode === 'lasso') return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const blocked = '.react-flow__node, .react-flow__edge, .react-flow__controls, .react-flow__minimap, .cb-toolbar';
+      if (target.closest(blocked)) return;
+      if (!target.closest('.react-flow__pane') && !target.closest('.react-flow__renderer')) return;
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      requestNewNode({ x: Math.round(position.x), y: Math.round(position.y) });
+    },
+    [mode, requestNewNode, screenToFlowPosition],
   );
 
   const onConnect = useCallback((connection: Connection) => {
@@ -665,7 +736,13 @@ export function Board() {
   );
 
   return (
-    <div className="cb-canvas" ref={wrapperRef} onDrop={onDrop} onDragOver={onDragOver}>
+    <div
+      className="cb-canvas"
+      ref={wrapperRef}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      onDoubleClick={onCanvasDoubleClick}
+    >
       <ReactFlow<BoardFlowNode, CaseFlowEdge>
         nodes={nodes}
         edges={edges}
@@ -688,6 +765,8 @@ export function Board() {
         onPaneClick={onPaneClick}
         onConnect={onConnect}
         connectionMode={ConnectionMode.Loose}
+        // A5：双击缩放交给我们自己的「新建节点」对话框，画布双击不再变焦
+        zoomOnDoubleClick={false}
         selectionOnDrag
         selectionMode={SelectionMode.Full}
         panOnDrag={[1, 2]}

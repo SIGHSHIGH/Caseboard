@@ -14,9 +14,9 @@ import { useViewModeStore } from './store/viewModeStore';
 import { PresentationView } from './components/views/PresentationView';
 import { TimelineView } from './components/views/TimelineView';
 import { MapView } from './components/views/MapView';
-import { LockScreen } from './components/panels/LockScreen';
 import { CommandPalette } from './components/panels/CommandPalette';
-import { useVaultStore } from './store/vaultStore';
+import { NewNodeDialog } from './components/panels/NewNodeDialog';
+import { TagLinkDialog } from './components/panels/TagLinkDialog';
 import { usePaletteStore } from './store/paletteStore';
 
 // 代码视图带着 CodeMirror 6，按需加载，避免拖慢画布首屏
@@ -35,7 +35,6 @@ export default function App() {
   const codeOpen = useCodeStore((s) => s.open);
   const ready = useReady();
   const viewMode = useViewModeStore((s) => s.mode);
-  const vaultPhase = useVaultStore((s) => s.phase);
   const paletteOpen = usePaletteStore((s) => s.open);
   const openPalette = usePaletteStore((s) => s.openPalette);
   const closePalette = usePaletteStore((s) => s.closePalette);
@@ -104,8 +103,7 @@ export default function App() {
     void startImport(files, 'import');
   };
 
-  // 锁定状态（M8 验收 2）：整个界面换成锁屏，案件数据一个字节都不渲染
-  if (vaultPhase === 'locked') return <LockScreen />;
+  // M9（H3）：启动密码已彻底移除，应用一起来就是普通界面，数据落在普通 SQLite
 
   return (
     <div className="cb-app">
@@ -177,6 +175,8 @@ export default function App() {
         {viewMode === 'board' ? <RightPanel /> : null}
       </div>
       <ImportWizard />
+      <NewNodeDialog />
+      <TagLinkDialog />
       {paletteOpen ? <CommandPalette /> : null}
     </div>
   );

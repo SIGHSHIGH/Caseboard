@@ -47,6 +47,7 @@
 | M6 | AI 文本能力 | 2–3 周 | 抽取建图（P4）、自然语言编辑（P6）、矛盾检测/证据链（P5）、报告（P7）、本地模型 | 采纳率 ≥ 70%；AI 永不直接改 Model，只进待确认队列 | ✅ 2026-10-19 |
 | M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ✅ 2026-10-19 |
 | M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ✅ 2026-10-19 |
+| M9 | 交互修订与安全精简 | 1 周 | 图片工具条竖排、混合拖动命令合成、组尺寸与成员清单、双击新建对话框、模态居中、地图取点、布局换锚点、时间线回退、演示联动编辑、tag 自动连线、素材库分组、导入 OCR；**删除启动密码/整库加密**；NSIS 归档 `release\` | 十条验收全部通过；全仓库 `vault` 零命中；`smoke` 658 / `ui-smoke` 296 全绿 | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -691,6 +692,83 @@
 
 ---
 
+### M9 · 交互修订与安全精简（1 周）
+
+**目标**：把 M4–M8 人工验收里攒下的交互缺陷一次清完（图片工具栏压旋转手柄、混合多选拖动写两条命令、新建组改不了尺寸、双击缩放抢手势、模态被塞进顶栏、地图没有取点入口、布局后连线交叉与标签叠字、时间线收不进只填字段的老节点、演示页只能看不能改），并**砍掉产品不需要的启动密码/整库加密**，回到普通 SQLite。
+
+**范围（做）**
+- A2 图片选中工具条改右侧竖排图标按钮；A4 混合多选拖动的命令合成、新建组右下角改尺寸、组成员清单（组头 + 右栏）；A5 关闭双击缩放、双击空白弹「新建节点」对话框。
+- T1/T2/T5/T6 假设面板与 AI 生图面板回归 `.cb-modal__mask` 居中；T3 区域锚点高亮扩到多选与素材聚焦并可点选；T7 地图「点选设坐标」+ 右栏经纬度字段。
+- S3 布局后按相对位置重算 `sourceHandle`/`targetHandle` 并做标签避让；S4 时间线 `nodeTimeRange` 回退读 `fields`；S5 演示页联动编辑（标题/状态/备注写回 Model）。
+- 新增：事件「发生时刻」用日期时间控件并写 `node.time`；统一 tag 编辑 + 「按 tag 自动连线」确认面板（点线 + 置信度 35）；关系线连接点放大；素材库分组；导入图片后自动 OCR（引擎缺失给安装指引）。
+- H3 彻底删除启动密码 / 保险库（前端锁屏与服务、Rust vault 模块与命令、依赖、自检第 3 轮、文档）；H2 构建 NSIS 安装包并归档到仓库根 `release\`。
+
+**验收标准**
+1. 图片选中后工具条在图片右侧竖排，顶部旋转手柄可正常拖动；卡片 + 图片一起拖只产生一条 undo。
+2. 新建组后拖右下角能改尺寸；组头与右栏都能看到组成员清单并点标题跳转。
+3. 双击画布空白弹「新建节点」对话框（选类型 + 标题）；双击不再缩放。
+4. 假设面板、生图面板、新建节点、按 tag 连线四个面板都居中在遮罩里，不再出现在顶栏。
+5. 地图点选能写入坐标、右栏能改经纬度、演示数据有坐标。
+6. 布局后连线锚点随相对位置变化、交叉减少、标签不叠字。
+7. 只填「发生时刻」字段的节点能进时间线并参与滑杆与播放；演示页改标题/状态/备注立即写回 Model。
+8. 导入图片后自动 OCR，引擎缺失时给出 Tesseract 安装指引。
+9. 全仓库不再有 vault/启动密码/整库加密的代码、依赖与承诺；`package.json` / `Cargo.toml` / `tauri.conf.json` 三处 0.9.0。
+10. `typecheck` / `smoke` / `ui-smoke` / `bench` 全绿，桌面自检两轮 PASS，`release\` 下有 0.9.0 安装包。
+
+#### M9 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 | 状态 |
+|---|---|---|---|
+| M9-1 | **A2 图片工具条**：`src/index.css` 的 `.cb-free-image__bar` 由 `left:50%; top:-60px; transform:translateX(-50%)` 横排改为 `left:calc(100% + 10px); top:0; flex-direction:column` 竖排，按钮 `writing-mode:horizontal-tb` 保证文字横排、新增 `.cb-free-image__bar-icon` 图标槽；`FreeImageNode.tsx` 五个按钮补 ⇈/↑/↓/⇊/⌖ 图标 | ui-smoke：dist CSS 命中 `left: calc(100% + 10px)` + `flex-direction: column` + `top: 0`；旋转手柄仍在 `top:-36px`；工具条 5 个按钮与 5 个图标槽 | ✅ |
+| M9-2 | **A4 混合多选拖动**：`src/commands/index.ts` 导出 `composeCommands`；`Board.tsx` 的 `onNodeDragStop` 两条分支都能合成命令——拖图片时收集选中卡片、拖卡片时收集选中图片，`composeCommands('移动所选（图片 + 实体）', [moveNodes/moveImageNodes, …])` 合成一条 | 一条 undo 同时回退卡片与图片；`composeCommands` 走 Command 体系，无裸 set | ✅ |
+| M9-3 | **A4 新建组改尺寸 + 组成员清单**：`GroupRectNode.tsx` 的 `.cb-group__header` / `.cb-group__fold` / `.cb-group__resize` 全部加 `nodrag`（根因：React Flow v12 用 `noDragClassName` 判断是否启动 d3-drag，缺类时 pointerdown 与 pointer capture 被拖拽抢走）；成员计数改成可点按钮展开 `.cb-group__members` 面板；`RightPanel` 的 `GroupForm` 用 `memberNodeIds(doc, id, true)` 列直接成员 + 子组成员（`cb-members__indirect` 徽标），标题可点跳转 | 新建组后能拖右下角改尺寸；组头与右栏都能看到成员清单；子组成员计数口径一致 | ✅ |
+| M9-4 | **A5 双击空白新建节点**：`uiStore` 增加 `newNodeAt` / `requestNewNode` / `consumeNewNode`；新增 `NewNodeDialog.tsx`（8 类下拉 + 标题 + 回车创建并选中）；`Board.tsx` 关掉 `zoomOnDoubleClick`，`onPaneClick` 的 `detail===2` 与容器上的 `onDoubleClick` 兜底都只记坐标不建节点（命中节点/连线/控制条时不动） | ui-smoke：双击画布空白 → `.cb-modal__mask .cb-newnode` 出现、8 个类型选项、点「创建」后实体落到画布并选中 | ✅ |
+| M9-5 | **T1/T2/T5/T6 模态居中**：`HypothesisPanel.tsx` 与 `AiImagePanel.tsx` 根节点补 `<div className="cb-modal__mask" role="dialog" aria-modal="true">` 外层（对齐 `AnnotationEditor` 的既有范式），不再被 `.cb-topbar` 的相对定位挤进顶栏 | 面板 `position: fixed` 居中在遮罩上；`.cb-hyp` / `.cb-aiimg` 自身宽高与滚动不变 | ✅ |
+| M9-6 | **T3 区域锚点高亮**：`FreeImageNode.tsx` 把「高亮集合」从 `hoverNodeId ?? selectedNodeId` 扩成 hover ∪ `selectedNodeId` ∪ `selectedNodeIds` ∪（`anchorFocus` 命中的素材里该 annotation 的 `linkedNodeId`）；锚点改 `pointer-events:auto` 并在高亮时挂 `.cb-free-image__anchor-tag` 标题条，点击直接选中对应实体 | 多选与素材聚焦都能点亮锚点；点锚点跳实体；CSS 不再是 `pointer-events:none` | ✅ |
+| M9-7 | **T7 地图取点与坐标字段**：`src/lib/map.ts` 重写（`GEO_LAT_KEYS` / `GEO_LNG_KEYS`、`formatGeo`、`applyGeoFields`、`clearGeoFields`、`geoBounds`、`unprojectGeo`、`DEFAULT_GEO_BOUNDS`）；新增 `mapStore`（`pickNodeId` / `requestPick` / `cancelPick`）；`MapView.tsx` 增加「点选设坐标」横幅与「还没有坐标」侧栏，点地图即逆投影写 `经纬度`；`RightPanel` 的 `NodeForm` 增加「地图坐标」区块（纬度/经度输入 + 在地图上点选 + 清除）；`nodeTemplates` 删掉 place 的 经度/纬度 两个字段，统一写一个 `经纬度`；演示数据 5 个实体补常州主城坐标 | smoke [51] 10 条（解析/合并/越界/逆投影/零跨度）；ui-smoke：5 个 pin、缺坐标实体有「点选设坐标」 | ✅ |
+| M9-8 | **S3 布局换锚点 + 标签避让**：`src/lib/edgeCurve.ts` 新增 `EdgeAnchor` / `rectOf` / `anchorPoint` / `bestAnchors` / `facingAnchor` 与 `fanOutLabels`（`LABEL_CELL=120`、`LABEL_STEP=16` 分格错开）；`commands/layoutCommands.ts` 的 `applyLayout` 在同一条命令里既写坐标又按新相对位置重写每条边的 `sourceHandle`/`targetHandle`；`Board.tsx` 的 `edges` 用 `bestAnchors` 兜底并把 `labelDy` 传下去；`BezierEdge.tsx` 按 `labelDy` 偏移标签 | smoke [54] 6 条；布局后上下相邻的边变 `bottom/top`，同格标签错开 16px | ✅ |
+| M9-9 | **S4 时间线回退读字段**：`src/lib/timeline.ts` 新增 `TIME_FIELD_KEYS = ['发生时刻','时间','交易时间','日期','案发时间']`，`nodeTimeRange` 在 `node.time.start` 解析失败时按序回退读 `fields`（`end` 仍只认 `node.time.end`） | smoke [50] 7 条：字段命中、顺序优先、`node.time` 优先、无时间仍 null | ✅ |
+| M9-10 | **S5 演示联动编辑**：`PresentationView.tsx` 新增 `PresentEdit`（标题 input、状态下拉、备注 textarea，onBlur/onChange 直接 `dispatch(updateNode(...))`），空标题回滚、空备注置 `undefined` | ui-smoke：`.cb-present__edit` 有 input / select / textarea；改动即时写回 Model（无本地影子状态） | ✅ |
+| M9-11 | **发生时刻日期时间控件**：`lib/datetime.ts`（`toDateTimeInput` / `fromDateTimeInput` / `timeRangeFromInput`，兼容 `2026` / `2026-09` / `2026/9/3` 等旧写法）；`FieldKind` 增加 `'datetime'`，event 模板「发生时刻」改 `datetime`；`RightPanel` 的 `TemplateField` 用 `type="datetime-local"`，提交时同时写 `fields['发生时刻']` 与 `node.time` | smoke [49] 8 条；ui-smoke 通过；写回后时间线立即可见 | ✅ |
+| M9-12 | **统一 tag 编辑 + 按 tag 自动连线**：新增 `lib/tagLink.ts`（`collectTags` / `tagLinkCandidates` / `tagLinkLabel`，同 tag 且无既有关系才候选，同一对实体只出一条，上限 200）、`tagLinkStore`、`TagLinkDialog.tsx`（左选 tag、右列候选、默认全选）、`TagEditor.tsx`（chip 增删 + 已有标签建议）；`RightPanel` 的 `NodeForm` 换成统一 tag 编辑器 + 「按 tag 自动连线…」入口，确认后一条命令批量 `addEdge`（**点线 + 置信度 35**，不写已证实） | smoke [52] 7 条；ui-smoke：`.cb-tagedit`、确认面板在遮罩里、候选 ≥ 1、提示文案含「点线」 | ✅ |
+| M9-13 | **关系线连接点放大**：`src/index.css` 的 `.cb-handle` 由 9px 放大到 14px（`min-width/min-height` + 2px 边框 + `box-shadow` 描边 + hover `scale(1.15)`），`.cb-handle--target` 仍 `pointer-events:none` 只当几何锚点 | ui-smoke：dist CSS 的 `.cb-handle` 命中 `width: 14px` / `height: 14px` | ✅ |
+| M9-14 | **素材库分组 + 导入后 OCR**：新增 `lib/assetGroups.ts`（按来源 / 按日期 / 不分，`ASSET_SOURCE_LABELS`、unknown 永远最后、无日期排最后）；`AssetLibrary.tsx` 增加分组切换与 `.cb-assets__grouphead`；`importStore.confirm()` 之后跑 `runOcrOnImported`——引擎可用则逐张 `recognizeAssetText` 并 `composeCommands` 一次性写回 `ocrText`，不可用/失败则把 `OCR_ENGINE_HINT` 落到 `ocrNotice` 面板提示 | smoke [53] 7 条；ui-smoke：三种分组方式、按组渲染、组头显示张数 | ✅ |
+| M9-15 | **H3 删除启动密码 / 整库加密**：`git rm` `src/components/panels/LockScreen.tsx`、`src/services/vault.ts`、`src/store/vaultStore.ts`、`src-tauri/src/vault.rs`；`main.tsx` / `App.tsx` 去掉解锁守卫；`selftest.ts` 截断掉 `runVaultSelftest` 与两个测试口令；`lib.rs` 删 `mod vault`、`VaultStatus`、`check_password`、7 个 `vault_*` 命令与 `caseboard.db.vault` 拒绝建库守卫；`Cargo.toml` 删 `aes-gcm` / `argon2` / `rand`；`run-selftest.cjs` 只跑第 1/2 轮；`SecurityDialog` 首块改「本机存储」说明；`index.css` 删 `.cb-lock*` | smoke [55] 5 条：源码与 Rust 端 `vault|保险库` 零命中、四个文件不存在、Cargo 无加密依赖、自检脚本无 vaultapp、README/AGENTS 不再承诺 | ✅ |
+| M9-16 | **H2 打包**：版本三处 0.9.0；`tauri build --no-bundle` 重建 exe，`--bundles nsis` 出安装包并复制到仓库根 `release\` | `release\CaseBoard_0.9.0_x64-setup.exe` 存在且体积与 bundle 一致 | ✅ |
+
+#### M9 验收记录（2026-10-20，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| 类型检查 | `tsc --noEmit` 0 error |
+| 逻辑层 | `pnpm smoke` **658 PASS / 0 FAIL**（M9 新增 60：[49] 日期时间 8、[50] 时间线回退 7、[51] 地图坐标 10、[52] tag 连线 7、[53] 素材库分组 7、[54] 布局换锚点 6、[55] 删加密 5，外加 [48] 主题变量一致性等主题改动断言；M8 基线 598） |
+| 打包层 | `pnpm ui-smoke` **296 PASS / 0 FAIL**（M9 新增 40：地图点选 / 新建节点对话框 / tag 连线 / 素材库分组 / 图片工具条 / 演示联动编辑 / 连接点放大；M8 基线 256） |
+| 性能 | `pnpm bench` 1000 节点解析链 **75.3 ms**（阈值 300 ms） |
+| 桌面产物 | `tauri build --no-bundle` 重建 `caseboard.exe`；`run-selftest.cjs` 两轮 PASS（第 3 轮 vault 自检按 H3 移除） |
+| 验收 1 图片工具条与混合拖动 | 工具条贴右侧竖排、旋转手柄可拖；卡片 + 图片混选拖动只压一条 undo（`composeCommands`） |
+| 验收 2 组尺寸与成员清单 | 组右下角 18px 手柄可拖（`nodrag` 修复）；组头计数按钮展开成员面板，右栏 `GroupForm` 列直接成员 + 子组徽标 |
+| 验收 3 双击空白 | `zoomOnDoubleClick={false}`；双击弹「新建节点」对话框（8 类 + 标题 + 回车创建） |
+| 验收 4 模态居中 | 假设 / 生图 / 新建节点 / tag 连线四个面板都挂在 `.cb-modal__mask` 下 |
+| 验收 5 地图 | 5 个演示实体带常州主城坐标；缺坐标实体可「点选设坐标」；右栏可改纬度/经度并清除 |
+| 验收 6 布局锚点与标签 | 布局命令内重写 handles，上下相邻走 `bottom/top`；同格标签按 16px 错开 |
+| 验收 7 时间线与演示 | 只填「发生时刻」的节点进时间线；演示页标题/状态/备注即时写回 Model |
+| 验收 8 导入 OCR | 引擎可用自动写 `ocrText`（一条命令），缺失时给 Tesseract 安装指引 |
+| 验收 9 删加密 | 全仓库 `vault|保险库` 零命中；磁盘上就是 `caseboard.db` 普通 SQLite |
+| 版本 | `package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 三处 **0.9.0** |
+
+#### M9 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 双击空白走 React Flow `onPaneClick` | jsdom / 部分触控板只给到 `dblclick`，`onPaneClick` 依赖完整指针序列 | 除 `onPaneClick` 外，在 `.cb-canvas` 容器上再挂一次 `onDoubleClick` 兜底（命中节点/连线/控制条时不动）（D57） |
+| 地图坐标字段 | place 模板原有 `经度` / `纬度` 两个字段，与 `map.ts` 认的合并字段 `经纬度` 不通 | 模板删掉两个独立字段，统一由右栏「地图坐标」写一个 `经纬度`，`parseGeo` 保留老数据回退（D55） |
+| 按 tag 自动连线 | 未做「自动应用」，一律先出确认面板 | 符合 Gate 0-4（AI/推断类产出先确认）；关系固定点线 + 置信度 35（D58） |
+| 干净机安装全流程 | 仍无第二台干净 Win10/11 | 只能人工，见 `docs/MANUAL-ACCEPTANCE.md` H 节 |
+| Windows Hello | 仍只有接入位说明 | M9 删掉启动密码后统一交给系统账户/BitLocker，记为下一期候选（D60） |
+
+
+---
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -841,6 +919,14 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D50 | 脱敏分**像素层与文本层**两层：像素层 `redact.ts` 马赛克可像素级验证抹平；文本层 `maskText.ts` 身份证保留前 6 后 4、手机前 3 后 4、银行卡前 4 后 4 且按 4 位分组；图片包 `manifest.csv` 的 OCR 文本过同一函数 | 验收要求「不可逆」与「全链路复核」，两层必须各有可断言入口；掩码只保留可核对片段，避免「看似打码实则可还原」 | `src/lib/maskText.ts`、`src/serializers/manifest.ts`、smoke [46] |
 | D51 | AI 合规审计是**纯函数**（`aiAudit.ts` 从 `doc.assets` 的 `aiMeta` 生成三节 Markdown），界面只负责预览与导出 Word/Markdown | 审计必须同数据同结果、不依赖模型与运行时状态；复用 `reportDocx` 的手写 OOXML 保持离线 | `auditAiAssets` 返回 `count/compliant/problems`；`SecurityDialog` 只做展示与导出 |
 | D52 | 全局搜索是**纯函数 `searchDoc`**（AND 多词、字段权重、完全匹配加权、`snippet` ±16、按 score→kind→中文排序），命令面板只是它的视图加内置命令；Ctrl+K 在输入框内也生效 | 验收 6 要「命中可定位跳转」，必须能机器断言命中字段与 `focusId`；UI 只做键盘导航与选中 | `src/lib/search.ts`、`paletteStore`、`CommandPalette`、smoke [45]、ui-smoke |
+| D53 | **M9 起废止 D49 的整库加密与启动密码**：删除 `vault.rs` / `vault.ts` / `vaultStore` / `LockScreen` / 七个 Rust 命令 / `aes-gcm`·`argon2`·`rand` 依赖 / 自检第 3 轮，数据库回到普通 `caseboard.db` | 单机办案工具的使用者就是坐到电脑前的同一个人，「锁定态磁盘只有密文」既挡不住有系统账户的人，又让忘记密码等于丢案卷；安全责任交给操作系统账户权限与 BitLocker，产品侧只保留脱敏与审计 | smoke [55] 守卫：全仓库 `vault|保险库` 零命中、四个文件不存在、Cargo 无加密依赖、`run-selftest.cjs` 只跑第 1/2 轮 |
+| D54 | 混合多选拖动必须用 `composeCommands(label, commands)` **合成一条命令**（`moveNodes` + `moveImageNodes`），不允许连发两条 | 连发两条会在 undo 栈里留下两步，用户按一次 Ctrl+Z 只回退一半、卡片与图片错位；合成命令也让「移动所选」在撤销历史里是一条可读记录 | `src/commands/compose.ts`、`Board.tsx` 的 `onNodeDragStop` 两条分支 |
+| D55 | 地图坐标**只认一个合并字段 `经纬度`**（`lat,lng`），place 模板删掉 `经度`/`纬度` 两个独立字段；`parseGeo` 保留「纬度 + 经度」两字段回退以兼容老数据；写坐标统一走 `applyGeoFields`（顺带删旧键） | 字段一多必然出现「地图读不到坐标」，这正是 T7 的根因；合并字段也让右栏两个输入框、地图点选、演示数据三处写同一个键 | `src/lib/map.ts`、`nodeTemplates.ts`、`RightPanel` 的「地图坐标」区块、smoke [51] |
+| D56 | 布局命令内**同时重写锚点**：`applyLayout` 在写完坐标后按新相对位置对每条边跑 `bestAnchors`，与坐标改动在同一条命令里；渲染层再用 `edge.sourceHandle ?? auto.source` 兜底（拖拽过程中锚点也跟着变） | 布局完连线交叉、线穿卡片，根因是 handle 一直是建边时的 `right/left`；分两步写会让一次撤销只回退一半 | `src/lib/edgeCurve.ts`、`src/commands/layoutCommands.ts`、`Board.tsx` 的 `autoAnchors`、smoke [54] |
+| D57 | 「双击空白新建节点」走**双通道**：`onPaneClick` 的 `detail===2` 为主，画布容器的 `onDoubleClick` 兜底；两处都只记落点坐标（`uiStore.newNodeAt`），真正建节点由对话框的「创建」按钮执行 | React Flow 的 pane click 依赖完整指针序列，自动化与部分触控板只给 `dblclick`；把「记落点」和「建节点」拆开，双击不再误插便签，也便于机器断言 | `Board.tsx`、`NewNodeDialog.tsx`、`uiStore`、ui-smoke M9 段 |
+| D58 | 「按 tag 自动连线」一律**先出确认面板**，默认全选但不自动应用；生成的关系固定 `style:'dotted'` + `confidence:35` + `directed:false`，标签写成「同标签：<tag>」 | 同标签只是弱线索，直接落库等于让命名习惯升级成事实关系，违反 Gate 0-3/0-4；确认面板还顺便暴露「已有关系的实体对不再候选」这条口径 | `src/lib/tagLink.ts`、`TagLinkDialog.tsx`、`tagStore`、smoke [52] |
+| D59 | 素材库分组是**纯函数 `groupAssets(assets, mode)`**（按来源 / 按日期 / 不分），组件只渲染组；OCR 写回用一条 `composeCommands('导入后 OCR（N 张）')`，引擎缺失时把 `OCR_ENGINE_HINT` 落到 `ocrNotice` 面板提示而不是弹窗 | 分组口径必须能脱离 UI 断言（M8 的 `services/` 教训）；OCR 是导入的附加动作，失败不该打断导入流程，一条命令也让「撤销 OCR」只按一次 | `src/lib/assetGroups.ts`、`AssetLibrary.tsx`、`importStore.runOcrOnImported`、smoke [53] |
+| D60 | 数据安全责任**交还操作系统**：应用内不再提供解锁与加密，安全面板首块改成「本机存储」说明（建议系统账户权限 + BitLocker），Windows Hello 等接入位保留为后续候选 | 与 D53 配套；产品不再承诺自己做不到的事（无法防御有账户权限的本地访问），把话说清楚比给假安全感更专业 | `SecurityDialog.tsx` 首块、`README.md`、`AGENTS.md`、smoke [55] |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -867,3 +953,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M7 整体验收通过**（✅ 打 tag `ms/M7`）：多假设画布（支持/反驳计分与并排比较）、六段证据链与断点、区域锚点悬停高亮、OCR 四字段与人工修正、四预设 AI 生图（强制角标写像素 + AI 分区 + 永不已证实 + 换脸拦截）、离线示意地图六步落地；`pnpm smoke` **573 条**（新增 61）、`pnpm ui-smoke` **234 条**（新增 41）、桌面自检 **17/18**、版本 **0.7.0**；§1 M7 置 ✅、§3 写入拆步/验收/偏离三表，新增 D45–D48（内置生图兜底、生图三道闸、离线示意地图、Tesseract 侧车）。 |
 | 2026-10-19 | **M5 整体验收通过**（✅ 打 tag `ms/M5`）：分析视图五步落地——图内核（路径/中心度/五种布局/时间线）、过滤与聚焦、路径与中心度可视化、一键整理、时间线回放与演示模式；`pnpm smoke` **460 条**（M5 新增 101）、`pnpm ui-smoke` **142 条**（新增 52）、`pnpm build` 811 modules；§1 总表 M5 置 ✅，§3 写入 M5 拆步与验收记录（含与计划的五项偏离），新增 D38（演示模式先做逐步讲解）、D39（1× = 60 秒、UTC 口径）、D40（自写确定性 BFS/Brandes）。 |
 | 2026-10-19 | **M8 整体验收通过**（✅ 打 tag `ms/M8`）：保险库加密与启动密码（自检第 3 轮 7/7）、脱敏全链路（像素 + 文本 + 清单）、AI 合规审计导出、打印样式与 PDF 页眉页脚、全局搜索与 Ctrl+K 命令面板、NSIS 安装包与签名脚本；`pnpm smoke` **598 条**（M8 新增 25）、`pnpm ui-smoke` **256 条**（新增 22）、桌面自检 **17 / 18 / 7**、版本 **0.8.0**；§1 M8 置 ✅、§3 写入拆步/验收/偏离三表，新增 D49–D52；`scripts/sign-installer.ps1` 就绪但本机无代码签名证书。 |
+| 2026-10-20 | **M9 整体验收通过**（✅ 打 tag `ms/M9`）：交互修订——图片工具条改右侧竖排让出旋转手柄（A2）、混合多选拖动用 `composeCommands` 合成一条命令（A4/D54）、组右下角改尺寸与组头/右栏成员清单（A4）、双击空白弹「新建节点」对话框并关闭双击缩放（A5/D57）、假设与生图面板改居中模态（T1/T2/T5/T6）、区域锚点高亮改为「悬停 ∪ 多选 ∪ 锚点焦点」且可点击（T3）、地图点选取坐标与右栏经纬度字段（T7/D55）、布局后自动重算锚点与标签避让（S3/D56）、时间线回退读 `发生时刻` 等字段（S4）、演示页联动编辑（S5）、发生时刻日期时间控件、统一 tag 编辑与「按 tag 自动连线」确认面板（D58）、关系线连接点放大、素材库分组（D59）、导入后自动 OCR 与引擎缺失指引；安全精简——按 H3 彻底删除应用解锁与整库加密（D53/D60），自检第 3 轮随之移除；`pnpm smoke` **658 条**（新增 [49]–[55] 七段）、`pnpm ui-smoke` **296 条**（新增约 40 条）、`pnpm bench` **75.3 ms**、桌面自检 **17 / 18**（PASS）、`tauri build --no-bundle` 1m44s、NSIS 安装包（3,614,153 字节）归档到仓库根 `release\CaseBoard_0.9.0_x64-setup.exe`；版本三处升 **0.9.0**；§1 M9 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D53–D60、`docs/MANUAL-ACCEPTANCE.md` 新增 I 节（并把 H3 标为作废）。 |

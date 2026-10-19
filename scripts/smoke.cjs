@@ -1837,8 +1837,13 @@ async function main() {
   );
   const m52Tags = m52CollectTags(m52Doc);
   check(
-    '标签候选项按使用次数统计（7 个标签各 1 次）',
-    m52Tags.length === 7 && m52Tags.every((item) => item.count === 1) && m52Tags.some((item) => item.tag === '主犯'),
+    '标签候选项按使用次数统计（M9 演示数据共 9 个标签，按次数降序）',
+    m52Tags.length === 9 &&
+      m52Tags[0].tag === '资金链' &&
+      m52Tags[0].count === 3 &&
+      m52Tags[1].tag === '诈骗团伙' &&
+      m52Tags[1].count === 2 &&
+      m52Tags.some((item) => item.tag === '主犯' && item.count === 1),
     m52Tags,
   );
   check(
@@ -2664,7 +2669,8 @@ async function main() {
     check('越界或缺失坐标被拒绝', parseGeo({ 经纬度: '91,200' }) === null && parseGeo({ 经纬度: 'abc' }) === null && parseGeo({}) === null);
     check('只把带坐标的实体放上地图', (() => {
       const pts = geoPoints(createDemoDoc().nodes);
-      return pts.length === 2 && pts.every((p) => typeof p.lat === 'number' && !!p.node.id);
+      // M9（T7）演示数据补齐坐标后，带经纬度的实体是 5 个（人 2 + 单位 1 + 地点 1 + 证据 1）
+      return pts.length === 5 && pts.every((p) => typeof p.lat === 'number' && !!p.node.id);
     })());
     check('没有经纬度字段时不产点', geoPoints([{ ...createDemoDoc().nodes[0], fields: {} }]).length === 0);
     check('投影到示意图坐标系且北在上', (() => {
@@ -2809,6 +2815,207 @@ async function main() {
       return missing.length === 0;
     })(), (globalThis.smokeMissingVars || []).join(', '));
   }
+  console.log('[49] 发生时刻日期时间控件（M9）');
+  {
+    const { toDateTimeInput, fromDateTimeInput, timeRangeFromInput } = require(path.join(out, 'lib', 'datetime.js'));
+    check('2026-09-03 20:10 与控件的 2026-09-03T20:10 互转', toDateTimeInput('2026-09-03 20:10') === '2026-09-03T20:10' && fromDateTimeInput('2026-09-03T20:10') === '2026-09-03 20:10');
+    check('只写年 / 月的旧值也能进控件（补 01-01 / 01 日）', toDateTimeInput('2026') === '2026-01-01T00:00' && toDateTimeInput('2026-09') === '2026-09-01T00:00');
+    check('中文日期不带时间时补 00:00', toDateTimeInput('2026/9/3') === '2026-09-03T00:00');
+    check('不可解析文本不塞进控件，清空返回空串', toDateTimeInput('九月初') === '' && toDateTimeInput('') === '' && fromDateTimeInput('') === '');
+    check('写回 node.time 用 ISO 形式（时间线解析认得）', JSON.stringify(timeRangeFromInput('2026-09-03T20:10')) === JSON.stringify({ start: '2026-09-03T20:10' }));
+    check('清空发生时刻即删掉 node.time', timeRangeFromInput('') === null);
+    const { NODE_TEMPLATES } = require(path.join(out, 'lib', 'nodeTemplates.js'));
+    const eventFields = NODE_TEMPLATES.event.fields;
+    check('事件模板的「发生时刻」已改成日期时间控件', eventFields.some((field) => field.key === '发生时刻' && field.kind === 'datetime'));
+    check('地点模板不再各存经度/纬度两个字段（统一走「经纬度」）', !NODE_TEMPLATES.place.fields.some((field) => field.key === '经度' || field.key === '纬度'));
+  }
+
+  console.log('[50] 时间线回退读 fields（M9 / S4）');
+  {
+    const { nodeTimeRange, TIME_FIELD_KEYS, buildTimeline, nodesWithoutTime } = require(path.join(out, 'lib', 'timeline.js'));
+    check('回退键顺序固定：发生时刻 → 时间 → 交易时间 → 日期 → 案发时间', JSON.stringify(TIME_FIELD_KEYS) === JSON.stringify(['发生时刻', '时间', '交易时间', '日期', '案发时间']));
+    const stamp = (node) => {
+      const range = nodeTimeRange(node);
+      return range ? range.start : null;
+    };
+    const base = { id: 'x', type: 'event', title: '事件', x: 0, y: 0, w: 180, h: 80, fields: {}, tags: [], status: 'todo', confidence: 50, attachments: [] };
+    check('只有 fields.发生时刻 的节点也能进时间线', stamp({ ...base, fields: { 发生时刻: '2026-09-03 20:10' } }) === Date.UTC(2026, 8, 3, 20, 10));
+    check('交易时间 / 案发时间 同样可用', stamp({ ...base, fields: { 交易时间: '2026-09-04 09:05' } }) === Date.UTC(2026, 8, 4, 9, 5) && stamp({ ...base, fields: { 案发时间: '2026-09-05' } }) === Date.UTC(2026, 8, 5));
+    check('node.time 优先于 fields', stamp({ ...base, time: { start: '2026-10-01T00:00' }, fields: { 发生时刻: '2026-09-03 20:10' } }) === Date.UTC(2026, 9, 1));
+    check('完全没有时间的节点仍然返回 null', stamp({ ...base, fields: { 地点: '常州' } }) === null);
+    const doc = { nodes: [{ ...base, id: 'n1', title: '首次接触', fields: { 发生时刻: '2026-09-03 20:10' } }, { ...base, id: 'n2', title: '无时间' }], edges: [], groups: [], assets: [], imageNodes: [] };
+    check('新节点进时间线、无时间节点进未排期清单', buildTimeline(doc).length === 1 && buildTimeline(doc)[0].id === 'n1' && nodesWithoutTime(doc).length === 1, buildTimeline(doc).length + ' / ' + nodesWithoutTime(doc).length);
+  }
+
+  console.log('[51] 地图坐标解析与点选逆投影（M9 / T7）');
+  {
+    const mapLib = require(path.join(out, 'lib', 'map.js'));
+    const { parseGeo, formatGeo, applyGeoFields, clearGeoFields, geoBounds, projectGeo, unprojectGeo, MAP_W, MAP_H } = mapLib;
+    const geo = parseGeo({ 经纬度: '31.2304,121.4737' });
+    check('「经纬度」合并字段可解析', geo && Math.abs(geo.lat - 31.2304) < 1e-9 && Math.abs(geo.lng - 121.4737) < 1e-9);
+    check('中文逗号也能解析', (() => { const g = parseGeo({ 经纬度: '31.78，119.95' }); return g && Math.abs(g.lat - 31.78) < 1e-9; })());
+    check('老数据的「纬度 / 经度」两个字段也能读', (() => { const g = parseGeo({ 纬度: '31.78', 经度: '119.95' }); return g && Math.abs(g.lat - 31.78) < 1e-9 && Math.abs(g.lng - 119.95) < 1e-9; })());
+    check('越界与乱写一律不认', parseGeo({ 经纬度: '120,20' }) === null && parseGeo({ 经纬度: '31.2,200' }) === null && parseGeo({ 经纬度: '常州' }) === null && parseGeo({}) === null);
+    check('写回统一成「经纬度」并删掉旧的经度/纬度键', (() => {
+      const fields = applyGeoFields({ 纬度: '1', 经度: '2', 地点类型: '商业' }, 31.2304, 121.4737);
+      return fields.经度 === undefined && fields.纬度 === undefined && fields.地点类型 === '商业' && fields.经纬度 === formatGeo(31.2304, 121.4737);
+    })());
+    check('清除坐标删掉所有坐标键、保留其它字段', (() => {
+      const fields = clearGeoFields({ 经纬度: '1,2', 纬度: '1', 经度: '2', 地点类型: '商业' });
+      return fields.经纬度 === undefined && fields.纬度 === undefined && fields.经度 === undefined && fields.地点类型 === '商业';
+    })());
+    check('点选逆投影能还原经纬度（误差 < 1e-5）', (() => {
+      const points = [
+        { node: { id: 'a' }, lat: 31.76, lng: 119.92 },
+        { node: { id: 'b' }, lat: 31.8, lng: 119.98 },
+      ];
+      const bounds = geoBounds(points);
+      const geo2 = unprojectGeo(MAP_W / 2, MAP_H / 2, bounds);
+      return Math.abs(geo2.lat - (31.76 + 31.8) / 2) < 1e-5 && Math.abs(geo2.lng - (119.92 + 119.98) / 2) < 1e-5;
+    })());
+    check('单点 / 零跨度数据不会除零', (() => {
+      const bounds = geoBounds([{ node: { id: 'a' }, lat: 31.78, lng: 119.95 }]);
+      const pos = projectGeo([{ node: { id: 'a' }, lat: 31.78, lng: 119.95 }], bounds).get('a');
+      return bounds.spanLat > 0 && bounds.spanLng > 0 && Number.isFinite(pos.x) && Number.isFinite(pos.y);
+    })());
+    check('逆投影把越界点夹在合法经纬度范围内', (() => {
+      const bounds = geoBounds([{ node: { id: 'a' }, lat: 31.76, lng: 119.92 }, { node: { id: 'b' }, lat: 31.8, lng: 119.98 }]);
+      const low = unprojectGeo(-99999, -99999, bounds);
+      return low.lat <= 90 && low.lat >= -90 && low.lng <= 180 && low.lng >= -180;
+    })());
+  }
+
+  console.log('[52] 按 tag 自动连线候选（M9）');
+  {
+    const { collectTags, tagLinkCandidates, tagLinkLabel, TAG_LINK_MAX } = require(path.join(out, 'lib', 'tagLink.js'));
+    const tagDoc = {
+      nodes: [
+        { id: 'a', title: '张建国', tags: ['同伙'] },
+        { id: 'b', title: '李梅', tags: ['同伙', '常州'] },
+        { id: 'c', title: '恒信财务', tags: ['常州'] },
+        { id: 'd', title: '银行流水', tags: ['孤例'] },
+      ],
+      edges: [],
+    };
+    const stats = collectTags(tagDoc);
+    check('标签统计按出现次数降序', JSON.stringify(stats.map((item) => [item.tag, item.count])) === JSON.stringify([['同伙', 2], ['常州', 2], ['孤例', 1]].sort((x, y) => (y[1] - x[1]) || 0)) || stats[0].count === 2);
+    check('只出现一次的标签不进候选也不是连线理由', tagLinkCandidates(tagDoc).every((item) => item.tag !== '孤例'));
+    const candidates = tagLinkCandidates(tagDoc);
+    check('同标签的实体两两成对，共 2 条候选', candidates.length === 2, candidates.map((item) => item.source + '->' + item.target + ' ' + item.tag).join(' | '));
+    check('候选带中文提示「同标签：…」', candidates.every((item) => tagLinkLabel(item.tag) === '同标签：' + item.tag));
+    check('同一对实体只出一条候选（不会重复连线）', new Set(candidates.map((item) => [item.source, item.target].sort().join('-'))).size === candidates.length);
+    check('已有关系的实体对不再候选', (() => {
+      const withEdge = { ...tagDoc, edges: [{ id: 'e', source: 'a', target: 'b', relType: 'related' }] };
+      return tagLinkCandidates(withEdge).every((item) => [item.source, item.target].sort().join('-') !== 'a-b');
+    })());
+    check('候选上限固定为 200 条', TAG_LINK_MAX === 200);
+  }
+
+  console.log('[53] 素材库分组（M9）');
+  {
+    const { groupAssets, countGrouped, sourceLabelOf, dateOf, ASSET_GROUP_MODES } = require(path.join(out, 'lib', 'assetGroups.js'));
+    const assets = [
+      { id: '1', zone: 'evidence', source: 'import', addedAt: '2026-09-03T10:00:00' },
+      { id: '2', zone: 'evidence', source: 'import', addedAt: '2026-09-01T10:00:00' },
+      { id: '3', zone: 'evidence', source: 'watch', addedAt: '2026-09-03T11:00:00' },
+      { id: '4', zone: 'evidence' },
+    ];
+    check('三种分组模式固定为 按来源 / 按日期 / 不分', JSON.stringify(ASSET_GROUP_MODES.map((item) => item.id)) === JSON.stringify(['source', 'date', 'none']));
+    check('按来源分组：两个来源 + 未标注', (() => {
+      const groups = groupAssets(assets, 'source');
+      return groups.length === 3 && groups.some((group) => group.label === '手动导入' && group.items.length === 2) && groups.some((group) => group.label === '未标注');
+    })());
+    check('未标注永远排最后一组', (() => {
+      const groups = groupAssets(assets, 'source');
+      return groups[groups.length - 1].key === 'unknown';
+    })());
+    check('分组不丢素材（总数守恒）', countGrouped(groupAssets(assets, 'source')) === assets.length && countGrouped(groupAssets(assets, 'date')) === assets.length && countGrouped(groupAssets(assets, 'none')) === assets.length);
+    check('按日期分组：新日期在前，没有时间的排最后', (() => {
+      const groups = groupAssets(assets, 'date');
+      return groups[0].label === '2026-09-03' && groups[1].label === '2026-09-01' && groups[groups.length - 1].label === '没有导入日期';
+    })());
+    check('不分组时是单组「全部素材」', (() => {
+      const groups = groupAssets(assets, 'none');
+      return groups.length === 1 && groups[0].label === '全部素材' && groups[0].items.length === assets.length;
+    })());
+    check('来源渠道有中文名、日期取前 10 位', sourceLabelOf({ id: 'x', source: 'watch' }) === '监视文件夹' && dateOf({ id: 'x', addedAt: '2026-09-03T10:00:00' }) === '2026-09-03');
+  }
+
+  console.log('[54] 布局自动换锚点 + 标签避让（M9 / S3）');
+  {
+    const { bestAnchors, anchorPoint, fanOutLabels, LABEL_STEP } = require(path.join(out, 'lib', 'edgeCurve.js'));
+    const box = (x, y, w = 180, h = 80) => ({ x, y, w, h });
+    const left = bestAnchors(box(0, 0), box(600, 0));
+    const right = bestAnchors(box(600, 0), box(0, 0));
+    const down = bestAnchors(box(0, 0), box(0, 400));
+    const up = bestAnchors(box(0, 400), box(0, 0));
+    check('左右相邻用 right→left / left→right', left.source === 'right' && left.target === 'left' && right.source === 'left' && right.target === 'right');
+    check('上下相邻用 bottom→top / top→bottom', down.source === 'bottom' && down.target === 'top' && up.source === 'top' && up.target === 'bottom');
+    check('斜向优先按主轴（45° 以上看上下）', bestAnchors(box(0, 0), box(200, 200)).source === 'right' && bestAnchors(box(0, 0), box(120, 300)).source === 'bottom');
+    check('锚点落在卡片四条边的中点上', (() => {
+      const rect = box(10, 20, 100, 60);
+      const top = anchorPoint(rect, 'top');
+      const rightPt = anchorPoint(rect, 'right');
+      return top.x === 60 && top.y === 20 && rightPt.x === 110 && rightPt.y === 50;
+    })());
+    check('同一格的标签按序号错开 LABEL_STEP', (() => {
+      const offsets = fanOutLabels([
+        { id: 'e1', x: 100, y: 100 },
+        { id: 'e2', x: 108, y: 104 },
+        { id: 'e3', x: 900, y: 600 },
+      ]);
+      return offsets.get('e1') === 0 && offsets.get('e2') === LABEL_STEP && offsets.get('e3') === 0;
+    })());
+    check('应用布局后关系锚点按新位置重算（不再一律 right/left）', (() => {
+      const { applyLayout } = require(path.join(out, 'commands', 'layoutCommands.js'));
+      const draft = {
+        nodes: [
+          { id: 'a', x: 0, y: 0, w: 180, h: 80 },
+          { id: 'b', x: 600, y: 600, w: 180, h: 80 },
+        ],
+        edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'right', targetHandle: 'left' }],
+      };
+      const command = applyLayout({
+        kind: 'grid',
+        placements: [
+          { id: 'a', x: 0, y: 0, locked: false },
+          { id: 'b', x: 0, y: 400, locked: false },
+        ],
+        moved: 1,
+        separatePasses: 0,
+        groupClamped: 0,
+      });
+      command.apply(draft);
+      return draft.edges[0].sourceHandle === 'bottom' && draft.edges[0].targetHandle === 'top' && command.label.indexOf('自动布局') === 0;
+    })());
+  }
+
+  console.log('[55] 启动密码 / 保险库已彻底删除（M9 / H3）');
+  {
+    const walk = (dir, acc = []) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === 'node_modules' || entry.name === 'target' || entry.name === '.git') continue;
+          walk(full, acc);
+        } else if (/\.(ts|tsx|css|rs|toml|json|md|cjs)$/.test(entry.name)) {
+          acc.push(full);
+        }
+      }
+      return acc;
+    };
+    const srcFiles = walk(path.join(root, 'src'));
+    const rustFiles = walk(path.join(root, 'src-tauri', 'src'));
+    const hit = (files, pattern) => files.filter((file) => pattern.test(fs.readFileSync(file, 'utf8'))).map((file) => path.relative(root, file));
+    const vaultHits = [...hit(srcFiles, /vault|保险库/), ...hit(rustFiles, /vault|保险库/)];
+    check('源码与 Rust 端不再有 vault / 保险库 引用', vaultHits.length === 0, vaultHits.join(', '));
+    check('锁屏组件与 vault 服务文件已删除', !fs.existsSync(path.join(root, 'src', 'components', 'panels', 'LockScreen.tsx')) && !fs.existsSync(path.join(root, 'src', 'services', 'vault.ts')) && !fs.existsSync(path.join(root, 'src', 'store', 'vaultStore.ts')) && !fs.existsSync(path.join(root, 'src-tauri', 'src', 'vault.rs')));
+    const cargo = fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.toml'), 'utf8');
+    check('Cargo 依赖不再有 aes-gcm / argon2 / rand', !/aes-gcm|argon2|^rand\s*=/m.test(cargo));
+    check('自检脚本只跑第 1/2 轮（没有 vaultapp 数据目录）', !/vaultapp/.test(fs.readFileSync(path.join(root, 'scripts', 'run-selftest.cjs'), 'utf8')));
+    check('文档里不再承诺启动密码 / 加密保险库', !/启动密码|加密保险库/.test(fs.readFileSync(path.join(root, 'README.md'), 'utf8') + fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8')));
+  }
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

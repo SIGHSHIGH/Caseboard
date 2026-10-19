@@ -2,7 +2,7 @@
 
 本仓库是 Windows 桌面应用「案情板 CaseBoard」。
 **唯一权威规格**：[docs/CaseBoard-SPEC.md](docs/CaseBoard-SPEC.md)（产品构思 + P0–P7 提示词库）
-**执行契约**：[docs/MILESTONES.md](docs/MILESTONES.md)（M1–M8 范围 / 交付物 / 验收标准 / 决策记录）
+**执行契约**：[docs/MILESTONES.md](docs/MILESTONES.md)（M1–M9 范围 / 交付物 / 验收标准 / 决策记录）
 
 ## 技术栈（锁定，不得擅自更换）
 
@@ -44,7 +44,7 @@ node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.
 
 验收四件套：`pnpm typecheck`、`pnpm smoke`（逻辑，node CJS）、`pnpm ui-smoke`（打包产物 + jsdom 伪布局）、`pnpm bench`（1000 节点 DSL 解析链 < 300ms）；`build` 与 `dev/preview` 在沙箱内需 `sandbox_permissions: danger-full-access`（esbuild 子进程）。
 
-**桌面端（M4 起）再加第五件**：`node scripts/run-selftest.cjs`（三轮 `caseboard.exe --selftest`：第 1/2 轮数据跨进程与导出，第 3 轮 `--selftest=3` 只验保险库加密；报告落 `.tmp-esbuild/selftest-phase*.json`，第 3 轮用独立数据目录 `.tmp-esbuild/vaultapp`）。Tauri 构建固定前置：
+**桌面端（M4 起）再加第五件**：`node scripts/run-selftest.cjs`（两轮 `caseboard.exe --selftest`：第 1 轮数据跨进程与导出，第 2 轮复发一遍验证持久化；报告落 `.tmp-esbuild/selftest-phase*.json`。M9 按 H3 移除了应用解锁与整库加密，原来的第 3 轮 vault 自检一并移除，`CB_PHASES` 默认 `1,2`）。Tauri 构建固定前置：
 
 ```powershell
 Get-Process caseboard -ErrorAction SilentlyContinue | Stop-Process -Force   # 残留进程会锁住 exe

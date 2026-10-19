@@ -18,6 +18,8 @@ export type CaseEdgeData = {
   dimmed?: boolean;
   /** 落在当前高亮路径上（M5-3） */
   highlighted?: boolean;
+  /** M9 / S3 标签避让：同一区域里的第 n 个标签向下错开的像素 */
+  labelDy?: number;
 };
 export type CaseFlowEdge = Edge<CaseEdgeData, 'bezier'>;
 
@@ -69,6 +71,8 @@ function BezierEdgeInner({
   const path = geometry ? curvePath(geometry) : basePath;
   const handleX = geometry ? geometry.handle.x : baseLabelX;
   const handleY = geometry ? geometry.handle.y : baseLabelY;
+  /** S3 标签避让：标签整体下移，曲线与曲率手柄仍留在真实中点 */
+  const labelDy = data?.labelDy ?? 0;
 
   const midRef = useRef(mid);
   const previewRef = useRef<XY | null>(previewOffset);
@@ -149,7 +153,7 @@ function BezierEdgeInner({
         <div
           className={`cb-edge-label${selected ? ' is-selected' : ''}${highlighted ? ' is-path' : ''}`}
           style={{
-            transform: `translate(-50%, -50%) translate(${handleX}px, ${handleY}px)`,
+            transform: `translate(-50%, -50%) translate(${handleX}px, ${handleY + labelDy}px)`,
             borderColor: stroke,
           }}
           onDoubleClick={(event) => {

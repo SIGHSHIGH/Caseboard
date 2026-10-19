@@ -6,7 +6,11 @@ import type { NodeType } from '../types';
  * 字段值统一存进 CaseNode.fields，模板本身不参与数据模型（换模板不迁移数据）。
  */
 
-export type FieldKind = 'text' | 'number' | 'date' | 'select' | 'textarea';
+/**
+ * 字段控件类型。`datetime` 用于「发生时刻」这类需要精确到分钟的时间点：
+ * 控件写 fields，同时把值同步进 node.time（时间线与时间滑杆都读 node.time）。
+ */
+export type FieldKind = 'text' | 'number' | 'date' | 'datetime' | 'select' | 'textarea';
 
 export interface NodeFieldDef {
   key: string;
@@ -63,8 +67,7 @@ export const NODE_TEMPLATES: Record<NodeType, NodeTemplate> = {
     fields: [
       { key: '地点类型', label: '地点类型', kind: 'select', options: ['住宅', '商业', '公共场所', '交通枢纽', '野外', '其他'] },
       { key: '地址', label: '地址', kind: 'text', wide: true },
-      { key: '经度', label: '经度', kind: 'number', placeholder: '经度保留 6 位小数' },
-      { key: '纬度', label: '纬度', kind: 'number' },
+      // 经纬度统一由右栏「地图坐标」块编辑（写同一个「经纬度」字段），模板里不再重复
       { key: '管辖单位', label: '管辖单位', kind: 'text' },
       { key: '是否现场', label: '是否现场', kind: 'select', options: ['是', '否', '待勘'] },
     ],
@@ -86,7 +89,7 @@ export const NODE_TEMPLATES: Record<NodeType, NodeTemplate> = {
     label: '事件',
     hint: '有明确时间点或时间段的关键行为',
     fields: [
-      { key: '发生时刻', label: '发生时刻', kind: 'text', placeholder: '如 2026-09-03 20:10' },
+      { key: '发生时刻', label: '发生时刻', kind: 'datetime', placeholder: '选日期与时间，写回时间线' },
       { key: '地点', label: '地点', kind: 'text' },
       { key: '经手人', label: '经手人', kind: 'text' },
       { key: '经过', label: '经过', kind: 'textarea', wide: true },

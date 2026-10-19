@@ -82,11 +82,32 @@ export function formatTimelineDate(at: number): string {
   return new Date(at).toISOString().slice(0, 10);
 }
 
+/** S4：node.time 缺失时，回退读这些字段键（按优先级） */
+export const TIME_FIELD_KEYS = ['发生时刻', '时间', '交易时间', '日期', '案发时间'];
+
+/**
+ * 取实体的时间范围。
+ * M9 / S4：老数据里大量节点只填了「发生时刻」这类字段而没有 node.time，
+ * 结果新节点进不了时间线、滑杆与播放都是空的。这里在 node.time 缺失时回退读 fields。
+ */
 export function nodeTimeRange(node: CaseNode): { start: number; end: number } | null {
-  const start = parseTimelineTime(node.time?.start);
+  let start = parseTimelineTime(node.time?.start);
+  if (start === null) {
+    const fields = node.fields ?? {};
+    for (const key of TIME_FIELD_KEYS) {
+      const raw = fields[key];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const parsed = parseTimelineTime(String(raw));
+      if (parsed !== null) {
+        start = parsed;
+        break;
+      }
+    }
+  }
   if (start === null) return null;
+  let end = start;
   const parsedEnd = parseTimelineTime(node.time?.end);
-  const end = parsedEnd !== null && parsedEnd >= start ? parsedEnd : start;
+  if (parsedEnd !== null && parsedEnd >= start) end = parsedEnd;
   return { start, end };
 }
 

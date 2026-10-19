@@ -84,3 +84,84 @@ export function normalizeControlPoints(raw: unknown): XY[] | undefined {
   }
   return points.length > 0 ? points : undefined;
 }
+
+/* ===== M9 / S3：连接点（handle）按相对位置自动选择 ===== */
+
+/** 卡片四条边上的连接点，名字与 React Flow 的 handle id 一致 */
+export type EdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
+export const ANCHORS: EdgeAnchor[] = ['top', 'right', 'bottom', 'left'];
+
+export interface RectLike {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export function rectOf(node: RectLike): RectLike {
+  return { x: node.x, y: node.y, w: node.w, h: node.h };
+}
+
+/** 某条边上的连接点坐标（世界坐标） */
+export function anchorPoint(rect: RectLike, anchor: EdgeAnchor): XY {
+  switch (anchor) {
+    case 'top':
+      return { x: rect.x + rect.w / 2, y: rect.y };
+    case 'bottom':
+      return { x: rect.x + rect.w / 2, y: rect.y + rect.h };
+    case 'left':
+      return { x: rect.x, y: rect.y + rect.h / 2 };
+    case 'right':
+    default:
+      return { x: rect.x + rect.w, y: rect.y + rect.h / 2 };
+  }
+}
+
+/**
+ * 按两个矩形的相对位置挑「面对面」的连接点。
+ * 横向距离更大就用左右，否则用上下——布局后节点位置大变时连线不会绕到卡片背后，
+ * 也就不会出现线穿卡片和交叉。
+ */
+export function bestAnchors(source: RectLike, target: RectLike): { source: EdgeAnchor; target: EdgeAnchor } {
+  const dx = target.x + target.w / 2 - (source.x + source.w / 2);
+  const dy = target.y + target.h / 2 - (source.y + source.h / 2);
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? { source: 'right', target: 'left' } : { source: 'left', target: 'right' };
+  }
+  return dy >= 0 ? { source: 'bottom', target: 'top' } : { source: 'top', target: 'bottom' };
+}
+
+/** 单个矩形朝另一个矩形方向的连接点（画吸附线、聚合边用） */
+export function facingAnchor(rect: RectLike, other: RectLike): EdgeAnchor {
+  return bestAnchors(rect, other).source;
+}
+
+/* ===== M9 / S3：标签避让 ===== */
+
+/** 标签去重用的网格边长（世界坐标）：同一格里的标签视为会重叠 */
+export const LABEL_CELL = 120;
+/** 每个重叠标签向下错开的像素 */
+export const LABEL_STEP = 16;
+
+/**
+ * 标签避让：把落点映射到网格，同一格里的第 n 个标签向下挪 n*LABEL_STEP。
+ * 只做纵向错开，横向仍贴曲线中点，视觉上不会离关系太远。
+ */
+export function fanOutLabels(points: Array<{ id: string; x: number; y: number }>): Map<string, number> {
+  const cells = new Map<string, string[]>();
+  const out = new Map<string, number>();
+  for (const point of points) {
+    const key = `${Math.round(point.x / LABEL_CELL)}:${Math.round(point.y / LABEL_CELL)}`;
+    const list = cells.get(key);
+    if (list) {
+      list.push(point.id);
+    } else {
+      cells.set(key, [point.id]);
+    }
+  }
+  for (const ids of cells.values()) {
+    ids.forEach((id, index) => out.set(id, index * LABEL_STEP));
+  }
+  return out;
+}
+

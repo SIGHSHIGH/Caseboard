@@ -6,6 +6,7 @@ import { fileService } from '../../services/file';
 import { thumbUrl } from '../../services/imageStore';
 import { startDirectoryWatch, supportsDirectoryWatch, type WatchHandle } from '../../services/watch';
 import { formatBytes } from '../../lib/assetMeta';
+import { ASSET_GROUP_MODES, groupAssets, type AssetGroupMode } from '../../lib/assetGroups';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
 import { ExtractDialog } from './ExtractDialog';
 import type { Asset } from '../../types';
@@ -62,8 +63,11 @@ export function AssetLibrary() {
   const busy = useImportStore((s) => s.busy);
   const progress = useImportStore((s) => s.progress);
   const importError = useImportStore((s) => s.error);
+  const ocrNotice = useImportStore((s) => s.ocrNotice);
+  const clearOcrNotice = useImportStore((s) => s.clearOcrNotice);
 
   const [zone, setZone] = useState<Zone>('evidence');
+  const [groupMode, setGroupMode] = useState<AssetGroupMode>('source');
   const [extractOpen, setExtractOpen] = useState(false);
   const [watching, setWatching] = useState<string | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
@@ -124,6 +128,20 @@ export function AssetLibrary() {
         </button>
       </div>
 
+      <div className="cb-assets__groupby">
+        <span>分组</span>
+        {ASSET_GROUP_MODES.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={groupMode === item.id ? 'cb-tab cb-tab--active' : 'cb-tab'}
+            onClick={() => setGroupMode(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <div className="cb-assets__actions">
         <button type="button" className="cb-btn" onClick={handlePick} disabled={busy}>
           导入图片
@@ -150,6 +168,14 @@ export function AssetLibrary() {
       ) : null}
       {watchError ? <p className="cb-panel__note cb-panel__note--warn">{watchError}</p> : null}
       {importError ? <p className="cb-panel__note cb-panel__note--warn">{importError}</p> : null}
+      {ocrNotice ? (
+        <p className="cb-panel__note cb-panel__note--warn">
+          {ocrNotice}
+          <button type="button" className="cb-link-btn" onClick={clearOcrNotice}>
+            知道了
+          </button>
+        </p>
+      ) : null}
 
       {list.length === 0 ? (
         <p className="cb-assets__empty">
@@ -158,14 +184,26 @@ export function AssetLibrary() {
             : '尚无证据素材。点「导入图片」或把图片拖进画布，支持批量、粘贴与目录监视。'}
         </p>
       ) : (
-        <div className="cb-assets__grid">
-          {list.map((asset) => (
-            <AssetTile
-              key={asset.id}
-              asset={asset}
-              selected={asset.id === selectedAssetId}
-              onSelect={() => selectAsset(asset.id)}
-            />
+        <div className="cb-assets__groups">
+          {groupAssets(list, groupMode).map((group) => (
+            <section key={group.key} className="cb-assets__group">
+              {groupMode === 'none' ? null : (
+                <div className="cb-assets__grouphead">
+                  <span>{group.label}</span>
+                  <span className="cb-assets__groupcount">{group.items.length} 张</span>
+                </div>
+              )}
+              <div className="cb-assets__grid">
+                {group.items.map((asset) => (
+                  <AssetTile
+                    key={asset.id}
+                    asset={asset}
+                    selected={asset.id === selectedAssetId}
+                    onSelect={() => selectAsset(asset.id)}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}

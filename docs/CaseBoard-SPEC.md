@@ -56,7 +56,7 @@
 | 一句话 | 数字时代的刑侦白板：把人物、照片、证据、事件钉在无限画布上，用贝塞尔曲线织出关系网，并可随时切换为代码视图精确编辑 |
 | 平台 | Windows 优先（Win10/11，安装包 .msi/.msix），架构预留 macOS/Linux |
 | 核心隐喻 | 刑侦剧里的白板 + 红线 + 照片 + 便签，加上图数据库与双向代码 |
-| 本地优先 | 数据默认只存本机，离线可用，加密保存，敏感案情不出本机 |
+| 本地优先 | 数据默认只存本机，离线可用，敏感案情不出本机（**M9 起不再内置整库加密，见下方说明**） |
 
 **目标用户（按优先级）**
 
@@ -207,10 +207,10 @@
 
 ### 2.8 数据、安全与互操作
 
-- 本地存储：SQLite（建议 SQLCipher 加密）+ 本地素材文件夹（图片原件 + 缩略图 + 标注 JSON）。
+- 本地存储：SQLite（**M9 起用普通 SQLite 明文库，不再走 SQLCipher / 整库加密**）+ 本地素材文件夹（图片原件 + 缩略图 + 标注 JSON）。
 - 项目文件 `.caseboard`（本质 zip：数据库 + assets + DSL 文本 + 缩略图），单文件即可拷贝/移交。
 - 自动保存、版本快照（时间机器回溯）、回收站。
-- 启动密码 / Windows Hello 解锁；敏感字段脱敏；「脱敏导出」一键给人脸、身份证号、手机号打码。
+- ~~启动密码 / Windows Hello 解锁~~（**M9 起删除应用解锁，安全责任交还操作系统账户与 BitLocker**）；敏感字段脱敏；「脱敏导出」一键给人脸、身份证号、手机号打码。
 - AI 可配置：**默认本地模型**（Ollama / llama.cpp 跑 Qwen 等）或自填 OpenAI 兼容 API Key；在设置里明确标注数据是否出本机。
 - 导出：PNG/SVG、PDF 报告、Word（.docx）、JSON、CSV、Mermaid、Graphviz DOT、GeoJSON。
 - 导入：Excel/CSV 人员表、JSON、Mermaid、Obsidian Canvas、XMind、图片文件夹。
@@ -234,7 +234,7 @@
 7. AI 建议的关系一律标「待核实」虚线，绝不当真。
 8. 不在场证明等时间矛盾自动高亮。
 9. 演示模式像电影一样一根线一根线亮。
-10. 全本地、可加密、离线 AI 也能跑。
+10. 全本地、离线 AI 也能跑（**M9 起不承诺应用内加密**）。
 
 ---
 
@@ -466,7 +466,7 @@ case "2026-10 连环诈骗案" caseNo "A-2026-1018" {
 | 代码编辑器 | CodeMirror 6 | 轻量、可配 Lezer 语法、lint、自动补全、diff 视图 |
 | DSL 解析 | Lezer | 与 CodeMirror 同生态，增量解析、容错 |
 | 状态 | Zustand + Immer | 轻量；配合 Command 模式实现撤销/重做 |
-| 持久化 | SQLite（tauri-plugin-sql，SQLCipher 加密） | 本地关系数据 + 全文检索 FTS5 |
+| 持久化 | SQLite（tauri-plugin-sql，**M9 起为普通明文库**） | 本地关系数据 + 全文检索 FTS5 |
 | 图算法 | graphology + dagre + d3-force | 中心度、最短路径、自动布局 |
 | 图片 | image crate（Rust 侧缩略图/哈希/EXIF）+ Tauri 原生拖入拖出（drag-drop / clipboard）+ 画布自由图片节点（react-rnd/自写 transform 节点）+ 标注层（SVG/Konva） | 自由移动/缩放/旋转/层级；PDF 抽页用 pdfium；视频抽帧用 ffmpeg-sidecar；OCR 用 PaddleOCR/Tesseract 侧车 |
 | 生图后端 | 本地 ComfyUI（HTTP API，本地侧车）/ Stable Diffusion WebUI；云端走 OpenAI 兼容图像接口 | 默认本地、数据不出本机；云端需用户显式配置 |
@@ -523,7 +523,7 @@ SQLite/SQLCipher + 素材库 + OCR + 本地/云端 AI
 
 【产品】
 名称：案情板 CaseBoard。一句话：数字时代的刑侦白板——把人物、照片、证据、事件钉在无限画布上，用贝塞尔曲线连接关系，并可在「图形视图」与「代码（DSL）视图」之间双向实时切换。
-目标用户：办案人员、律师、风控调查员、记者、编剧。核心诉求：本地优先、离线可用、数据加密、可精确编辑、可汇报演示。
+目标用户：办案人员、律师、风控调查员、记者、编剧。核心诉求：本地优先、离线可用、可精确编辑、可汇报演示（原「数据加密」一项在 M9 按决策 D53 撤销）。
 
 【技术栈（强制）】
 - 外壳：Tauri 2 + Rust；前端：React 18 + TypeScript + Vite
@@ -576,7 +576,7 @@ interface View { id:string; kind:'board'|'timeline'|'map'|'chain'|'presentation'
 - 先搭骨架再填肉：目录结构、类型定义、Command 体系、Store、空视图框架优先；功能顺序按 M1→M8 推进。
 
 【里程碑顺序】
-M1 画布MVP（节点/贝塞尔连线/属性/本地JSON）；M2 领域模型+组+图片工作台（四种导入、自由图片节点、缩略图哈希去重、标注层）；M3 DSL+双向同步；M4 Tauri+SQLite+项目文件+图片导出/脱敏/图片包；M5 过滤/聚焦/路径分析/自动布局/时间线；M6 AI 文本能力；M7 多假设/证据链/演示/OCR+AI 生图（ComfyUI/四预设/图生图/水印/分区/日志）；M8 加密/脱敏/AI 合规审计/打包。
+M1 画布MVP（节点/贝塞尔连线/属性/本地JSON）；M2 领域模型+组+图片工作台（四种导入、自由图片节点、缩略图哈希去重、标注层）；M3 DSL+双向同步；M4 Tauri+SQLite+项目文件+图片导出/脱敏/图片包；M5 过滤/聚焦/路径分析/自动布局/时间线；M6 AI 文本能力；M7 多假设/证据链/演示/OCR+AI 生图（ComfyUI/四预设/图生图/水印/分区/日志）；M8 脱敏/AI 合规审计/打包；M9 交互修订与安全精简（删除应用解锁与整库加密，改为依赖操作系统账户权限 + BitLocker，见 MILESTONES D53/D60）。
 
 现在请先输出：①建议的目录结构；②首批要创建的文件清单与职责；③M1 的详细任务拆解。等我确认后再开始写代码。
 ```

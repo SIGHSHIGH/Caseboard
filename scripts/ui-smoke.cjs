@@ -225,7 +225,14 @@ function check(name, condition, detail) {
   const cssName = fs.readdirSync(assetsDir).find((name) => name.endsWith('.css'));
   const cssText = cssName ? fs.readFileSync(path.join(assetsDir, cssName), 'utf8') : '';
   const barRule = (cssText.match(/\.cb-free-image__bar\s*\{[^}]*\}/) || [''])[0];
-  check('工具栏抬到旋转手柄之上（top:-60px）', /top:\s*-60px/.test(barRule), barRule.slice(0, 120));
+  // M9（A2）：工具条改成贴图片右侧竖排，让出顶部的旋转手柄（原来 top:-60px 与旋转手柄 top:-36px 重叠）
+  check(
+    '图片工具条改到右侧竖排（不再压住旋转手柄）',
+    /left:\s*calc\(100% \+ 10px\)/.test(barRule) && /flex-direction:\s*column/.test(barRule) && /top:\s*0/.test(barRule),
+    barRule.slice(0, 160),
+  );
+  const rotateRule = (cssText.match(/\.cb-img-rotate\s*\{[^}]*\}/) || [''])[0];
+  check('旋转手柄仍在图片顶部中心', /top:\s*-36px/.test(rotateRule), rotateRule.slice(0, 120));
   const curveRule = (cssText.match(/\.cb-curve-handle\s*\{[^}]*\}/) || [''])[0];
   check('曲率手柄样式已打包', /z-index:\s*7/.test(curveRule) && /pointer-events:\s*all/.test(curveRule), curveRule.slice(0, 160));
   const firstEdge = doc.querySelector('.react-flow__edge');
@@ -544,7 +551,7 @@ function check(name, condition, detail) {
   console.log('[UI] M7 离线地图视图');
   check('可切到地图视图', await clickByText('.cb-viewtab', '地图'));
   check('地图视图已渲染', doc.querySelector('.cb-map') !== null);
-  check('两个带坐标的实体已上图', doc.querySelectorAll('.cb-map__pin').length === 2, doc.querySelectorAll('.cb-map__pin').length);
+  check('带坐标的实体已上图（M9 起演示数据补齐到 5 个）', doc.querySelectorAll('.cb-map__pin').length === 5, doc.querySelectorAll('.cb-map__pin').length);
   check('图例声明离线无瓦片', (doc.querySelector('.cb-map__legend')?.textContent || '').includes('未加载瓦片'), doc.querySelector('.cb-map__legend')?.textContent);
   check('坐标标签可读', (doc.querySelector('.cb-map__coord')?.textContent || '').includes('31.'), doc.querySelector('.cb-map__coord')?.textContent);
   check('可切回画布视图', await clickByText('.cb-viewtab', '画布'));
@@ -609,6 +616,73 @@ function check(name, condition, detail) {
   const srcCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.css'), 'utf8');
   check('样式表含深色与高对比变量块', /:root\[data-theme='dark'\]/.test(srcCss) && /--cb-surface:\s*#232120/.test(srcCss) && /:root\[data-theme='contrast'\]/.test(srcCss));
   check('样式表组件层不再写死白底', !/background:\s*#fff\b/i.test(srcCss), ((srcCss.match(/background:\s*#fff\b/gi) || []).length) + ' 处残留');
+  console.log('[UI] M9 地图点选 / 新建节点对话框 / tag 连线 / 素材库分组 / 演示联动编辑');
+  const m9MapTab = [...doc.querySelectorAll('.cb-viewtab')].find((tab) => (tab.textContent || '') === '地图');
+  if (m9MapTab) m9MapTab.click();
+  await sleep(350);
+  check('地图视图已渲染', doc.querySelector('.cb-map') !== null);
+  check('带坐标的实体摆上示意地图', doc.querySelectorAll('.cb-map__pin').length >= 5, doc.querySelectorAll('.cb-map__pin').length);
+  check('地图左侧列出没有坐标的实体', doc.querySelectorAll('.cb-map__noitem').length >= 1, doc.querySelectorAll('.cb-map__noitem').length);
+  check('每个缺坐标实体都有「点选设坐标」入口', [...doc.querySelectorAll('.cb-map__noitem .cb-link-btn')].some((b) => (b.textContent || '').includes('点选设坐标')), doc.querySelectorAll('.cb-map__noitem .cb-link-btn').length);
+  const m9BoardTab = [...doc.querySelectorAll('.cb-viewtab')].find((tab) => (tab.textContent || '') === '画布');
+  if (m9BoardTab) m9BoardTab.click();
+  await sleep(350);
+
+  const m9Pane = doc.querySelector('.react-flow__pane');
+  // React Flow 的空格双击在 jsdom 里给不到完整指针序列，画布容器上还有一路 dblclick 兜底
+  if (m9Pane) m9Pane.dispatchEvent(new window.MouseEvent('dblclick', { detail: 2, bubbles: true, cancelable: true }));
+  await sleep(300);
+  check('双击画布空白弹出「新建节点」对话框', doc.querySelector('.cb-newnode') !== null);
+  check('对话框挂在遮罩层里（居中而不是塞进顶栏）', doc.querySelector('.cb-modal__mask .cb-newnode') !== null);
+  check('对话框有类型下拉（8 类）与标题输入', doc.querySelectorAll('.cb-newnode select option').length === 8 && doc.querySelector('.cb-newnode input') !== null, doc.querySelectorAll('.cb-newnode select option').length);
+  const m9TitleInput = doc.querySelector('.cb-newnode input');
+  if (m9TitleInput) await setInputValue(m9TitleInput, 'M9 新建实体');
+  check('点「创建」提交新建', await clickByText('.cb-newnode .cb-modal__actions .cb-btn', '创建'));
+  await sleep(350);
+  check('新建后对话框关闭', doc.querySelector('.cb-newnode') === null);
+  check('新建的实体已落到画布并选中', [...doc.querySelectorAll('.cb-node')].some((el) => (el.textContent || '').includes('M9 新建实体')) && doc.querySelectorAll('.cb-node.is-selected').length === 1, doc.querySelectorAll('.cb-node').length);
+
+  check('右栏标签用统一 tag 编辑器', doc.querySelector('.cb-tagedit') !== null);
+  check('右栏有「按 tag 自动连线…」入口', [...doc.querySelectorAll('.cb-panel--right .cb-btn')].some((b) => (b.textContent || '').includes('按 tag 自动连线')));
+  check('可打开按 tag 自动连线确认面板', await clickByText('.cb-panel--right .cb-btn', '按 tag 自动连线'));
+  await sleep(250);
+  check('连线确认面板挂在遮罩层里', doc.querySelector('.cb-modal__mask .cb-taglink') !== null);
+  check('确认面板列出候选配对', doc.querySelectorAll('.cb-taglink__item').length >= 1, doc.querySelectorAll('.cb-taglink__item').length);
+  check('确认面板写明点线语义', (doc.querySelector('.cb-taglink .cb-modal__hint')?.textContent || '').includes('点线'), doc.querySelector('.cb-taglink .cb-modal__hint')?.textContent?.slice(0, 40));
+  check('可取消 tag 连线面板', await clickByText('.cb-taglink .cb-btn', '取消'));
+  await sleep(250);
+  check('tag 连线面板已移除', doc.querySelector('.cb-taglink') === null);
+
+  check('可切到素材标签（分组）', await clickByText('.cb-tabs .cb-tab', '素材'));
+  check('素材库有三种分组方式', doc.querySelectorAll('.cb-assets__groupby .cb-tab').length === 3, doc.querySelectorAll('.cb-assets__groupby .cb-tab').length);
+  check('素材库按组渲染', doc.querySelectorAll('.cb-assets__group').length >= 1, doc.querySelectorAll('.cb-assets__group').length);
+  check('素材组头显示组名与张数', /张/.test(doc.querySelector('.cb-assets__grouphead')?.textContent || ''), doc.querySelector('.cb-assets__grouphead')?.textContent);
+
+  const m9ImageEl = doc.querySelector('.cb-free-image');
+  if (m9ImageEl) m9ImageEl.click();
+  await sleep(200);
+  check('图片工具条挂在图片右侧', doc.querySelector('.cb-free-image__bar') !== null);
+  check('工具条 5 个竖排图标按钮', doc.querySelectorAll('.cb-free-image__bar button').length === 5 && doc.querySelectorAll('.cb-free-image__bar-icon').length === 5, doc.querySelectorAll('.cb-free-image__bar button').length);
+  check('锚点可点选对应实体（M9 / T3）', (() => {
+    const rule = (cssText.match(/\.cb-free-image__anchor\s*\{[^}]*\}/) || [''])[0];
+    return /pointer-events:\s*auto/.test(rule) && doc.querySelectorAll('.cb-free-image__anchor').length >= 1;
+  })(), (cssText.match(/\.cb-free-image__anchor\s*\{[^}]*\}/) || [''])[0].slice(0, 160));
+
+  const m9PresentTab = [...doc.querySelectorAll('.cb-viewtab')].find((tab) => (tab.textContent || '') === '演示');
+  if (m9PresentTab) m9PresentTab.click();
+  await sleep(350);
+  check('演示页有联动编辑控件', doc.querySelector('.cb-present__edit') !== null);
+  check('联动编辑含标题/状态/备注', doc.querySelectorAll('.cb-present__edit input').length >= 1 && doc.querySelectorAll('.cb-present__edit select').length >= 1 && doc.querySelectorAll('.cb-present__edit textarea').length >= 1, [doc.querySelectorAll('.cb-present__edit input').length, doc.querySelectorAll('.cb-present__edit select').length, doc.querySelectorAll('.cb-present__edit textarea').length]);
+  if (m9BoardTab) m9BoardTab.click();
+  await sleep(300);
+
+  check('关系线连接点已放大到 14px', (() => {
+    const rule = (cssText.match(/\.cb-handle\s*\{[^}]*\}/) || [''])[0];
+    return /width:\s*14px/.test(rule) && /height:\s*14px/.test(rule);
+  })(), (cssText.match(/\.cb-handle\s*\{[^}]*\}/) || [''])[0].slice(0, 160));
+  check('样式表含 M9 新增区块', ['.cb-taglink', '.cb-tagedit', '.cb-geo', '.cb-map__pickbar', '.cb-assets__groupby'].every((sel) => srcCss.includes(sel)), ['.cb-taglink', '.cb-tagedit', '.cb-geo', '.cb-map__pickbar', '.cb-assets__groupby'].filter((sel) => !srcCss.includes(sel)));
+  check('样式表不再出现启动密码锁屏样式', !/\.cb-lock\b/.test(srcCss) && !/\.cb-lock__/.test(srcCss));
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

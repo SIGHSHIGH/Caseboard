@@ -16,15 +16,15 @@ Windows 优先、本地优先、离线可用；图形视图与代码视图是**�
 - **分析视图**：过滤与聚焦、最短路径与全部路径、度/中介中心度、五种自动布局（锁定节点不动）、时间线回放、演示模式、离线示意地图。
 - **AI 文本能力**：P4 抽取建图 → 待确认队列逐条采纳；P5 矛盾与证据链审查；P6 自然语言编辑 diff 预览；P7 七节报告（事实句带 `[证据:id]` / `[节点:id]`）可导出 Word / PDF。内置规则通道离线可跑，Ollama / OpenAI 兼容通道需显式授权。
 - **AI 生图与合规**：四预设（模拟画像/场景复原/物品示意/图像增强）、内置程序化绘制默认通道、ComfyUI 与 OpenAI 兼容图像接口可选；换脸类提示词拦截；角标写入像素且界面无移除开关；素材库 AI 分区 + 画布虚线边框；命令层拦截「AI 图改已证实」。
-- **安全**：启动密码保险库（整库 AES-256-GCM + Argon2id，锁定态磁盘只有密文）、锁屏、脱敏全链路复核、AI 生成图合规审计导出、打印样式与 A4 页眉页脚、全局搜索 + Ctrl+K 命令面板、NSIS 安装包。
+- **安全**：脱敏全链路复核、AI 生成图合规审计导出、打印样式与 A4 页眉页脚、全局搜索 + Ctrl+K 命令面板、NSIS 安装包（**M9 起移除应用解锁与整库加密**，数据就是本机的普通 SQLite 文件）。
 
 ## 文档地图
 
 | 文档 | 作用 |
 |---|---|
 | [docs/CaseBoard-SPEC.md](docs/CaseBoard-SPEC.md) | 产品构思与 AI 提示词库（规格原文） |
-| [docs/MILESTONES.md](docs/MILESTONES.md) | **里程碑契约**：M1–M8 范围、验收记录、环境实测、决策记录 D1–D52 |
-| [docs/MANUAL-ACCEPTANCE.md](docs/MANUAL-ACCEPTANCE.md) | 必须人工复验的清单（真机手感、安装、打印、锁屏） |
+| [docs/MILESTONES.md](docs/MILESTONES.md) | **里程碑契约**：M1–M9 范围、验收记录、环境实测、决策记录 D1–D60 |
+| [docs/MANUAL-ACCEPTANCE.md](docs/MANUAL-ACCEPTANCE.md) | 必须人工复验的清单（真机手感、安装、打印） |
 | [AGENTS.md](AGENTS.md) | 工程约定：技术栈锁定、硬约束 Gate 0、命令、目录与代码风格 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本与里程碑变更 |
 

@@ -103,7 +103,8 @@ export function AiImagePanel({ onClose }: AiImagePanelProps) {
   };
 
   return (
-    <div className="cb-modal cb-aiimg" role="dialog" aria-label="AI 生图">
+    <div className="cb-modal__mask" role="dialog" aria-modal="true" aria-label="AI 生图">
+      <div className="cb-modal cb-aiimg">
       <div className="cb-aiimg__head">
         <div>
           <h2>AI 生图 · 仅示意</h2>
@@ -257,6 +258,7 @@ export function AiImagePanel({ onClose }: AiImagePanelProps) {
             <p className="cb-aiimg__empty">还没有预览。生成后这里会显示带角标的模拟图。</p>
           )}
         </section>
+      </div>
       </div>
     </div>
   );

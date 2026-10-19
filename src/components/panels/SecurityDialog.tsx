@@ -1,22 +1,10 @@
 import { useState } from 'react';
-import { useVaultStore } from '../../store/vaultStore';
 import { useDocStore } from '../../store/docStore';
 import { auditAiAssets } from '../../lib/aiAudit';
 import { fileService } from '../../services/file';
 
-/** 安全设置（M8）：启用/关闭启动密码、立即锁定、更换密码；Windows Hello 为未接入的接入位说明 */
+/** 安全与合规（M8 起；M9 按 H3 删除启动密码/加密，只保留 Windows Hello 接入位说明、AI 审计、脱敏说明） */
 export function SecurityDialog({ onClose }: { onClose: () => void }) {
-  const [password, setPassword] = useState('');
-  const [nextPassword, setNextPassword] = useState('');
-  const enabled = useVaultStore((s) => s.enabled);
-  const busy = useVaultStore((s) => s.busy);
-  const error = useVaultStore((s) => s.error);
-  const notice = useVaultStore((s) => s.notice);
-  const enable = useVaultStore((s) => s.enable);
-  const disable = useVaultStore((s) => s.disable);
-  const changePassword = useVaultStore((s) => s.changePassword);
-  const lockNow = useVaultStore((s) => s.lockNow);
-  const clearMessages = useVaultStore((s) => s.clearMessages);
   const doc = useDocStore((s) => s.doc);
   const [auditNotice, setAuditNotice] = useState('');
 
@@ -47,47 +35,17 @@ export function SecurityDialog({ onClose }: { onClose: () => void }) {
         </header>
         <div className="cb-security__body">
           <section className="cb-security__block">
-            <h3>启动密码（数据库加密）</h3>
+            <h3>本机存储（M9 已删除启动密码与加密）</h3>
             <p className="cb-security__note">
-              启用后，案件数据库在本机磁盘上以 AES-256-GCM 密文保存；启动时必须输入密码才会解出明文库。
-              密码只在本机校验，不上传、不可找回。
+              案件数据保存在本机普通 SQLite 文件里（<code>caseboard.db</code>），不再有启动密码、锁屏或密文库。
+              需要限制访问时，用操作系统的账户权限与磁盘加密（BitLocker）保护这台机器。
             </p>
-            <p className="cb-security__state">当前状态：{enabled ? '已启用（启动需密码）' : '未启用（数据库为普通 SQLite 文件）'}</p>
-            {enabled ? (
-              <div className="cb-security__grid">
-                <label>
-                  <span>当前密码</span>
-                  <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="用于锁定 / 关闭 / 更换" />
-                </label>
-                <label>
-                  <span>新密码</span>
-                  <input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} placeholder="至少 4 位" />
-                </label>
-                <div className="cb-security__ops">
-                  <button type="button" className="cb-btn cb-btn--primary" disabled={busy || !password} onClick={() => void lockNow(password)}>立即锁定</button>
-                  <button type="button" className="cb-btn" disabled={busy || !password || !nextPassword} onClick={() => void changePassword(password, nextPassword)}>更换密码</button>
-                  <button type="button" className="cb-btn" disabled={busy || !password} onClick={() => void disable(password)}>关闭启动密码</button>
-                </div>
-              </div>
-            ) : (
-              <div className="cb-security__grid">
-                <label>
-                  <span>设置启动密码</span>
-                  <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 4 位" />
-                </label>
-                <div className="cb-security__ops">
-                  <button type="button" className="cb-btn cb-btn--primary" disabled={busy || password.length < 4} onClick={() => void enable(password)}>启用加密</button>
-                </div>
-              </div>
-            )}
-            {error ? <p className="cb-security__error">{error}</p> : null}
-            {notice ? <p className="cb-security__notice">{notice}</p> : null}
+            <p className="cb-security__state">当前状态：普通 SQLite（无需密码即可打开）</p>
           </section>
           <section className="cb-security__block">
             <h3>Windows Hello（接入位）</h3>
             <p className="cb-security__note">
-              已预留接入位（`hello_available` / `hello_verify`），当前版本未接入：解锁统一走启动密码，
-              以免在没有指纹/人脸设备的机器上出现「装了却打不开」的情况。
+              已预留接入位（<code>hello_available</code> / <code>hello_verify</code>），当前版本未接入。
             </p>
           </section>
           <section className="cb-security__block cb-security__audit">
@@ -111,14 +69,7 @@ export function SecurityDialog({ onClose }: { onClose: () => void }) {
           </section>
         </div>
         <footer className="cb-security__foot">
-          <button
-            type="button"
-            className="cb-btn"
-            onClick={() => {
-              clearMessages();
-              onClose();
-            }}
-          >
+          <button type="button" className="cb-btn" onClick={onClose}>
             完成
           </button>
         </footer>

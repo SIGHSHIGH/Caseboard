@@ -2,6 +2,19 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.9.0 · M9 交互修订与安全精简
+
+### M9 整体验收通过（2026-10-20，tag ms/M9）
+
+- **交互修订（A2/A4/A5）**：自由图片选中后的工具条从图片顶部横排改到**右侧竖排**、按钮内文字仍横排，让出顶部旋转手柄（原来 `top:-60px` 的工具条与 `top:-36px` 的旋转手柄重叠）；混合多选（卡片 + 图片）拖动改用 `composeCommands` 把 `moveNodes` 与 `moveImageNodes` 合成**一条**命令，撤销一次整体回退；组头、折叠按钮与右下角改尺寸手柄补 `nodrag`（这是「新建组后拖右下角改不动」的根因：React Flow 的 d3-drag 抢走 pointerdown）；组头成员计数变按钮、点开弹出组成员清单，右栏 `GroupForm` 同步列出直接成员与子组成员（点标题跳转选中）；关闭 React Flow 双击缩放，空白双击改为弹出「新建节点」对话框（选类型 + 标题，`uiStore.newNodeAt` 只记落点）。
+- **面板与视图（T1–T7）**：`HypothesisPanel`、`AiImagePanel` 根节点补 `.cb-modal__mask` 遮罩并居中，不再被塞进顶栏；区域锚点高亮改为「悬停 ∪ 单选 ∪ 多选 ∪ `anchorFocus`」集合，锚点可点击选中实体并在高亮时浮出实体名（`.cb-free-image__anchor-tag`）；地图给无坐标实体提供「点选设坐标」入口（左栏待摆放清单 + 点网格取点逆投影写回），右栏新增「地图坐标」块（纬度/经度两个输入框、清除坐标、跳地图点选），坐标统一走合并字段 `经纬度`，place 模板删掉 `经度`/`纬度` 两个独立字段，演示数据补齐 5 个带坐标实体。
+- **布局与时间线（S3–S5）**：`applyLayout` 在写坐标的**同一条命令**里按新相对位置对每条边重算 `sourceHandle`/`targetHandle`（`bestAnchors`），渲染层再用 `edge.sourceHandle ?? auto.source` 兜底，解决交叉与线穿卡片；边标签按格分区错开（`fanOutLabels`，`LABEL_CELL=120` / `LABEL_STEP=16`）；`nodeTimeRange` 在 `node.time` 缺失时回退读 `fields` 的「发生时刻/时间/交易时间/日期/案发时间」，老节点终于能进时间线、滑杆与播放可用；演示页新增联动编辑控件（标题输入、状态下拉、备注文本域，即时写回 Model）。
+- **新增能力**：事件节点「发生时刻」改日期时间控件（`kind:'datetime'` + `src/lib/datetime.ts`，同时写 `node.time`）；所有节点统一 tag 编辑（`TagEditor` chip 编辑 + 已有标签快捷选择）与「按 tag 自动连线」确认面板（`tagLinkCandidates` 只取出现 ≥2 次的 tag、已有关系跳过、确认后生成**点线** + 置信度 35，符合线型语义）；关系线连接点从 9px 放大到 14px（含 hover 放大与描边）；素材库分组（按来源 / 按日期 / 不分，纯函数 `groupAssets`）；导入图片后自动 OCR（引擎可用则一条 `composeCommands` 批量写回 `ocrText`，缺失则面板给出 Tesseract 安装指引而不打断导入）。
+- **安全精简（H3，决策 D53/D60）**：彻底删除应用解锁与整库加密——删除 `src-tauri/src/vault.rs`、`src/services/vault.ts`、`src/store/vaultStore.ts`、`src/components/panels/LockScreen.tsx`、七个 `vault_*` Rust 命令、`aes-gcm`/`argon2`/`rand` 依赖、`run-selftest.cjs` 的第 3 轮、`index.css` 的 `.cb-lock*` 样式；数据库回到普通 `caseboard.db`；安全面板首块改成「本机存储」说明（建议系统账户权限 + BitLocker）。`smoke [55]` 用字面扫描守住这条边界：`src` 与 `src-tauri/src` 里 `vault`/`保险库` 零命中、四个已删文件不存在、Cargo 无加密依赖、自检只跑两轮。
+- **打包（H2）**：版本三处升 **0.9.0**（`package.json` / `tauri.conf.json` / `Cargo.toml`）；`tauri build --no-bundle` 1m44s 重建 `src-tauri\target\release\caseboard.exe`；NSIS 安装包归档到仓库根 `release\CaseBoard_0.9.0_x64-setup.exe`（3,614,153 字节，SHA-256 `B7ADBC7D04E615E42234B13AB541E3951FDCD6BBD9A60C15EDBEA5AD487751C9`，未签名）。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **658 条全绿**（M9 新增 [49] 发生时刻控件 / [50] 时间线回退 / [51] 地图坐标与点选逆投影 / [52] tag 自动连线候选 / [53] 素材库分组 / [54] 布局换锚点与标签避让 / [55] 应用解锁与整库加密已删除）、`pnpm ui-smoke` **296 条全绿**（新增约 40 条：地图点选、双击新建对话框、tag 面板、素材库分组、图片竖排工具条、锚点可点、演示联动编辑、连接点尺寸、已删样式不得残留）、`pnpm bench` 1000 节点解析链 **75.3 ms**、`pnpm build` CSS 84.53 kB（gzip 14.31）/ 主包 908.58 kB（gzip 308.72）/ CodePanel 345.92 kB、桌面自检 **17 / 18 两轮 PASS**（v0.9.0，第 3 轮解锁自检已随功能移除）。
+- **文档**：`docs/MILESTONES.md` §1 M9 置 ✅、§3 拆步（M9-1…M9-16）+ 验收记录 + 偏离表、§6 新增 D53–D60、§7 一行；`docs/MANUAL-ACCEPTANCE.md` 新增 I 节 15 条并把 H3 标为作废；`docs/CaseBoard-SPEC.md` 七处「加密/启动密码」表述注明 M9 已删；`README.md` 与 `AGENTS.md` 同步（自检两轮、安全边界如实说明）。
+
 ## [未发布] v0.8.0 · M8 安全与打磨
 
 ### M8 整体验收通过（2026-10-19，tag ms/M8）

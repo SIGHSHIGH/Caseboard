@@ -561,13 +561,20 @@ button {
 }
 
 /* ---------- 连接点 ---------- */
+/* M9：连接点放大（9px → 14px，hover 16px），拖关系线更容易命中；
+   卡片本身 overflow:hidden，露出的内侧一半仍然比原来大一倍左右。 */
 .cb-handle {
-  width: 9px !important;
-  height: 9px !important;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
   background: var(--cb-surface) !important;
-  border: 1.5px solid var(--cb-border-strong) !important;
+  border: 2px solid var(--cb-border-strong) !important;
+  box-shadow: 0 0 0 2px var(--cb-surface);
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
 }
 
 .react-flow__node:hover .cb-handle,
@@ -577,6 +584,7 @@ button {
 }
 
 .cb-handle:hover {
+  transform: scale(1.15);
   border-color: var(--cb-accent) !important;
   background: var(--cb-accent) !important;
 }
@@ -682,6 +690,18 @@ button {
 .cb-modal__title {
   margin: 0;
   font-size: 14px;
+}
+
+.cb-modal__hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--cb-muted);
+}
+
+/* A5：双击空白弹出的新建节点对话框 */
+.cb-newnode {
+  width: 320px;
 }
 
 .cb-modal__head {
@@ -953,9 +973,138 @@ button {
 }
 
 .cb-group__count {
+  padding: 1px 6px;
   font-size: 11px;
   font-weight: 400;
   opacity: 0.85;
+  color: var(--cb-on-accent);
+  background: rgba(255, 255, 255, 0.14);
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cb-group__count:hover,
+.cb-group__count.is-open {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* A4：组成员清单（点组头计数展开，不拖动节点） */
+.cb-group__members {
+  position: absolute;
+  left: 6px;
+  top: 32px;
+  z-index: 6;
+  width: 232px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  box-shadow: var(--cb-shadow);
+  cursor: default;
+}
+
+.cb-group__members-head {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cb-muted);
+}
+
+.cb-group__members-empty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--cb-muted);
+}
+
+.cb-group__members-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cb-group__member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 5px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--cb-text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cb-group__member:hover {
+  background: var(--cb-accent-soft);
+}
+
+.cb-group__member-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cb-muted);
+}
+
+.cb-group__member-dot--person {
+  background: #2f6f8f;
+}
+
+.cb-group__member-dot--org {
+  background: #6b5b95;
+}
+
+.cb-group__member-dot--place {
+  background: #4b7d4b;
+}
+
+.cb-group__member-dot--item {
+  background: #a8781f;
+}
+
+.cb-group__member-dot--event {
+  background: #c0392b;
+}
+
+.cb-group__member-dot--evidence {
+  background: #7a5c3e;
+}
+
+.cb-group__member-dot--time {
+  background: #3f7f7a;
+}
+
+.cb-group__member-title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cb-group__member-sub {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--cb-muted);
+}
+
+.cb-group__members-child {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--cb-border);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--cb-muted);
 }
 
 .cb-group__fold {
@@ -976,14 +1125,22 @@ button {
 .cb-group__resize {
   pointer-events: auto;
   position: absolute;
-  right: -5px;
-  bottom: -5px;
-  width: 14px;
-  height: 14px;
+  right: -7px;
+  bottom: -7px;
+  width: 18px;
+  height: 18px;
   border: 1px solid rgba(0, 0, 0, 0.25);
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--cb-surface);
   cursor: nwse-resize;
+}
+
+/* 右下角把手加三条斜纹，让「可以拖」这件事一眼可见 */
+.cb-group__resize::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background-image: linear-gradient(135deg, transparent 45%, rgba(0, 0, 0, 0.35) 45%, rgba(0, 0, 0, 0.35) 55%, transparent 55%);
 }
 
 /* 折叠后的超级节点 */
@@ -1075,6 +1232,31 @@ button {
   text-overflow: ellipsis;
 }
 
+/* A4：组成员清单里点标题可在画布中定位 */
+button.cb-members__title--link {
+  padding: 0;
+  text-align: left;
+  color: var(--cb-text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  cursor: pointer;
+}
+
+button.cb-members__title--link:hover {
+  color: var(--cb-accent);
+  border-bottom-color: var(--cb-accent);
+}
+
+.cb-members__indirect {
+  flex: none;
+  font-size: 10px;
+  padding: 0 5px;
+  color: var(--cb-muted);
+  border: 1px solid var(--cb-border);
+  border-radius: 999px;
+}
+
 /* ===== M2-3 素材库与导入向导 ===== */
 .cb-tabs {
   display: flex;
@@ -1133,6 +1315,32 @@ button {
   overflow-y: auto;
   padding-right: 2px;
 }
+
+/* M9：素材库分组（按来源 / 按日期） */
+.cb-assets__groupby {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+.cb-assets__groupby > span { margin-right: 2px; }
+.cb-assets__groupby .cb-tab { padding: 2px 7px; font-size: 11px; }
+.cb-assets__groups { display: flex; flex-direction: column; gap: 10px; max-height: 44vh; overflow-y: auto; padding-right: 2px; }
+.cb-assets__groups .cb-assets__grid { max-height: none; overflow: visible; padding-right: 0; }
+.cb-assets__group { display: flex; flex-direction: column; gap: 6px; }
+.cb-assets__grouphead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--cb-muted);
+  border-bottom: 1px dashed var(--cb-border);
+  padding-bottom: 3px;
+}
+.cb-assets__grouphead > span:first-child { color: var(--cb-text); font-weight: 600; }
+.cb-assets__groupcount { font-variant-numeric: tabular-nums; }
 
 .cb-asset {
   display: flex;
@@ -1462,25 +1670,33 @@ button {
   letter-spacing: 0.4px;
 }
 
+/* M9 / A2：工具条挪到图片右侧竖排，把顶部让给旋转手柄（手柄 top:-36px）
+   注意按钮内文字必须保持横排：writing-mode 显式写死 horizontal-tb + nowrap */
 .cb-free-image__bar {
   position: absolute;
-  left: 50%;
-  /* 抬到旋转手柄之上：手柄压在工具栏下面时永远拖不到（M4 人工验收 A1） */
-  top: -60px;
+  left: calc(100% + 10px);
+  top: 0;
   display: flex;
+  flex-direction: column;
   gap: 2px;
-  padding: 2px;
+  padding: 3px;
   background: var(--cb-panel);
   border: 1px solid var(--cb-border);
   border-radius: 6px;
   box-shadow: var(--cb-shadow);
-  transform: translateX(-50%);
   z-index: 4;
 }
 
 .cb-free-image__bar button {
-  padding: 2px 5px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
   font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
   color: var(--cb-text);
   background: transparent;
   border: 0;
@@ -1488,8 +1704,20 @@ button {
   cursor: pointer;
 }
 
+.cb-free-image__bar-icon {
+  display: inline-block;
+  width: 11px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--cb-muted);
+}
+
 .cb-free-image__bar button:hover {
   background: var(--cb-accent-soft);
+  color: var(--cb-accent);
+}
+
+.cb-free-image__bar button:hover .cb-free-image__bar-icon {
   color: var(--cb-accent);
 }
 
@@ -2987,6 +3215,20 @@ button {
   padding-top: 12px;
 }
 
+/* M9 / S5：演示页联动编辑控件 */
+.cb-present__edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px dashed var(--cb-border);
+  border-radius: 8px;
+  background: var(--cb-surface);
+}
+.cb-present__edit .cb-field--wide { grid-column: 1 / -1; }
+.cb-present__edit .cb-field > span { font-size: 11px; color: var(--cb-muted); }
+
 .cb-present__related-head {
   font-size: 12px;
   color: var(--cb-muted);
@@ -3509,8 +3751,26 @@ button {
 .cb-hyp__badge.is-missing { color: #C0392B; border-color: #C0392B; }
 .cb-hyp__stage ul { margin: 6px 0 0; padding-left: 16px; font-size: 12px; line-height: 1.6; }
 .cb-hyp__weak, .cb-hyp__evidence { margin-left: 6px; font-size: 10px; color: var(--cb-muted); border: 1px solid var(--cb-border); border-radius: 8px; padding: 0 4px; }
-.cb-free-image__anchor { position: absolute; border: 1.5px dashed rgba(192, 57, 43, .55); border-radius: 4px; pointer-events: none; transition: box-shadow .12s ease, border-color .12s ease; }
+.cb-free-image__anchor { position: absolute; border: 1.5px dashed rgba(192, 57, 43, .55); border-radius: 4px; pointer-events: auto; cursor: pointer; z-index: 2; transition: box-shadow .12s ease, border-color .12s ease; }
+.cb-free-image__anchor:hover { border-style: solid; box-shadow: 0 0 0 2px rgba(192, 57, 43, .22); }
 .cb-free-image__anchor.is-hlit { border-style: solid; border-width: 2px; box-shadow: 0 0 0 3px rgba(192, 57, 43, .28), inset 0 0 0 1px rgba(255, 255, 255, .6); }
+/* M9 / T3：高亮锚点给出实体名，避免只有描边变化、看不出对应哪个实体 */
+.cb-free-image__anchor-tag {
+  position: absolute;
+  left: 0;
+  top: -18px;
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #C0392B;
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
 .cb-free-image__frame.is-ai { border: 1.5px dashed #2B2B2B; box-shadow: 0 0 0 1px rgba(43, 43, 43, .12); }
 .cb-aiimg { width: min(1120px, 96vw); max-height: 92vh; display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; overflow: hidden; }
 .cb-aiimg__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -3561,16 +3821,56 @@ button {
 .cb-map__coord { font-size: 11px; fill: #6E6862; }
 .cb-map__empty { margin: 0 20px; padding: 48px 20px; border: 1px dashed var(--cb-border); border-radius: 10px; text-align: center; color: var(--cb-muted); font-size: 13px; line-height: 1.8; }
 .cb-map__legend { display: flex; justify-content: space-between; gap: 16px; padding: 10px 20px 16px; font-size: 12px; color: var(--cb-muted); }
-/* ===== 安全：锁屏与启动密码（M8） ===== */
-.cb-lock { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 30% 20%, #33302C 0%, #21201E 60%, #1A1918 100%); }
-.cb-lock__card { width: min(420px, 90vw); padding: 32px 30px 24px; background: var(--cb-panel); border-radius: 14px; border: 1px solid var(--cb-border); box-shadow: 0 24px 60px rgba(0,0,0,0.45); border-top: 4px solid #C0392B; }
-.cb-lock__brand { font-size: 13px; letter-spacing: 0.18em; color: var(--cb-muted); text-transform: uppercase; }
-.cb-lock__title { margin: 10px 0 6px; font-size: 20px; color: var(--cb-text); }
-.cb-lock__hint { margin: 0 0 18px; font-size: 12px; line-height: 1.7; color: var(--cb-muted); }
-.cb-lock__form { display: flex; gap: 8px; }
-.cb-lock__input { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid var(--cb-border); border-radius: 8px; font: inherit; background: var(--cb-surface); }
-.cb-lock__error { margin: 10px 0 0; color: #C0392B; font-size: 12px; }
-.cb-lock__foot { margin: 18px 0 0; font-size: 11px; line-height: 1.7; color: var(--cb-muted); border-top: 1px dashed var(--cb-border); padding-top: 12px; }
+
+/* ---------- M9 / T7：地图点选设坐标 ---------- */
+.cb-map__body { flex: 1; display: flex; gap: 12px; min-height: 0; margin: 0 20px; }
+.cb-map__body .cb-map__canvas { margin: 0; }
+.cb-map__side {
+  width: 220px;
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--cb-border);
+  border-radius: 10px;
+  background: var(--cb-panel);
+  overflow-y: auto;
+}
+.cb-map__side .cb-form__subtitle { margin: 0; }
+.cb-map__nolist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.cb-map__noitem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.cb-map__noitem:hover { background: var(--cb-surface-2); }
+.cb-map__nodot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
+.cb-map__noname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cb-text); }
+.cb-map__pickbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--cb-accent);
+  border-radius: 8px;
+  background: rgba(192, 57, 43, 0.08);
+  font-size: 12px;
+  color: var(--cb-text);
+}
+.cb-map__pickbar strong { color: var(--cb-accent); }
+.cb-map__pickbar span { flex: 1; min-width: 0; color: var(--cb-muted); }
+.cb-map__svg.is-picking { cursor: crosshair; }
+.cb-map__pin.is-picking circle:first-of-type { stroke: var(--cb-accent); stroke-width: 4; }
+
+/* ---------- M9 / T7：右栏地图坐标 ---------- */
+.cb-geo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cb-geo__ops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+/* ===== 安全与合规面板（M8，M9 起只剩本机存储说明 / AI 审计 / 脱敏） ===== */
 .cb-security { width: min(620px, 94vw); }
 .cb-security__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--cb-border); }
 .cb-security__head h2 { margin: 0; font-size: 16px; }
@@ -3638,3 +3938,170 @@ button {
 
 
 
+
+/* ===== M9 新增：统一 tag 编辑 + 按 tag 自动连线确认面板 ===== */
+.cb-tagedit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cb-tagedit__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 22px;
+}
+
+.cb-tagedit__empty {
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+
+.cb-tagedit__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px 1px 7px;
+  font-size: 11px;
+  color: var(--cb-text);
+  background: var(--cb-accent-soft);
+  border: 1px solid var(--cb-border);
+  border-radius: 999px;
+}
+
+.cb-tagedit__remove {
+  width: 14px;
+  height: 14px;
+  line-height: 1;
+  font-size: 12px;
+  color: var(--cb-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.cb-tagedit__remove:hover {
+  color: var(--cb-accent);
+  background: var(--cb-surface);
+}
+
+.cb-tagedit__input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--cb-text);
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-radius: 5px;
+}
+
+.cb-tagedit__suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.cb-tagedit__suggest-label {
+  font-size: 10px;
+  color: var(--cb-muted);
+}
+
+.cb-tagedit__suggest-btn {
+  padding: 0 5px;
+  font-size: 10px;
+  color: var(--cb-muted);
+  background: transparent;
+  border: 1px dashed var(--cb-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.cb-tagedit__suggest-btn:hover {
+  color: var(--cb-accent);
+  border-color: var(--cb-accent);
+}
+
+.cb-field--block {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cb-taglink {
+  width: min(880px, 94vw);
+  max-height: 90vh;
+}
+
+.cb-taglink__body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cb-taglink__side,
+.cb-taglink__main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.cb-taglink__tags,
+.cb-taglink__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 52vh;
+}
+
+.cb-taglink__tag,
+.cb-taglink__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cb-taglink__tag:hover,
+.cb-taglink__item:hover {
+  background: var(--cb-accent-soft);
+}
+
+.cb-taglink__count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--cb-muted);
+}
+
+.cb-taglink__pair {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cb-taglink__tag-chip {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--cb-accent);
+  border: 1px solid var(--cb-accent);
+  border-radius: 999px;
+}
+
+.cb-taglink__ops {
+  display: flex;
+  gap: 6px;
+}

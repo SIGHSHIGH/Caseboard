@@ -69,13 +69,30 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
   const isAi = asset?.zone === 'ai' || asset?.aiGenerated === true;
   const hoverNodeId = useUiStore((s) => s.hoverNodeId);
   const selectedNodeId = useUiStore((s) => s.selectedNodeId);
+  const selectedNodeIds = useUiStore((s) => s.selectedNodeIds);
+  const selectNode = useUiStore((s) => s.selectNode);
+  const anchorFocus = useUiStore((s) => s.anchorFocus);
   const nodes = useDocStore((s) => s.doc.nodes);
   /** 区域锚点（M7-2）：照片里框出的区域绑定到实体，悬停/选中该实体时高亮 */
   const anchors = useMemo(
     () => (asset?.annotations ?? []).filter((item) => item.shape === 'anchor' && item.linkedNodeId),
     [asset],
   );
-  const focusNodeId = hoverNodeId ?? selectedNodeId;
+  /**
+   * T3：高亮集合 = 悬停实体 ∪ 多选中的实体 ∪ 单选实体 ∪ 「假设面板跳转过来的锚点关联实体」。
+   * 之前只认 `hoverNodeId ?? selectedNodeId` 一次一个，多选和面板跳转都不亮，看起来像功能坏了。
+   */
+  const highlightIds = useMemo(() => {
+    const set = new Set<string>();
+    if (hoverNodeId) set.add(hoverNodeId);
+    if (selectedNodeId) set.add(selectedNodeId);
+    for (const id of selectedNodeIds) set.add(id);
+    if (anchorFocus && anchorFocus.assetId === image.assetId) {
+      const focused = anchors.find((item) => item.id === anchorFocus.annotationId);
+      if (focused?.linkedNodeId) set.add(focused.linkedNodeId);
+    }
+    return set;
+  }, [hoverNodeId, selectedNodeId, selectedNodeIds, anchorFocus, anchors, image.assetId]);
   const titleOfNode = (id: string) => nodes.find((node) => node.id === id)?.title ?? '已删除的实体';
 
   const centerOf = () => {
@@ -195,11 +212,11 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
 
         {anchors.map((anchor) => {
           const linked = anchor.linkedNodeId as string;
-          const highlight = focusNodeId === linked;
+          const highlight = highlightIds.has(linked);
           return (
-            <span
+            <div
               key={anchor.id}
-              className={'cb-free-image__anchor' + (highlight ? ' is-hlit' : '')}
+              className={'cb-free-image__anchor nodrag nopan' + (highlight ? ' is-hlit' : '')}
               style={{
                 left: anchor.geom.x * 100 + '%',
                 top: anchor.geom.y * 100 + '%',
@@ -207,8 +224,23 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
                 height: anchor.geom.h * 100 + '%',
                 borderColor: anchor.color ?? '#C0392B',
               }}
-              title={'区域锚点：' + titleOfNode(linked) + (anchor.text ? ' · ' + anchor.text : '')}
-            />
+              title={
+                '区域锚点：' +
+                titleOfNode(linked) +
+                (anchor.text ? ' · ' + anchor.text : '') +
+                '（点击选中该实体）'
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                selectNode(linked);
+              }}
+            >
+              {highlight ? (
+                <span className="cb-free-image__anchor-tag">
+                  {anchor.text ?? titleOfNode(linked)}
+                </span>
+              ) : null}
+            </div>
           );
         })}
 
@@ -233,25 +265,34 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
       </div>
 
       {selected ? (
-        <div className="cb-free-image__bar nodrag nopan" onPointerDown={(event) => event.stopPropagation()}>
+        <div
+          className="cb-free-image__bar nodrag nopan"
+          title="图片工具条（竖排，避免压住顶部旋转手柄）"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <button type="button" onClick={() => dispatch(setImageLayer(image.id, 'front'))} title="置顶">
-            置顶
+            <span className="cb-free-image__bar-icon" aria-hidden="true">⇈</span>
+            <span>置顶</span>
           </button>
           <button type="button" onClick={() => dispatch(setImageLayer(image.id, 'up'))} title="上移一层">
-            上移
+            <span className="cb-free-image__bar-icon" aria-hidden="true">↑</span>
+            <span>上移</span>
           </button>
           <button type="button" onClick={() => dispatch(setImageLayer(image.id, 'down'))} title="下移一层">
-            下移
+            <span className="cb-free-image__bar-icon" aria-hidden="true">↓</span>
+            <span>下移</span>
           </button>
           <button type="button" onClick={() => dispatch(setImageLayer(image.id, 'back'))} title="置底">
-            置底
+            <span className="cb-free-image__bar-icon" aria-hidden="true">⇊</span>
+            <span>置底</span>
           </button>
           <button
             type="button"
             onClick={() => dispatch(updateImageNode(image.id, { pinned: !image.pinned }))}
             title="图钉装饰"
           >
-            {image.pinned ? '去图钉' : '图钉'}
+            <span className="cb-free-image__bar-icon" aria-hidden="true">{image.pinned ? '⏏' : '⌖'}</span>
+            <span>{image.pinned ? '去图钉' : '图钉'}</span>
           </button>
         </div>
       ) : null}
