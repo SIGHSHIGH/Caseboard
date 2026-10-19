@@ -14,6 +14,10 @@ import { useViewModeStore } from './store/viewModeStore';
 import { PresentationView } from './components/views/PresentationView';
 import { TimelineView } from './components/views/TimelineView';
 import { MapView } from './components/views/MapView';
+import { LockScreen } from './components/panels/LockScreen';
+import { CommandPalette } from './components/panels/CommandPalette';
+import { useVaultStore } from './store/vaultStore';
+import { usePaletteStore } from './store/paletteStore';
 
 // 代码视图带着 CodeMirror 6，按需加载，避免拖慢画布首屏
 const CodePanel = lazy(() => import('./components/code/CodePanel').then((mod) => ({ default: mod.CodePanel })));
@@ -24,12 +28,17 @@ function imagesOf(list: FileList | null | undefined): File[] {
 }
 
 export default function App() {
+  const doc = useDocStore((s) => s.doc);
   const undo = useDocStore((s) => s.undo);
   const redo = useDocStore((s) => s.redo);
   const startImport = useImportStore((s) => s.startImport);
   const codeOpen = useCodeStore((s) => s.open);
   const ready = useReady();
   const viewMode = useViewModeStore((s) => s.mode);
+  const vaultPhase = useVaultStore((s) => s.phase);
+  const paletteOpen = usePaletteStore((s) => s.open);
+  const openPalette = usePaletteStore((s) => s.openPalette);
+  const closePalette = usePaletteStore((s) => s.closePalette);
   const [splitPct, setSplitPct] = useState(44);
   const workRef = useRef<HTMLDivElement>(null);
   useCodeSyncBridge();
@@ -41,6 +50,12 @@ export default function App() {
       const typing =
         !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
       const key = event.key.toLowerCase();
+      if (key === 'k') {
+        // Ctrl+K：输入框里也要能唤起（先 preventDefault，避免浏览器把它当搜索）
+        event.preventDefault();
+        openPalette();
+        return;
+      }
       if (key === 'z') {
         if (typing) return;
         event.preventDefault();
@@ -54,7 +69,17 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, openPalette]);
+
+  // Esc 关命令面板（面板自己的输入框也会处理，这里兜住焦点在别处的情况）
+  useEffect(() => {
+    if (!paletteOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closePalette();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [paletteOpen, closePalette]);
 
   // Ctrl+V 粘贴截图 / 复制的图片文件；输入框内不拦截，避免影响正常编辑
   useEffect(() => {
@@ -79,8 +104,17 @@ export default function App() {
     void startImport(files, 'import');
   };
 
+  // 锁定状态（M8 验收 2）：整个界面换成锁屏，案件数据一个字节都不渲染
+  if (vaultPhase === 'locked') return <LockScreen />;
+
   return (
     <div className="cb-app">
+      <div className="cb-print-head">
+        <strong>{doc.meta.title}</strong>
+        <span>{doc.meta.caseNo ? '案件编号 ' + doc.meta.caseNo : '未编号'}</span>
+        <span>{doc.nodes.length} 实体 · {doc.edges.length} 关系</span>
+        <span>打印时间 {new Date().toLocaleString('zh-CN')}</span>
+      </div>
       {ready ? null : (
         <div className="cb-boot">
           <div className="cb-boot__card">
@@ -143,6 +177,7 @@ export default function App() {
         {viewMode === 'board' ? <RightPanel /> : null}
       </div>
       <ImportWizard />
+      {paletteOpen ? <CommandPalette /> : null}
     </div>
   );
 }

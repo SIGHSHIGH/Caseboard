@@ -124,6 +124,15 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
           ))}
         </ul>
 
+        <section className="cb-export__print">
+          <h3>打印（A4 横向）</h3>
+          <p className="cb-panel__note">
+            打印时自动隐藏顶栏与左右侧栏，只输出画布与图片，并在页首加案件标题、编号、实体/关系数与打印时间；
+            节点卡片不会被跨页切断。需要 PDF 文件而不是纸面时，用上面的「多页 PDF」（带页眉页脚与页码）。
+          </p>
+          <button type="button" className="cb-btn" onClick={() => window.print()}>打印当前画布</button>
+        </section>
+
         <section className="cb-export__redact">
           <h3>脱敏导出（马赛克不可逆）</h3>
           <p className="cb-panel__note">

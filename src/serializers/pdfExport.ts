@@ -40,6 +40,17 @@ export async function boardToPdfBytes(doc: CaseDoc, options: BoardPdfOptions = {
     pageSizes.push(height);
   }
 
+  // 页眉/页脚在原图像素坐标里画，再整体缩到 A4：
+  // 这样中文标题、案件编号、页码与关系数都用画布字体（pdf-lib 内置 Helvetica 不含中文）。
+  const headerH = Math.max(48, Math.round(source.width * 0.05));
+  const footerH = Math.max(36, Math.round(source.width * 0.034));
+  const pad = Math.round(source.width * 0.02);
+  const fontPx = Math.max(16, Math.round(source.width * 0.0135));
+  const smallPx = Math.max(13, Math.round(source.width * 0.0105));
+  const generatedText = new Date().toLocaleString('zh-CN');
+  const brandFont = '600 ' + fontPx + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
+  const smallFont = smallPx + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
+
   const drawSlice = (top: number, height: number): HTMLCanvasElement => {
     const slice = document.createElement('canvas');
     slice.width = source.width;
@@ -50,10 +61,45 @@ export async function boardToPdfBytes(doc: CaseDoc, options: BoardPdfOptions = {
     return slice;
   };
 
+  /** 把切片套进「页眉 + 内容 + 页脚」的整页图：A4 打印直接用，不需要再拼。 */
+  const composePage = (slice: HTMLCanvasElement, index: number, total: number): HTMLCanvasElement => {
+    const page = document.createElement('canvas');
+    page.width = slice.width;
+    page.height = slice.height + headerH + footerH;
+    const ctx = page.getContext('2d');
+    if (!ctx) throw new Error('当前环境无法创建画布，PDF 导出失败');
+    ctx.fillStyle = '#F5F3EF';
+    ctx.fillRect(0, 0, page.width, page.height);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#2B2B2B';
+    ctx.font = brandFont;
+    ctx.fillText(doc.meta.title, pad, headerH / 2);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#6E6862';
+    ctx.font = smallFont;
+    ctx.fillText(doc.meta.caseNo ? '案件编号 ' + doc.meta.caseNo : '案情板导出', page.width - pad, headerH / 2);
+    ctx.strokeStyle = '#E2DED5';
+    ctx.lineWidth = Math.max(1, Math.round(source.width * 0.0008));
+    ctx.beginPath();
+    ctx.moveTo(pad, headerH - 1);
+    ctx.lineTo(page.width - pad, headerH - 1);
+    ctx.stroke();
+    ctx.drawImage(slice, 0, headerH);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#6E6862';
+    ctx.font = smallFont;
+    ctx.fillText('案情板 CaseBoard · ' + generatedText + ' · ' + doc.nodes.length + ' 实体 / ' + doc.edges.length + ' 关系', pad, page.height - footerH / 2);
+    ctx.textAlign = 'right';
+    ctx.fillText('第 ' + (index + 1) + ' / ' + total + ' 页', page.width - pad, page.height - footerH / 2);
+    return page;
+  };
+
   let pageIndex = 0;
   for (const height of pageSizes) {
     const slice = drawSlice(pageIndex * sliceHeight, height);
-    const png = await pdf.embedPng(await canvasToPngBytes(slice));
+    const composed = composePage(slice, pageIndex, pageSizes.length);
+    const png = await pdf.embedPng(await canvasToPngBytes(composed));
     const scale = Math.min(contentW / png.width, contentH / png.height);
     const drawW = png.width * scale;
     const drawH = png.height * scale;
@@ -65,10 +111,6 @@ export async function boardToPdfBytes(doc: CaseDoc, options: BoardPdfOptions = {
       width: drawW,
       height: drawH,
     });
-    const footer = (options.pageFooter ? options.pageFooter + '　' : '') + '第 ' + (pageIndex + 1) + ' / ' + pageSizes.length + ' 页';
-    // 内置 Helvetica 不含中文，页码用拉丁字符，中文页脚走画布已绘制的水印；这里只在需要时画纯数字
-    void font;
-    void footer;
     pageIndex += 1;
   }
 

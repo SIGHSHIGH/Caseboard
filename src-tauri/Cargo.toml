@@ -1,6 +1,6 @@
 [package]
 name = "caseboard"
-version = "0.7.0"
+version = "0.8.0"
 description = "案情板 CaseBoard · 数字刑侦白板"
 authors = ["CaseBoard"]
 edition = "2021"
@@ -21,6 +21,10 @@ tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+# 启动密码加密整库文件（M8 验收 2）：AES-256-GCM + Argon2id 派生
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
 # 建表用：与 tauri-plugin-sql 共用同一个 sqlx（只补 sqlite 驱动与 tokio 运行时特性）
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio"] }
 

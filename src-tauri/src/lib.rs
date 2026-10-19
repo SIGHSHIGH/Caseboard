@@ -9,6 +9,7 @@
 // 所以统一 base64，换来的是任意路径可读写（不受 fs 插件 scope 限制）。
 
 mod migrations;
+mod vault;
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -60,8 +61,152 @@ async fn ensure_db_file(app: tauri::AppHandle) -> Result<String, String> {
     let data_dir = data_dir_of(&app)?;
     std::fs::create_dir_all(&data_dir).map_err(|error| format!("无法创建数据目录：{error}"))?;
     let db_path = data_dir.join("caseboard.db");
+    // 已启用启动密码时磁盘上只有保险库：没解锁就绝不允许建一个空明文库把数据顶掉
+    let vault_path = data_dir.join("caseboard.db.vault");
+    if vault_path.exists() && !db_path.exists() {
+        return Err("数据库已加密：请先在启动界面输入启动密码解锁".to_string());
+    }
     apply_schema(&db_path).await?;
     Ok(db_path.to_string_lossy().to_string())
+}
+
+/// 保险库状态：enabled = 磁盘上有加密库；unlocked = 明文库当前存在（已解锁）。
+#[derive(Serialize)]
+pub struct VaultStatus {
+    enabled: bool,
+    unlocked: bool,
+    path: String,
+}
+
+fn vault_paths(app: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
+    let data_dir = data_dir_of(app)?;
+    Ok((data_dir.join("caseboard.db"), data_dir.join("caseboard.db.vault")))
+}
+
+fn vault_status_of(app: &tauri::AppHandle) -> Result<VaultStatus, String> {
+    let (db_path, vault_path) = vault_paths(app)?;
+    let enabled = vault_path.exists();
+    Ok(VaultStatus {
+        enabled,
+        unlocked: enabled && db_path.exists(),
+        path: vault_path.to_string_lossy().to_string(),
+    })
+}
+
+/// 启动密码长度下限：太低等于没有加密。
+fn check_password(password: &str) -> Result<(), String> {
+    if password.chars().count() < 4 {
+        return Err("启动密码至少 4 位".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn vault_status(app: tauri::AppHandle) -> Result<VaultStatus, String> {
+    vault_status_of(&app)
+}
+
+/// 启用启动密码：把现有明文库加密成 caseboard.db.vault，并删除明文库。
+#[tauri::command]
+fn vault_enable(app: tauri::AppHandle, password: String) -> Result<VaultStatus, String> {
+    check_password(&password)?;
+    let (db_path, vault_path) = vault_paths(&app)?;
+    if vault_path.exists() {
+        return Err("启动密码已经启用过（如需更换请用「更换密码」）".to_string());
+    }
+    if !db_path.exists() {
+        return Err("还没有可加密的数据库：请先保存一次案件".to_string());
+    }
+    vault::encrypt(&db_path, &vault_path, &password)?;
+    std::fs::remove_file(&db_path).map_err(|error| format!("无法删除明文库：{error}"))?;
+    vault_status_of(&app)
+}
+
+/// 解锁：把保险库解出明文库（错误密码返回中文错误，磁盘不留残缺文件）。
+#[tauri::command]
+fn vault_unlock(app: tauri::AppHandle, password: String) -> Result<VaultStatus, String> {
+    let (db_path, vault_path) = vault_paths(&app)?;
+    if !vault_path.exists() {
+        return Err("当前没有启用启动密码".to_string());
+    }
+    if db_path.exists() {
+        return vault_status_of(&app);
+    }
+    vault::decrypt(&vault_path, &db_path, &password)?;
+    vault_status_of(&app)
+}
+
+/// 立即锁定：已解锁状态下用密码重加密并删掉明文库（界面回到锁屏）。
+#[tauri::command]
+fn vault_lock_with_password(app: tauri::AppHandle, password: String) -> Result<VaultStatus, String> {
+    let (db_path, vault_path) = vault_paths(&app)?;
+    if !vault_path.exists() {
+        return Err("当前没有启用启动密码".to_string());
+    }
+    if !db_path.exists() {
+        return vault_status_of(&app);
+    }
+    // 先验证密码正确（解出来再加密），避免密码打错后数据永久打不开
+    let probe = db_path.with_extension("db.verify");
+    vault::decrypt(&vault_path, &probe, &password)?;
+    let _ = std::fs::remove_file(&probe);
+    vault::encrypt(&db_path, &vault_path, &password)?;
+    std::fs::remove_file(&db_path).map_err(|error| format!("无法删除明文库：{error}"))?;
+    vault_status_of(&app)
+}
+
+/// 关闭启动密码：要求提供当前密码，解开后删除保险库。
+#[tauri::command]
+fn vault_disable(app: tauri::AppHandle, password: String) -> Result<VaultStatus, String> {
+    let (db_path, vault_path) = vault_paths(&app)?;
+    if !vault_path.exists() {
+        return vault_status_of(&app);
+    }
+    // 已解锁状态下也必须校验密码：否则谁坐到电脑前都能一键关掉加密
+    let probe = db_path.with_extension("db.verify");
+    vault::decrypt(&vault_path, &probe, &password)?;
+    let _ = std::fs::remove_file(&probe);
+    if !db_path.exists() {
+        vault::decrypt(&vault_path, &db_path, &password)?;
+    }
+    std::fs::remove_file(&vault_path).map_err(|error| format!("无法删除保险库：{error}"))?;
+    vault_status_of(&app)
+}
+
+/// 更换启动密码：验证旧密码后重新加密。
+#[tauri::command]
+fn vault_change_password(
+    app: tauri::AppHandle,
+    old_password: String,
+    new_password: String,
+) -> Result<VaultStatus, String> {
+    check_password(&new_password)?;
+    let (db_path, vault_path) = vault_paths(&app)?;
+    if !vault_path.exists() {
+        return Err("当前没有启用启动密码".to_string());
+    }
+    // 旧密码必须真的能解开保险库（已解锁时也要验），防止不经验证就换掉启动密码
+    let probe = db_path.with_extension("db.verify");
+    vault::decrypt(&vault_path, &probe, &old_password)?;
+    let _ = std::fs::remove_file(&probe);
+    if !db_path.exists() {
+        vault::decrypt(&vault_path, &db_path, &old_password)?;
+    }
+    vault::encrypt(&db_path, &vault_path, &new_password)?;
+    std::fs::remove_file(&db_path).map_err(|error| format!("无法删除明文库：{error}"))?;
+    vault_status_of(&app)
+}
+
+/// 把文件头读出来给前端/自检判断是不是密文（不泄露内容）。
+#[tauri::command]
+fn vault_header(path: String) -> Result<String, String> {
+    let bytes = std::fs::read(&path).map_err(|error| format!("无法读取文件：{error}"))?;
+    let prefix: String = bytes
+        .iter()
+        .take(16)
+        .map(|byte| format!("{byte:02X}"))
+        .collect();
+    Ok(prefix)
 }
 
 /// 建表（幂等）：用 sqlx 直连 SQLite 执行 migrations::V1_SQL 里的全部语句。
@@ -415,6 +560,13 @@ pub fn run() {
             ensure_db_file,
             ocr_available,
             ocr_image,
+            vault_status,
+            vault_enable,
+            vault_unlock,
+            vault_lock_with_password,
+            vault_disable,
+            vault_change_password,
+            vault_header,
             selftest_report
         ])
         .run(tauri::generate_context!())

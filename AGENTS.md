@@ -44,17 +44,21 @@ node "E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.
 
 验收四件套：`pnpm typecheck`、`pnpm smoke`（逻辑，node CJS）、`pnpm ui-smoke`（打包产物 + jsdom 伪布局）、`pnpm bench`（1000 节点 DSL 解析链 < 300ms）；`build` 与 `dev/preview` 在沙箱内需 `sandbox_permissions: danger-full-access`（esbuild 子进程）。
 
-**桌面端（M4 起）再加第五件**：`node scripts/run-selftest.cjs`（两轮 `caseboard.exe --selftest`，报告落 `.tmp-esbuild/selftest-phase*.json`）。Tauri 构建固定前置：
+**桌面端（M4 起）再加第五件**：`node scripts/run-selftest.cjs`（三轮 `caseboard.exe --selftest`：第 1/2 轮数据跨进程与导出，第 3 轮 `--selftest=3` 只验保险库加密；报告落 `.tmp-esbuild/selftest-phase*.json`，第 3 轮用独立数据目录 `.tmp-esbuild/vaultapp`）。Tauri 构建固定前置：
 
 ```powershell
 Get-Process caseboard -ErrorAction SilentlyContinue | Stop-Process -Force   # 残留进程会锁住 exe
 $env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP
 $env:CARGO_HOME = "$PWD\.rust\cargo"; $env:RUSTUP_HOME = "$PWD\.rust\rustup"
 $env:PATH = "$PWD\.rust\cargo\bin;" + $env:PATH
-node scripts/tauri-cli.cjs build --no-bundle   # 需 danger-full-access
+node scripts/tauri-cli.cjs build --no-bundle                 # 需 danger-full-access
+node scripts/tauri-cli.cjs build --bundles nsis              # 出安装包 bundle\nsis\CaseBoard_<version>_x64-setup.exe
+powershell -ExecutionPolicy Bypass -File scripts/sign-installer.ps1   # 代码签名（需证书；-SelfSignedTest 可演练）
 ```
 
 Rust 工具链装在仓库内 `.rust\`（用户目录不可写，决策 D25）；本机无独立 node，**不要**直接跑 `pnpm tauri`（`argv[0]` 是 Electron，会报 `unrecognized subcommand`）。
+
+`tsconfig.smoke.json` 只编译 `types/lib/commands/serializers/store/data`，**不含 `services/` 与 `.tsx`**：需要机器断言的逻辑必须放在 `src/lib/` 或 `src/serializers/`（M8 曾把清单逻辑留在 `services/exporters.ts` 导致 smoke require 失败）。
 
 **改大文件只用 `edit` 定点替换**：`read` 有默认行数上限（约 924 行），整份读出来再整份 `write` 回去会静默截断文件（M4 期间 `scripts/smoke.cjs` 因此被截断过一次，丢失的 [25][26][27] 段只能重写）。
 

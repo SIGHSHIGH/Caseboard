@@ -2,6 +2,19 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.8.0 · M8 安全与打磨
+
+### M8 整体验收通过（2026-10-19，tag ms/M8）
+
+- **启动密码保险库**（`src-tauri/src/vault.rs` + `src/services/vault.ts` + `vaultStore` + `LockScreen.tsx` + `SecurityDialog.tsx`）：整库文件加密（`CBV1` 容器，Argon2id 派生密钥 + AES-256-GCM），锁定态磁盘只有 `caseboard.db.vault`，普通 SQLite 工具打不开；错误密码被拒「启动密码不正确」；关闭与改密即使已解锁也必须先解密校验密码；`ensure_db_file` 拒绝在保险库存在时建空明文库。
+- **脱敏全链路**（`src/lib/maskText.ts` + `src/serializers/manifest.ts`）：身份证保留前 6 后 4、手机前 3 后 4、银行卡前 4 后 4 按 4 位分组，图片包 `manifest.csv` 的 OCR 文本同源脱敏；像素层马赛克仍可像素级验证抹平。
+- **AI 合规审计**（`src/lib/aiAudit.ts` + `SecurityDialog` 区块）：从 `aiMeta` 生成「逐张明细 / 提示词审计 / 合规结论」三节 Markdown，缺 AI 分区、缺角标、缺提示词等逐条点名，可导出 Word 或 Markdown。
+- **打印与 PDF 版式**（`src/index.css` 的 `@media print` + `App.tsx` 的 `.cb-print-head` + `pdfExport.ts` 的 `composePage`）：打印隐藏顶栏侧栏、A4 横向页首页脚（标题/编号/实体关系数/打印时间/页码），节点不跨页切断；多页 PDF 每页同样带页眉页脚。
+- **全局搜索与命令面板**（`src/lib/search.ts` + `CommandPalette.tsx` + `paletteStore`）：覆盖实体标题/别名/标签/字段/备注/附件、关系两端与备注、分组、素材名称/编号/OCR 文本，AND 多词与字段权重排序，命中带片段；Ctrl+K 随时唤起，↑↓ 选择、Enter 跳转并选中、Esc 关闭，内置切视图/代码视图/立即快照命令。
+- **打包与签名**：版本三处 0.8.0；`tauri build --bundles nsis` 产出 `CaseBoard_0.8.0_x64-setup.exe`（3,628,425 字节）；新增 `scripts/sign-installer.ps1`（纯 ASCII，`signtool sign /fd SHA256 /td SHA256 /tr … /sha1` + `verify /pa`，支持指定指纹与 `-SelfSignedTest` 演练）。本机无代码签名证书，签名链路就绪但安装包未签名（如实记录为偏离）。
+- **验收**：`pnpm typecheck` 0 error、`pnpm smoke` **598 条全绿**（M8 新增 25：[45] 搜索 10 / [46] 脱敏 8 / [47] AI 审计 8）、`pnpm ui-smoke` **256 条全绿**（新增 22）、`pnpm build` CSS 74.06 kB（gzip 12.66）、主包 888.82 kB（gzip 301.79）、`tauri build --no-bundle` 3m11s、`run-selftest.cjs` 三轮 **PASS 17 / 18 / 7**（第 3 轮为保险库专用轮）。
+- **文档**：`docs/MILESTONES.md` §0 新增成功指标达成情况表、§1 M8 置 ✅、§3 拆步表 + 验收记录 + 偏离表、§6 新增 D49–D52、§7 一行；`docs/MANUAL-ACCEPTANCE.md` 新增 H 节（v0.8.0 人工复验清单）。
+
 ## [未发布] v0.7.0 · M7 高级功能 + AI 生图
 
 ### M7 整体验收通过（2026-10-19，tag ms/M7）

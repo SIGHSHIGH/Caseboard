@@ -2683,6 +2683,105 @@ async function main() {
       return !!p && p.x > 0 && p.x < 1000 && p.y > 0 && p.y < 620;
     })());
   }
+
+  console.log('[45] 全局搜索与命令面板内核（M8 验收 6）');
+  {
+    const { searchDoc, KIND_LABEL, searchKindLabel } = require(path.join(out, 'lib', 'search.js'));
+    const demo = createDemoDoc();
+    const byTitle = searchDoc(demo, '张建国');
+    check('按标题命中实体并排在第一', byTitle.length > 0 && byTitle[0].kind === 'node' && byTitle[0].id === 'zhang', byTitle.slice(0, 3).map((hit) => hit.kind + ':' + hit.id));
+    check('别名也能搜到（三哥 / 小李）', (() => {
+      const hit = searchDoc(demo, '三哥').find((item) => item.id === 'zhang');
+      const hit2 = searchDoc(demo, '小李').find((item) => item.id === 'li');
+      return !!hit && !!hit2 && hit.field === '别名';
+    })());
+    check('备注与字段参与检索', (() => {
+      const notesHit = searchDoc(demo, '高回报投资');
+      const fieldHit = searchDoc(demo, '常州');
+      return notesHit.some((item) => item.id === 'zhang') && fieldHit.some((item) => item.id === 'zhang' && item.field === '字段 籍贯');
+    })());
+    check('关系按两端标题与关系名命中', (() => {
+      const hits = searchDoc(demo, '转账');
+      return hits.some((item) => item.kind === 'edge' && item.id === 'e-transfer');
+    })());
+    check('分组标题可检索', searchDoc(demo, '诈骗团伙').some((item) => item.kind === 'group' && item.id === 'g-suspect'));
+    check('多词是 AND 语义（全部命中才算）', (() => {
+      const both = searchDoc(demo, '张建国 常州');
+      const miss = searchDoc(demo, '张建国 不存在的词');
+      return both.length > 0 && miss.length === 0;
+    })());
+    check('素材 OCR 文本可检索并给出挂载的图片节点', (() => {
+      state().dispatch(replaceDocument(createDemoDoc(true)));
+      const { addAsset, addImageNode } = require(path.join(out, 'commands', 'index.js'));
+      state().dispatch(addAsset({ id: 'a-search', path: '/tmp/a.png', kind: 'image', hash: 'h', thumbnails: [], name: '银行流水截图', no: 'IMG-0009', ocrText: '收款账号 6222 0202 0000 1234 金额 500000', annotations: [] }));
+      state().dispatch(addImageNode({ assetId: 'a-search', x: 40, y: 40, w: 320, h: 200, assetWidth: 320, assetHeight: 200 }));
+      const imageNodeId = doc().imageNodes.find((node) => node.assetId === 'a-search').id;
+      const hits = searchDoc(doc(), '6222 0202');
+      const hit = hits.find((item) => item.kind === 'asset' && item.id === 'a-search');
+      return !!hit && hit.field === 'OCR 文本' && hit.focusId === imageNodeId;
+    })());
+    check('kind 文案与空查询', KIND_LABEL.node === '实体' && searchKindLabel('edge') === '关系' && searchKindLabel('asset') === '素材' && searchDoc(demo, '   ').length === 0);
+    check('limit 生效且按分数降序', (() => {
+      const all = searchDoc(demo, '李', 100);
+      const two = searchDoc(demo, '李', 2);
+      const sorted = all.every((item, index) => index === 0 || all[index - 1].score >= item.score);
+      return all.length > 2 && two.length === 2 && sorted;
+    })());
+  }
+
+  console.log('[46] 文本脱敏与导出复核（M8 脱敏全链路）');
+  {
+    const { maskIdCard, maskPhone, maskBankCard, maskText } = require(path.join(out, 'lib', 'maskText.js'));
+    const { buildManifestCsv } = require(path.join(out, 'serializers', 'manifest.js'));
+    check('身份证号保留前六后四', maskIdCard('证件号 110101199003071234 已核验') === '证件号 110101********1234 已核验', maskIdCard('证件号 110101199003071234 已核验'));
+    check('身份证末位 X 也能脱敏', maskIdCard('11010119900307123X').endsWith('123X') && maskIdCard('11010119900307123X').includes('********'));
+    check('手机号保留前三后四', maskPhone('联系 13800138000 核实') === '联系 138****8000 核实', maskPhone('联系 13800138000 核实'));
+    check('银行卡号分段打码', maskBankCard('6222020200001234').replace(/\s/g, ' ') === '6222 **** **** 1234', maskBankCard('6222020200001234'));
+    check('19 位卡号也能打码且保留前四后四', (() => {
+      const masked = maskBankCard('6222020200001234567');
+      return masked.startsWith('6222 ') && masked.endsWith(' 4567') && masked.includes('****');
+    })(), maskBankCard('6222020200001234567'));
+    check('短数字与金额不被误伤', maskText('金额 500000 元，账号 6222 0202 0000 1234') === '金额 500000 元，账号 6222 0202 0000 1234', maskText('金额 500000 元，账号 6222 0202 0000 1234'));
+    check('混合文本一次抹掉三类号码', (() => {
+      const masked = maskText('李梅 13800138000 身份证 110101199003071234 卡号 6222020200001234');
+      return masked.includes('138****8000') && masked.includes('110101********1234') && masked.includes('6222 **** **** 1234') && !masked.includes('13800138000');
+    })());
+    check('图片包 manifest 的 OCR 文本已脱敏', (() => {
+      state().dispatch(replaceDocument(createDemoDoc(true)));
+      const { addAsset } = require(path.join(out, 'commands', 'index.js'));
+      state().dispatch(addAsset({ id: 'a-mask', path: '/tmp/x.png', kind: 'image', hash: 'hm', thumbnails: [], name: '转账截图', no: 'IMG-0010', ocrText: '收款账号 6222020200001234 手机 13800138000 身份证 110101199003071234', annotations: [] }));
+      const csv = buildManifestCsv(doc(), new Map([['a-mask', 'images/IMG-0010.png']]));
+      return csv.includes('6222 **** **** 1234') && csv.includes('138****8000') && csv.includes('110101********1234') && !csv.includes('6222020200001234');
+    })());
+  }
+  console.log('[47] AI 生成图合规审计（M8 验收 3）');
+  {
+    const { AI_WATERMARK_TEXT } = require(path.join(out, 'lib', 'aiImage.js'));
+    const { auditAiAssets, PRESET_LABEL } = require(path.join(out, 'lib', 'aiAudit.js'));
+    const aiMeta = { prompt: '生成一张刑侦案情推演用的模拟画像（中年男子，短发）', model: 'builtin-procedural', seed: 20261019, createdAt: '2026-10-19T10:00:00.000Z', preset: 'sketch', params: { provider: 'builtin', width: 768, height: 960, watermark: AI_WATERMARK_TEXT, simulated: true, subject: '中年男子' } };
+    state().dispatch(replaceDocument(createDemoDoc()));
+    const { addAsset } = require(path.join(out, 'commands', 'index.js'));
+    check('没有 AI 图时审计为 0 张且不算违规', (() => {
+      const audit = auditAiAssets(createDemoDoc(), { generatedAt: '2026-10-19T12:00:00.000Z' });
+      return audit.count === 0 && audit.compliant === 0 && audit.problems.length === 0 && audit.markdown.includes('本案件尚未插入 AI 生成图');
+    })());
+    state().dispatch(addAsset({ id: 'a-audit-ok', path: '/tmp/ai.png', kind: 'image', hash: 'h', thumbnails: [], name: '嫌疑人模拟画像', no: 'AI-0001', zone: 'ai', aiGenerated: true, aiMeta, annotations: [] }));
+    state().dispatch(addAsset({ id: 'a-audit-bad', path: '/tmp/ai2.png', kind: 'image', hash: 'h2', thumbnails: [], name: '无角标注图', zone: 'ai', aiGenerated: true, annotations: [] }));
+    const audit = auditAiAssets(doc(), { generatedAt: '2026-10-19T12:00:00.000Z' });
+    check('合规与违规分别计数', audit.count === 2 && audit.compliant === 1 && audit.problems.length > 0, { count: audit.count, compliant: audit.compliant, problems: audit.problems });
+    check('缺 aiMeta 被判违规并写进明细', (() => {
+      const row = audit.rows.find((item) => item.assetId === 'a-audit-bad');
+      return !!row && row.problems.some((problem) => problem.includes('aiMeta'));
+    })());
+    check('合规图记录预设、模型、种子与角标', (() => {
+      const row = audit.rows.find((item) => item.assetId === 'a-audit-ok');
+      return !!row && row.preset === PRESET_LABEL.sketch && row.model === 'builtin-procedural' && row.seed === '20261019' && row.watermark === AI_WATERMARK_TEXT && row.problems.length === 0;
+    })());
+    check('审计报告三段结构齐全', ['# AI 生成图合规审计', '## 一、逐张明细', '## 二、提示词审计', '## 三、合规结论'].every((title) => audit.markdown.includes(title)));
+    check('提示词进入审计（截断到 160 字）', audit.markdown.includes('生成一张刑侦案情推演用的模拟画像'));
+    check('违规明细写明编号与问题', audit.markdown.includes('AI-0002') || audit.markdown.includes('无角标注图'));
+    check('审计结论声明不得作为证据', audit.markdown.includes('不得作为证据') && audit.markdown.includes('已证实'));
+  }
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

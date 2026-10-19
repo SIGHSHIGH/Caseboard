@@ -549,6 +549,46 @@ function check(name, condition, detail) {
   check('坐标标签可读', (doc.querySelector('.cb-map__coord')?.textContent || '').includes('31.'), doc.querySelector('.cb-map__coord')?.textContent);
   check('可切回画布视图', await clickByText('.cb-viewtab', '画布'));
   check('切回后地图移除', doc.querySelector('.cb-map') === null);
+
+  console.log('[UI] M8 全局搜索 / 打印 / AI 审计');
+  check('顶栏有「搜索 Ctrl+K」入口', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').includes('搜索 Ctrl+K')));
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+  await sleep(200);
+  check('Ctrl+K 打开命令面板', doc.querySelector('.cb-palette') !== null);
+  check('命令面板输入框已聚焦', doc.activeElement === doc.querySelector('.cb-palette__input'));
+  const paletteInput = doc.querySelector('.cb-palette__input');
+  await setInputValue(paletteInput, '张建国');
+  const paletteHits = [...doc.querySelectorAll('.cb-palette__hit')];
+  check('搜索命中实体', paletteHits.length >= 1 && (paletteHits[0].textContent || '').includes('张建国'), paletteHits.slice(0, 2).map((el) => el.textContent));
+  check('命中项标出实体类型', (doc.querySelector('.cb-palette__kind')?.textContent || '').includes('实体'), doc.querySelector('.cb-palette__kind')?.textContent);
+  if (paletteInput) paletteInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(300);
+  check('Enter 打开后命令面板关闭', doc.querySelector('.cb-palette') === null);
+  const selectedNode = doc.querySelector('.cb-node.is-selected');
+  check('定位到命中实体（画布选中张建国）', !!selectedNode && (selectedNode.textContent || '').includes('张建国'), selectedNode ? selectedNode.textContent?.slice(0, 40) : 'none');
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+  await sleep(200);
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(200);
+  check('Esc 关闭命令面板', doc.querySelector('.cb-palette') === null);
+
+  check('可打开导出面板', await clickByText('.cb-topbar__io .cb-btn', '导出'));
+  check('导出面板有打印区块', (doc.querySelector('.cb-export__print')?.textContent || '').includes('打印（A4 横向）'), doc.querySelector('.cb-export__print')?.textContent?.slice(0, 40));
+  check('打印按钮存在', [...doc.querySelectorAll('.cb-export__print .cb-btn')].some((b) => (b.textContent || '').includes('打印当前画布')));
+  check('可关闭导出面板', await clickByText('.cb-export .cb-btn--primary', '完成'));
+
+  check('可打开安全面板', await clickByText('.cb-topbar__io .cb-btn', '安全'));
+  check('安全面板已渲染', doc.querySelector('.cb-security') !== null);
+  const auditBlock = doc.querySelector('.cb-security__audit');
+  check('安全面板有 AI 合规审计区块', (auditBlock?.textContent || '').includes('AI 生成图合规审计'), (auditBlock?.textContent || '').slice(0, 60));
+  check('审计区块显示张数与合规数', /AI 生成图 \d+ 张/.test(auditBlock?.textContent || ''), (auditBlock?.textContent || '').slice(0, 80));
+  check('可导出审计 Word / Markdown', [...doc.querySelectorAll('.cb-security__audit .cb-btn')].map((b) => (b.textContent || '').trim()).join('/').includes('导出审计 Word'));
+  check('可关闭安全面板', await clickByText('.cb-security__head .cb-btn', '关闭'));
+  check('安全面板已移除', doc.querySelector('.cb-security') === null);
+
+  check('样式表包含打印媒体查询', /@media\s+print/.test(cssText));
+  check('打印时隐藏顶栏与侧栏', /\.cb-topbar/.test(cssText) && /\.cb-print-head/.test(cssText));
+  check('打印避免节点跨页截断', /break-inside:\s*avoid/.test(cssText));
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

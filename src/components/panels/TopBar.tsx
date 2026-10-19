@@ -13,6 +13,8 @@ import { HistoryDialog } from './HistoryDialog';
 import { AiPanel } from './AiPanel';
 import { AiImagePanel } from './AiImagePanel';
 import { HypothesisPanel } from './HypothesisPanel';
+import { SecurityDialog } from './SecurityDialog';
+import { usePaletteStore } from '../../store/paletteStore';
 
 const LEGEND: LineStyle[] = ['solid', 'dashed', 'dotted'];
 
@@ -47,6 +49,8 @@ export function TopBar() {
   const [aiOpen, setAiOpen] = useState(false);
   const [hypOpen, setHypOpen] = useState(false);
   const [aiImageOpen, setAiImageOpen] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const openPalette = usePaletteStore((s) => s.openPalette);
   const [savingProject, setSavingProject] = useState(false);
 
   const handleSaveProject = async () => {
@@ -155,6 +159,14 @@ export function TopBar() {
       </div>
 
       <div className="cb-topbar__io">
+        <button
+          type="button"
+          className="cb-btn cb-btn--search"
+          onClick={openPalette}
+          title="全局搜索与命令面板（Ctrl+K）：实体标题/别名/备注/OCR 文本"
+        >
+          搜索 Ctrl+K
+        </button>
         <button type="button" className="cb-btn" onClick={handleOpenProject} title="打开 .caseboard 项目文件">
           打开
         </button>
@@ -201,6 +213,14 @@ export function TopBar() {
         </button>
         <button
           type="button"
+          className={`cb-btn${securityOpen ? ' is-active' : ''}`}
+          title="安全：启动密码（数据库加密）、立即锁定、脱敏说明"
+          onClick={() => setSecurityOpen(true)}
+        >
+          安全
+        </button>
+        <button
+          type="button"
           className={`cb-btn${codeOpen ? ' is-active' : ''}`}
           title="代码视图：与画布渲染同一份数据（在代码视图内 Ctrl+Shift+F 格式化）"
           onClick={() => {
@@ -220,6 +240,7 @@ export function TopBar() {
       {aiOpen ? <AiPanel onClose={() => setAiOpen(false)} /> : null}
       {hypOpen ? <HypothesisPanel onClose={() => setHypOpen(false)} /> : null}
       {aiImageOpen ? <AiImagePanel onClose={() => setAiImageOpen(false)} /> : null}
+      {securityOpen ? <SecurityDialog onClose={() => setSecurityOpen(false)} /> : null}
     </header>
   );
 }

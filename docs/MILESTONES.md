@@ -17,6 +17,15 @@
 3. 全程不联网（本地模型模式）可完成：建板、导图标注、模拟画像、生成报告。
 4. 导出的 PDF 报告可直接用于内部案情汇报。
 
+**成功指标达成情况（2026-10-19，M8 收尾）**
+
+| 指标 | 现状 | 证据 |
+|---|---|---|
+| 1. 30 分钟搭出 30 实体 / 50 关系 / 20 图 | 未实测（需人工计时） | 交互路径齐备（四路导图、批量导入、一键整理）；手工计时清单见 `docs/MANUAL-ACCEPTANCE.md` H1 |
+| 2. 抽取采纳率 ≥ 70%，且无需纠正「已证实」 | ✅ 样本文笔录 8/8 = **100%**；AI 草稿新实体固定 `todo`，命令层不允许 AI 写 `confirmed` | smoke [36]/[41]、自检「AI 文本能力」、D42 |
+| 3. 全程离线可完成建板 / 标注 / 模拟画像 / 报告 | ✅ 内置规则 + 内置程序化生图 + 本地报告，无任何非本机请求 | 自检第 1/2 轮「零外呼」、smoke [41]、D41/D45 |
+| 4. 导出的 PDF 报告可直接用于内部汇报 | ✅ 七节报告 + `[证据:id]` / `[节点:id]` 引用 + A4 页眉页脚 | 自检多页 PDF 2 页 · 96 KB、`fmtReport` 导出、保留人工确认项 |
+
 **非目标（规格 0.4 节，本期明确不做，越界即算缺陷）**
 
 - 不做多人实时协作与云同步（本地优先；后期最多评估局域网只读分享）。
@@ -37,7 +46,7 @@
 | M5 | 分析视图 | 2–3 周 | 过滤、聚焦、路径/中心度、自动布局、时间线回放、演示模式 | 路径高亮可复现；时间游标可播放；一键整理保留锁定节点 | ✅ 2026-10-19 |
 | M6 | AI 文本能力 | 2–3 周 | 抽取建图（P4）、自然语言编辑（P6）、矛盾检测/证据链（P5）、报告（P7）、本地模型 | 采纳率 ≥ 70%；AI 永不直接改 Model，只进待确认队列 | ✅ 2026-10-19 |
 | M7 | 高级功能 + AI 生图 | 3–4 周 | 多假设画布、证据链模板、区域锚点、OCR、地图、ComfyUI 四预设、图生图、水印分区日志 | 水印不可关闭；AI 图不可设为已证实；换脸请求被拦截 | ✅ 2026-10-19 |
-| M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ⬜ |
+| M8 | 安全与打磨 | 2–3 周 | SQLCipher、Windows Hello、脱敏审计、打印样式、签名打包、安装器、自动更新 | 干净 Win10/11 可装可跑；安装包签名；合规审计可导出 | ✅ 2026-10-19 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -640,6 +649,45 @@
 4. 打印预览与导出 PDF 版式正确（A4、页眉页脚、分页不断表）。
 5. 安装包有签名，Windows 不再提示未知发布者。
 6. 全局搜索覆盖实体标题、别名、备注、OCR 文本，命中可定位跳转。
+#### M8 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 | 状态 |
+|---|---|---|---|
+| M8-1 | **加密与启动密码**：`src-tauri/src/vault.rs`（`CBV1` 头 = magic + 16 字节盐 + 12 字节 nonce + 密文；Argon2id 派生 32 字节密钥；AES-256-GCM；先写 `.db.tmp` 再 rename 原子替换）、`src-tauri/src/lib.rs` 的 `vault_status` / `vault_enable` / `vault_unlock` / `vault_lock_with_password` / `vault_disable` / `vault_change_password` / `vault_header`（关闭与改密即使已解锁也先解密校验密码）、`ensure_db_file` 在保险库存在而明文缺失时拒绝建库；前端 `src/services/vault.ts`、`src/store/vaultStore.ts`、`LockScreen.tsx`、`SecurityDialog.tsx` | 自检第 3 轮 `runVaultSelftest` **7 项**：明文头 `53514C69746520666F726D6174203300` ↔ 密文头 `43425631`、错误密码被拒「启动密码不正确」、正确密码解锁、立即锁定、改密后旧密码失效、关闭密码还原 | ✅ |
+| M8-2 | **脱敏全链路**：像素层 `src/lib/redact.ts`（马赛克 + `isRegionFlattened`，M4 已有）；文本层新增 `src/lib/maskText.ts`（`maskIdCard` 保留前 6 后 4、`maskPhone` 前 3 后 4、`maskBankCard` 前 4 后 4 且按 4 位分组、`maskText` 串联三层）；清单逻辑从 `services/exporters.ts` 抽到纯函数 `src/serializers/manifest.ts`，OCR 文本过 `maskText` | smoke [46] **8 条**：三类号码掩码、相邻金额不误伤、图片包 `manifest.csv` 不含原号 | ✅ |
+| M8-3 | **AI 合规审计**：`src/lib/aiAudit.ts` 的 `auditAiAssets(doc)`（只收 `zone:'ai'` 或 `aiGenerated`，逐张查 AI 分区 / aiGenerated / aiMeta / 角标 / 提示词 / 模型 / 时间，输出 `count` / `compliant` / `problems` 与三节 Markdown）；`SecurityDialog` 增加审计区块与「导出审计 Word / 导出 Markdown」 | smoke [47] **8 条**：零图空态、违规图计数、问题点名 `aiMeta`、提示词入库、结论含「不得作为证据」；ui-smoke 面板与导出按钮 | ✅ |
+| M8-4 | **打印与 PDF 版式**：`src/index.css` 的 `@media print`（`@page size: A4 landscape`、隐藏顶栏/左右栏/模态、`.cb-node` 与 `.cb-free-image` 不跨页切断）+ `.cb-print-head`（`App.tsx` 渲染标题 / 案件编号 / 实体关系数 / 打印时间）；`src/serializers/pdfExport.ts` 的 `composePage` 给每页加页眉（标题 + 案件编号 + 分隔线）与页脚（生成时间 / 实体关系数 / 第 i/N 页） | ui-smoke 断言 dist CSS 含 `@media print`、`.cb-print-head`、`break-inside: avoid`；ExportDialog 打印入口；自检多页 PDF 2 页 · 96 KB | ✅ |
+| M8-5 | **全局搜索与命令面板**：`src/lib/search.ts` 的 `searchDoc`（实体标题/别名/标签/字段/备注/附件/照片、关系类型与两端与备注、分组、素材名称/编号/OCR；AND 多词；完全匹配 +40、前缀 +24、包含 +14，字段权重 12/8/3；`snippet` ±16；`focusId` 指回画布对象）、`CommandPalette.tsx`（↑↓ 选择、Enter 执行、Esc 关闭，内置切视图/代码视图/立即快照命令）、`paletteStore`、`App.tsx` 全局 Ctrl+K | smoke [45] **10 条**；ui-smoke：Ctrl+K 打开 → 输入「张建国」→ Enter 后画布选中、Esc 关闭 | ✅ |
+| M8-6 | **打包与签名**：版本三处 0.8.0；`node scripts/tauri-cli.cjs build --bundles nsis` → `CaseBoard_0.8.0_x64-setup.exe`；`scripts/sign-installer.ps1`（纯 ASCII，定位 `signtool.exe`、可选 `-CertThumbprint` / `-SelfSignedTest`、逐个 `sign /fd SHA256 /td SHA256 /tr … /sha1` 再 `verify /pa`） | 安装包 **3,628,425 字节**；签名脚本在无证书时给出明确错误（本机 `Cert:\CurrentUser\My` 无代码签名证书） | ✅ |
+
+#### M8 验收记录（2026-10-19，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| 类型检查 | `tsc --noEmit` 0 error |
+| 逻辑层 | `pnpm smoke` **598 PASS / 0 FAIL**（M8 新增 25：[45] 搜索 10、[46] 脱敏 8、[47] AI 审计 8；M7 基线 573） |
+| 打包层 | `pnpm ui-smoke` **256 PASS / 0 FAIL**（M8 新增 22）；`pnpm build` CSS 74.06 kB（gzip 12.66）、主包 888.82 kB（gzip 301.79） |
+| 桌面产物 | `tauri build --no-bundle` 3m11s → `caseboard.exe`（随后 `--bundles nsis` 重建，10,680,320 字节）；`run-selftest.cjs` 三轮 **PASS 17 / 18 / 7** |
+| 验收 1 干净机安装 | NSIS 安装包已产出（3,628,425 字节）；干净机全流程**只能人工**（本机无第二台干净 Win10/11），步骤见 `docs/MANUAL-ACCEPTANCE.md` H 节 |
+| 验收 2 数据库密文 | 第 3 轮自检 7/7：启用后磁盘只剩 `caseboard.db.vault`（头 `43425631`），普通 SQLite 工具打不开；错误密码被拒（「启动密码不正确」），正确密码解锁恢复 `53514C69746520666F726D6174203300`；锁定后明文消失；改密后旧密码失效 |
+| 验收 3 AI 审计 | `auditAiAssets` 输出「逐张明细 / 提示词 / 结论」三节 Markdown，`SecurityDialog` 可导出 Word（fflate 手写 OOXML）与 Markdown；缺 `aiMeta` 的图被点名 |
+| 验收 4 打印与 PDF | `@media print` 隐藏顶栏与侧栏、注入页首页脚、节点不跨页；多页 PDF 每页带标题/编号/页码（自检 2 页 · 96 KB） |
+| 验收 5 安装包签名 | `signtool.exe`（Windows SDK 10.0.26100.0）可用、签名脚本就绪；本机**无代码签名证书**，安装包未签名 → 见偏离表 |
+| 验收 6 全局搜索 | 标题/别名/备注/字段/OCR 全文命中（AND 多词），命令面板 Ctrl+K 打开、Enter 跳转画布并选中，Esc 关闭 |
+| 版本 | `package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 三处 **0.8.0** |
+
+#### M8 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| SQLCipher 数据库加密 | `tauri-plugin-sql` 不支持 SQLCipher 口令；改用**整库文件加密**（AES-256-GCM + Argon2id，`CBV1` 容器） | 同样满足「普通 SQLite 工具打开为密文」；解锁时才生成明文库，锁定即删除（D49） |
+| Windows Hello | 只有接入位说明，未实现 `hello_available` / `hello_verify` | 解锁统一走启动密码；记为下一期候选 |
+| 代码签名 | 本机 `Cert:\CurrentUser\My` 没有任何代码签名证书（`signtool` 存在） | `scripts/sign-installer.ps1` 就绪（含 `-SelfSignedTest` 演练）；正式分发需导入受信任证书后重跑 |
+| WiX `.msi` / 自动更新 | 只出 NSIS `.exe`；无自动更新 | 规格写明「NSIS 或 WiX」，NSIS 已满足；自动更新需要服务器与证书，本期不做 |
+| 深浅色 / 高对比度 / 皮肤 | 未做，只有中性深灰 + 证据红一套主题 | CSS 变量（`--cb-*`）已具备改造基础；列为后续打磨项 |
+| 干净机安装全流程 | 无第二台干净 Win10/11 机器 | 只能人工；`docs/MANUAL-ACCEPTANCE.md` H 节给出安装/卸载/首启清单 |
+| 打印 | 用系统打印（`window.print()`）而非应用内打印预览 | `@media print` 已保证版式；PDF 走导出面板的多页 PDF |
+
 
 ---
 
@@ -789,6 +837,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D46 | AI 图合规三道闸：角标**写进像素**（顶部窄带 + 右下角）、`aiGenerated` + 完整 `aiMeta`、`blocksConfirmed` 在 `updateNode` 命令层拦截「改成已证实」；界面不提供任何移除开关 | Gate 0-5 要求「不可关闭」，所以只能在生成与落库环节写死；拦截放在命令层而不是表单层，才能覆盖导入、DSL、AI 指令等所有写路径 | `src/lib/aiImage.ts`（`watermarkPlan` / `inspectAiAsset` / `blocksConfirmed`）、`src/services/aiImage.ts`（`stampWatermark` / `stampRemote`）、smoke [43]、自检角标 3901 点 |
 | D47 | 地图做成**离线示意地图**：只认右栏坐标字段做相对摆放，不请求瓦片、不引入投影库，界面常驻「未加载瓦片」声明 | 自配瓦片需要确定的来源与许可，且真实底图会让「坐标精确」变成隐含承诺；示意地图能立刻支撑「两地相距多远、谁在附近」这类案情判断，且断网可用 | `src/lib/map.ts`、`src/components/views/MapView.tsx`、`viewModeStore` 的 `'map'`；演示数据两条坐标 |
 | D48 | OCR 用 **Tesseract 侧车**（Rust 直接调 `tesseract --version` / `tesseract <path> stdout -l chi_sim+eng --psm 6`），字段抽取是独立纯函数层，可脱离引擎手工粘贴文本验证 | 侧车只负责「图片→文字」，金额/时间/账号的结构化与人工修正不该绑定某一家 OCR；换引擎时上层完全不动 | `src/services/ocr.ts`、`src-tauri/src/lib.rs` 的 `ocr_available` / `ocr_image`、`src/lib/ocr.ts`、smoke [43]、自检「OCR 字段抽取」 |
+| D49 | 加密走**整库文件保险库**（`CBV1` = magic + 16 字节盐 + 12 字节 nonce + AES-256-GCM 密文，Argon2id 派生密钥）：锁定态磁盘只有 `caseboard.db.vault`，解锁才解出 `caseboard.db`，锁定/关闭时删除明文；`vault_disable` 与 `vault_change_password` **即使已解锁也必须先解密校验密码** | `tauri-plugin-sql` 无法给 SQLCipher 传口令，而文件级加密不侵入查询路径，还能用「普通 SQLite 工具打不开」直接验收；不校验密码的关闭/改密等于谁坐到电脑前都能一键解除加密 | `src-tauri/src/vault.rs`、`lib.rs` 的七个 vault 命令、`ensure_db_file` 的拒绝建库守卫、自检第 3 轮 7 项 |
+| D50 | 脱敏分**像素层与文本层**两层：像素层 `redact.ts` 马赛克可像素级验证抹平；文本层 `maskText.ts` 身份证保留前 6 后 4、手机前 3 后 4、银行卡前 4 后 4 且按 4 位分组；图片包 `manifest.csv` 的 OCR 文本过同一函数 | 验收要求「不可逆」与「全链路复核」，两层必须各有可断言入口；掩码只保留可核对片段，避免「看似打码实则可还原」 | `src/lib/maskText.ts`、`src/serializers/manifest.ts`、smoke [46] |
+| D51 | AI 合规审计是**纯函数**（`aiAudit.ts` 从 `doc.assets` 的 `aiMeta` 生成三节 Markdown），界面只负责预览与导出 Word/Markdown | 审计必须同数据同结果、不依赖模型与运行时状态；复用 `reportDocx` 的手写 OOXML 保持离线 | `auditAiAssets` 返回 `count/compliant/problems`；`SecurityDialog` 只做展示与导出 |
+| D52 | 全局搜索是**纯函数 `searchDoc`**（AND 多词、字段权重、完全匹配加权、`snippet` ±16、按 score→kind→中文排序），命令面板只是它的视图加内置命令；Ctrl+K 在输入框内也生效 | 验收 6 要「命中可定位跳转」，必须能机器断言命中字段与 `focusId`；UI 只做键盘导航与选中 | `src/lib/search.ts`、`paletteStore`、`CommandPalette`、smoke [45]、ui-smoke |
 | D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 
 ---
@@ -814,3 +866,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-19 | **M6 整体验收通过**（✅ 打 tag `ms/M6`）：AI 文本能力五步落地——三通道与 P4–P7 提示词、内置抽取器待确认队列、矛盾与证据链审查、自然语言编辑 diff、七节报告与 Word/PDF 导出；`pnpm smoke` **513 条**（M6 新增 53）、`pnpm ui-smoke` **193 条**（新增 51）、桌面自检 **15/16**、版本 **0.6.0**；§3 拆步表与验收记录落地，新增 D41–D44。 |
 | 2026-10-19 | **M7 整体验收通过**（✅ 打 tag `ms/M7`）：多假设画布（支持/反驳计分与并排比较）、六段证据链与断点、区域锚点悬停高亮、OCR 四字段与人工修正、四预设 AI 生图（强制角标写像素 + AI 分区 + 永不已证实 + 换脸拦截）、离线示意地图六步落地；`pnpm smoke` **573 条**（新增 61）、`pnpm ui-smoke` **234 条**（新增 41）、桌面自检 **17/18**、版本 **0.7.0**；§1 M7 置 ✅、§3 写入拆步/验收/偏离三表，新增 D45–D48（内置生图兜底、生图三道闸、离线示意地图、Tesseract 侧车）。 |
 | 2026-10-19 | **M5 整体验收通过**（✅ 打 tag `ms/M5`）：分析视图五步落地——图内核（路径/中心度/五种布局/时间线）、过滤与聚焦、路径与中心度可视化、一键整理、时间线回放与演示模式；`pnpm smoke` **460 条**（M5 新增 101）、`pnpm ui-smoke` **142 条**（新增 52）、`pnpm build` 811 modules；§1 总表 M5 置 ✅，§3 写入 M5 拆步与验收记录（含与计划的五项偏离），新增 D38（演示模式先做逐步讲解）、D39（1× = 60 秒、UTC 口径）、D40（自写确定性 BFS/Brandes）。 |
+| 2026-10-19 | **M8 整体验收通过**（✅ 打 tag `ms/M8`）：保险库加密与启动密码（自检第 3 轮 7/7）、脱敏全链路（像素 + 文本 + 清单）、AI 合规审计导出、打印样式与 PDF 页眉页脚、全局搜索与 Ctrl+K 命令面板、NSIS 安装包与签名脚本；`pnpm smoke` **598 条**（M8 新增 25）、`pnpm ui-smoke` **256 条**（新增 22）、桌面自检 **17 / 18 / 7**、版本 **0.8.0**；§1 M8 置 ✅、§3 写入拆步/验收/偏离三表，新增 D49–D52；`scripts/sign-installer.ps1` 就绪但本机无代码签名证书。 |

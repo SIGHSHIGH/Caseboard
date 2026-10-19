@@ -16,19 +16,19 @@ const path = require('node:path');
 const repo = path.join(__dirname, '..');
 const exe = path.join(repo, 'src-tauri', 'target', 'release', 'caseboard.exe');
 const tmp = path.join(repo, '.tmp-esbuild');
-const dataDir = process.env.CB_DATA_DIR || path.join(tmp, 'appdata', 'app.caseboard.desktop');
-const reportPath = path.join(dataDir, 'selftest.json');
-const debugPath = path.join(dataDir, 'debug.log');
+// 第 1/2 轮共用「重启后数据还在」的目录；第 3 轮验保险库，必须用干净目录（要反复加密/解密一个明文库）。
+function dataDirFor(phase) {
+  if (process.env.CB_DATA_DIR) return process.env.CB_DATA_DIR;
+  if (phase >= 3) return path.join(tmp, 'vaultapp', 'app.caseboard.desktop');
+  return path.join(tmp, 'appdata', 'app.caseboard.desktop');
+}
 const timeoutMs = Number(process.env.CB_SELFTEST_TIMEOUT || 120000);
-const phases = (process.env.CB_PHASES || '1,2').split(',').map((value) => Number(value.trim())).filter((value) => value > 0);
+const phases = (process.env.CB_PHASES || '1,2,3').split(',').map((value) => Number(value.trim())).filter((value) => value > 0);
 
 fs.mkdirSync(tmp, { recursive: true });
-if (!process.env.CB_PHASES) {
-  fs.rmSync(dataDir, { recursive: true, force: true });
-}
-fs.mkdirSync(dataDir, { recursive: true });
 
-function dump() {
+function dump(dataDir) {
+  const debugPath = path.join(dataDir, 'debug.log');
   console.log('--- debug.log ---');
   try { console.log(fs.readFileSync(debugPath, 'utf8').slice(-6000)); } catch { console.log('(无诊断日志：前端可能根本没执行)'); }
   console.log('--- app log ---');
@@ -38,6 +38,10 @@ function dump() {
 
 function runPhase(phase) {
   return new Promise((resolve) => {
+    const dataDir = dataDirFor(phase);
+    const reportPath = path.join(dataDir, 'selftest.json');
+    if (phase >= 3) fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.mkdirSync(dataDir, { recursive: true });
     try { fs.rmSync(reportPath, { force: true }); } catch {}
     const wv2 = path.join(tmp, 'webview2-' + Date.now());
     fs.mkdirSync(wv2, { recursive: true });
@@ -71,14 +75,14 @@ function runPhase(phase) {
       if (!alive && elapsed > 3000) {
         clearInterval(timer);
         console.log('[phase ' + phase + '] 进程退出但没有报告', elapsed);
-        dump();
+        dump(dataDir);
         resolve({ phase, ok: false, report: null, raw: '' });
         return;
       }
       if (elapsed > timeoutMs) {
         clearInterval(timer);
         console.log('[phase ' + phase + '] 超时', elapsed);
-        dump();
+        dump(dataDir);
         try { child.kill(); } catch {}
         resolve({ phase, ok: false, report: null, raw: '' });
       }
@@ -103,7 +107,7 @@ function printReport(result) {
 
 (async () => {
   console.log('EXE', fs.existsSync(exe), exe);
-  console.log('DATA', dataDir);
+  console.log('DATA', phases.map((phase) => phase + ':' + dataDirFor(phase)).join(' '));
   const results = [];
   for (const phase of phases) {
     const result = await runPhase(phase);
