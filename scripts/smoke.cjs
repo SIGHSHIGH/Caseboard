@@ -2782,6 +2782,33 @@ async function main() {
     check('违规明细写明编号与问题', audit.markdown.includes('AI-0002') || audit.markdown.includes('无角标注图'));
     check('审计结论声明不得作为证据', audit.markdown.includes('不得作为证据') && audit.markdown.includes('已证实'));
   }
+  console.log('[48] 界面主题（M8 深浅色 / 高对比）');
+  {
+    const { THEME_ORDER, THEME_META, THEME_STORAGE_KEY, BOARD_GRID, normalizeThemeMode, nextThemeMode } = require(path.join(out, 'lib', 'themeMode.js'));
+    check('三档主题顺序为 默认 → 深色 → 高对比', JSON.stringify(THEME_ORDER) === JSON.stringify(['board', 'dark', 'contrast']));
+    check('非法主题值回落到默认', normalizeThemeMode('weird') === 'board' && normalizeThemeMode(undefined) === 'board' && normalizeThemeMode(null) === 'board' && normalizeThemeMode('dark') === 'dark' && normalizeThemeMode('contrast') === 'contrast');
+    check('循环切换走完三档再回到默认', nextThemeMode('board') === 'dark' && nextThemeMode('dark') === 'contrast' && nextThemeMode('contrast') === 'board' && nextThemeMode('unknown') === 'dark');
+    check('每档都有中文标签与使用说明', THEME_ORDER.every((id) => typeof THEME_META[id].label === 'string' && THEME_META[id].label.length > 0 && typeof THEME_META[id].hint === 'string' && THEME_META[id].hint.length > 0), THEME_ORDER.map((id) => THEME_META[id].label).join(' / '));
+    check('主题记忆键固定为 caseboard-theme（不进案件数据）', THEME_STORAGE_KEY === 'caseboard-theme');
+    check('画布圆点 / 网格 / 小地图遮罩按主题取值', THEME_ORDER.every((id) => {
+      const grid = BOARD_GRID[id];
+      return /^#[0-9A-Fa-f]{6}$/.test(grid.dot) && /^#[0-9A-Fa-f]{6}$/.test(grid.line) && grid.mask.indexOf('rgba(') === 0;
+    }));
+    const fsx = require('fs');
+    const cssText = fsx.readFileSync(path.join(__dirname, '..', 'src', 'index.css'), 'utf8');
+    check('默认主题仍有暖白表面变量（Gate 0-6 主色不变）', cssText.includes('--cb-surface: #ffffff;') && cssText.includes('--cb-accent: #c0392b;'));
+    check('深色主题只重映射变量且压暗表面', cssText.includes(":root[data-theme='dark']") && cssText.includes('--cb-bg: #151412;') && cssText.includes('--cb-surface: #232120;') && cssText.includes('color-scheme: dark;'));
+    check('高对比主题用纯黑边框并关闭阴影', cssText.includes(":root[data-theme='contrast']") && cssText.includes('--cb-border: #000000;') && cssText.includes('--cb-text: #000000;') && /:root\[data-theme='contrast'\] \{[^}]*--cb-shadow: none;/s.test(cssText));
+    check('打印强制浅色变量（深色主题也出白纸黑字）', /@media print[\s\S]*--cb-bg: #ffffff;[\s\S]*--cb-text: #1b1b1a;/.test(cssText));
+    check('组件层不再写死白色背景（只走主题变量）', !/background:\s*#fff\b/i.test(cssText) && !/background:\s*#FBFAF7\b/i.test(cssText), (cssText.match(/background:\s*#fff\b/gi) || []).length + ' 处残留');
+    check('样式表引用的主题变量都有定义（三档都不会出现空值）', (() => {
+      const used = new Set([...cssText.matchAll(/var\((--cb-[a-z0-9-]+)/g)].map((m) => m[1]));
+      const defined = new Set([...cssText.matchAll(/(--cb-[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+      const missing = [...used].filter((name) => !defined.has(name));
+      globalThis.smokeMissingVars = missing;
+      return missing.length === 0;
+    })(), (globalThis.smokeMissingVars || []).join(', '));
+  }
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

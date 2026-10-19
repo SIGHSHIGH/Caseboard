@@ -589,6 +589,26 @@ function check(name, condition, detail) {
   check('样式表包含打印媒体查询', /@media\s+print/.test(cssText));
   check('打印时隐藏顶栏与侧栏', /\.cb-topbar/.test(cssText) && /\.cb-print-head/.test(cssText));
   check('打印避免节点跨页截断', /break-inside:\s*avoid/.test(cssText));
+  console.log('[UI] M8 界面主题（深浅色 / 高对比）');
+  const themeButton = () => [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((b) => (b.textContent || '').includes('主题'));
+  check('顶栏有主题按钮且显示当前档位', !!themeButton() && (themeButton().textContent || '').includes('默认'), themeButton() ? themeButton().textContent : 'none');
+  const htmlEl = doc.documentElement;
+  check('初始主题为默认（data-theme=board）', htmlEl.getAttribute('data-theme') === 'board', htmlEl.getAttribute('data-theme'));
+  themeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+  check('点击切到深色并写入本地记忆', htmlEl.getAttribute('data-theme') === 'dark' && window.localStorage.getItem('caseboard-theme') === 'dark', htmlEl.getAttribute('data-theme') + ' / ' + window.localStorage.getItem('caseboard-theme'));
+  check('按钮文案同步为深色', (themeButton().textContent || '').includes('深色'), themeButton().textContent);
+  const gridStyle = (doc.querySelector('.react-flow__background')?.getAttribute('style') || '').toUpperCase();
+  check('深色下画布网格换色', gridStyle.includes('3E3934'), gridStyle.slice(0, 160) || 'no background style');
+  themeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+  check('再点切到高对比', htmlEl.getAttribute('data-theme') === 'contrast' && (themeButton().textContent || '').includes('高对比'), htmlEl.getAttribute('data-theme'));
+  themeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+  check('第三下回到默认', htmlEl.getAttribute('data-theme') === 'board' && window.localStorage.getItem('caseboard-theme') === 'board', htmlEl.getAttribute('data-theme'));
+  const srcCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.css'), 'utf8');
+  check('样式表含深色与高对比变量块', /:root\[data-theme='dark'\]/.test(srcCss) && /--cb-surface:\s*#232120/.test(srcCss) && /:root\[data-theme='contrast'\]/.test(srcCss));
+  check('样式表组件层不再写死白底', !/background:\s*#fff\b/i.test(srcCss), ((srcCss.match(/background:\s*#fff\b/gi) || []).length) + ' 处残留');
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

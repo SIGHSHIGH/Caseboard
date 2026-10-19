@@ -42,10 +42,12 @@ import {
 } from '../../lib/groups';
 import { newId } from '../../lib/id';
 import { fitImageSize, snapImageRect, type AlignGuide } from '../../lib/imageNode';
+import { BOARD_GRID } from '../../lib/themeMode';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodeStore } from '../../store/codeStore';
 import { useDocStore } from '../../store/docStore';
+import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
 import { useViewStore } from '../../store/viewStore';
 import type { CaseNode, Group, ImageNode, XY } from '../../types';
@@ -146,6 +148,8 @@ export function Board() {
   // 代码侧请求居中时用 nonce 去重：文档后续变化不该把视口抢回去
   const lastFocusNonce = useRef(0);
   const [pending, setPending] = useState<Connection | null>(null);
+  const themeMode = useThemeStore((s) => s.mode);
+  const grid = BOARD_GRID[themeMode] ?? BOARD_GRID.board;
 
   const filter = useViewStore((s) => s.filter);
   const focus = useViewStore((s) => s.focus);
@@ -705,8 +709,8 @@ export function Board() {
           instance.fitView({ padding: 0.25 });
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} color="#D9D4CA" />
-        <Background id="cb-grid" variant={BackgroundVariant.Lines} gap={80} size={0.6} color="#E8E3DA" />
+        <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} color={grid.dot} />
+        <Background id="cb-grid" variant={BackgroundVariant.Lines} gap={80} size={0.6} color={grid.line} />
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
           pannable
@@ -719,8 +723,8 @@ export function Board() {
             if (flow.type === 'freeImage') return '#8C7A2E';
             return NODE_TYPE_META[flow.data.node.type]?.color ?? '#6E6862';
           }}
-          maskColor="rgba(245, 243, 239, 0.75)"
-          style={{ background: '#FBFAF7', border: '1px solid #E2DED5' }}
+          maskColor={grid.mask}
+          style={{ background: 'var(--cb-panel)', border: '1px solid var(--cb-border)' }}
         />
       </ReactFlow>
 

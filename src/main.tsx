@@ -6,11 +6,15 @@ import App from './App';
 import { debugLog, getAppInfo } from './services/platform';
 import { bootstrapDoc } from './store/docStore';
 import { useVaultStore } from './store/vaultStore';
+import { bootTheme } from './store/themeStore';
 
 const container = document.getElementById('root');
 if (!container) throw new Error('缺少 #root 挂载点');
 
 const root = ReactDOM.createRoot(container);
+
+// 首屏渲染前就把主题落到 <html data-theme>，避免闪一下默认浅色
+bootTheme();
 
 /**
  * 启动顺序：立即挂载界面（先用演示数据 / 本机缓存），再异步水合 SQLite；

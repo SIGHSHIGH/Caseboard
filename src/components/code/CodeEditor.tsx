@@ -65,18 +65,18 @@ const targetField = StateField.define<DecorationSet>({
 
 const editorTheme = EditorView.theme(
   {
-    '&': { height: '100%', color: '#2B2B2B', backgroundColor: '#FBFAF7', fontSize: '13px' },
+    '&': { height: '100%', color: 'var(--cb-text)', backgroundColor: 'var(--cb-panel)', fontSize: '13px' },
     '.cm-scroller': { fontFamily: '"Cascadia Mono", Consolas, "Microsoft YaHei", monospace', lineHeight: '1.65' },
     '.cm-content': { padding: '10px 0' },
-    '.cm-gutters': { backgroundColor: '#F5F3EF', color: '#8C8578', border: 'none', borderRight: '1px solid #E2DED5' },
+    '.cm-gutters': { backgroundColor: 'var(--cb-bg)', color: 'var(--cb-muted)', border: 'none', borderRight: '1px solid var(--cb-border)' },
     '.cm-activeLine': { backgroundColor: 'rgba(192, 57, 43, 0.04)' },
     '.cm-activeLineGutter': { backgroundColor: 'rgba(192, 57, 43, 0.08)' },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'rgba(192, 57, 43, 0.16)' },
     '.cb-code-target': { backgroundColor: 'rgba(192, 57, 43, 0.10)', boxShadow: 'inset 2px 0 0 #C0392B' },
-    '.cb-tok-keyword': { color: '#8C4A3C', fontWeight: '600' },
-    '.cb-tok-keyword *': { color: '#8C4A3C', fontWeight: '600' },
-    '.cm-tooltip': { border: '1px solid #E2DED5', backgroundColor: '#FFFFFF' },
-    '.cm-panels': { backgroundColor: '#F5F3EF' },
+    '.cb-tok-keyword': { color: 'var(--cb-accent-strong)', fontWeight: '600' },
+    '.cb-tok-keyword *': { color: 'var(--cb-accent-strong)', fontWeight: '600' },
+    '.cm-tooltip': { border: '1px solid var(--cb-border)', backgroundColor: 'var(--cb-surface)', color: 'var(--cb-text)' },
+    '.cm-panels': { backgroundColor: 'var(--cb-bg)' },
   },
   { dark: false },
 );

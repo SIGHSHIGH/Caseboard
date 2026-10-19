@@ -29,7 +29,7 @@ export function MapView() {
           <svg className="cb-map__svg" viewBox={'0 0 ' + MAP_W + ' ' + MAP_H} preserveAspectRatio="xMidYMid meet" role="img" aria-label="离线示意地图">
             <defs>
               <pattern id="cbmap-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E7E2D8" strokeWidth="1" />
+                <path d="M 40 0 L 0 0 0 40" fill="none" style={{ stroke: 'var(--cb-border)' }} strokeWidth="1" />
               </pattern>
             </defs>
             <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#cbmap-grid)" />
@@ -39,7 +39,7 @@ export function MapView() {
               const color = NODE_TYPE_META[point.node.type].color;
               return (
                 <g key={point.node.id} className="cb-map__pin" transform={'translate(' + pos.x + ',' + pos.y + ')'} onClick={() => selectNode(point.node.id)}>
-                  <circle r="9" fill={color} stroke="#FBFAF7" strokeWidth="3" />
+                  <circle r="9" fill={color} style={{ stroke: 'var(--cb-panel)' }} strokeWidth="3" />
                   <circle r="16" fill="none" stroke={color} strokeWidth="1" strokeDasharray="2 4" opacity="0.5" />
                   <text x="0" y="30" textAnchor="middle" className="cb-map__label">{point.node.title}</text>
                   <text x="0" y="46" textAnchor="middle" className="cb-map__coord">{point.lat.toFixed(4)},{point.lng.toFixed(4)}</text>

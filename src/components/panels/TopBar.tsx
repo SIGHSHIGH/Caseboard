@@ -15,6 +15,8 @@ import { AiImagePanel } from './AiImagePanel';
 import { HypothesisPanel } from './HypothesisPanel';
 import { SecurityDialog } from './SecurityDialog';
 import { usePaletteStore } from '../../store/paletteStore';
+import { useThemeStore } from '../../store/themeStore';
+import { THEME_META, nextThemeMode } from '../../lib/themeMode';
 
 const LEGEND: LineStyle[] = ['solid', 'dashed', 'dotted'];
 
@@ -51,6 +53,9 @@ export function TopBar() {
   const [aiImageOpen, setAiImageOpen] = useState(false);
   const [securityOpen, setSecurityOpen] = useState(false);
   const openPalette = usePaletteStore((s) => s.openPalette);
+  const themeMode = useThemeStore((s) => s.mode);
+  const setThemeMode = useThemeStore((s) => s.setMode);
+  const themeLabel = THEME_META[themeMode]?.label ?? '默认';
   const [savingProject, setSavingProject] = useState(false);
 
   const handleSaveProject = async () => {
@@ -146,7 +151,7 @@ export function TopBar() {
                 y1="5"
                 x2="33"
                 y2="5"
-                stroke="#6E6862"
+                stroke="currentColor"
                 strokeWidth="1.8"
                 strokeDasharray={LINE_STYLE_META[style].dash}
               />
@@ -159,6 +164,14 @@ export function TopBar() {
       </div>
 
       <div className="cb-topbar__io">
+        <button
+          type="button"
+          className="cb-btn cb-btn--theme"
+          onClick={() => setThemeMode(nextThemeMode(themeMode))}
+          title={`界面主题：${THEME_META[themeMode]?.hint ?? ''}（点击切换，本地记住）`}
+        >
+          主题·{themeLabel}
+        </button>
         <button
           type="button"
           className="cb-btn cb-btn--search"
