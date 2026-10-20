@@ -4,10 +4,14 @@
  * 红线（Gate 0-4）：抽取结果只进「待确认」队列，采纳才 dispatch 命令；
  * 自然语言编辑先出 diff 预览，删除必须二次确认；报告只读，不改 Model。
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { SAMPLE_TRANSCRIPT } from '../../data/sampleTranscript';
 import { CHAIN_TEMPLATES } from '../../lib/contradictions';
+import { namedNodes, runSelfCheck, selfCheckSummary, type SelfCheckReport } from '../../lib/selfCheck';
 import { useAiStore } from '../../store/aiStore';
+import { useDocStore } from '../../store/docStore';
+import { useUiStore } from '../../store/uiStore';
+import { useViewModeStore } from '../../store/viewModeStore';
 import { PROVIDER_LABEL, providerPrivacyText } from '../../services/ai/settings';
 import type { AiProviderId } from '../../services/ai/types';
 import { fileService } from '../../services/file';
@@ -16,15 +20,83 @@ interface AiPanelProps {
   onClose: () => void;
 }
 
-type TabId = 'extract' | 'conflicts' | 'edit' | 'report' | 'settings';
+type TabId = 'extract' | 'conflicts' | 'edit' | 'report' | 'guide' | 'check' | 'settings';
 
 const TABS: Array<{ id: TabId; label: string; hint: string }> = [
   { id: 'extract', label: '抽取建图', hint: '粘贴笔录，生成待确认清单，逐条采纳' },
   { id: 'conflicts', label: '矛盾审查', hint: '时间冲突 / 无证据断言 / 链条缺口' },
   { id: 'edit', label: '自然语言编辑', hint: '中文指令 → 命令 diff → 确认后执行' },
   { id: 'report', label: '报告', hint: '七节情况分析报告，每条事实带引用' },
+  { id: 'guide', label: '操作方式', hint: '画布、图片、代码视图、时间线、地图与 AI 的用法速查' },
+  { id: 'check', label: '自动检验', hint: '对当前案卷跑一遍结构 / 时间 / 坐标 / 线型语义自检' },
   { id: 'settings', label: '设置', hint: '模型通道与数据边界' },
 ];
+
+/** 操作方式速查（M16）：面板里就地写清每一种交互怎么用，省得回头翻文档。 */
+const GUIDE_GROUPS: Array<{ title: string; items: Array<{ key: string; text: string }> }> = [
+  {
+    title: '画布',
+    items: [
+      { key: '新建实体', text: '双击空白处弹出「新建节点」，先选类型再填标题（也能直接回车用默认标题）。' },
+      { key: '框选', text: '空白处按住左键拖出选框，框到实体的一部分就算选中（不需要整块包住）。' },
+      { key: '平移与缩放', text: '按住空格或右键拖动平移；滚轮缩放；选中后按 Delete 删除。' },
+      { key: '撤销重做', text: 'Ctrl+Z / Ctrl+Shift+Z，顶栏只有图标按钮；每一条操作都只压一条撤销记录。' },
+      { key: '线型语义', text: '实线=已证实、虚线=推测、点线=待核实；右下角「图示」可展开图例，没有绕过开关。' },
+    ],
+  },
+  {
+    title: '关系线与连线',
+    items: [
+      { key: '八方向连接点', text: '每张卡片四条边中点加四个角共 8 个连接点，鼠标悬停卡片时显形，拖到对方即可连线。' },
+      { key: '自动换锚点', text: '自动布局后按两端相对位置重算 sourceHandle/targetHandle，减少交叉与线穿卡片。' },
+      { key: '关系标签', text: '双击线中间的文字就地改标签，Esc 放弃；线型与置信度在右栏属性里改。' },
+      { key: '按 tag 自动连线', text: '右栏「标签」旁按钮打开确认面板，同标签实体两两连线，一律点线 + 低置信度，确认才落库。' },
+    ],
+  },
+  {
+    title: '图片工作台',
+    items: [
+      { key: '吸附', text: '把图片拖到卡片四角附近松手即吸附；吸附后图片跟着卡片走（拖动、方向键、自动布局都算）。' },
+      { key: '圆点模式', text: '图片工具条上的「圆点」把图压成小圆点，方便塞进密集区域；双击圆点或点展开按钮还原。' },
+      { key: '层级', text: '置顶/上移/下移/置底立刻生效；卡片与图片共用一层带状空间，图片不会盖住卡片文字。' },
+      { key: '区域锚点', text: '在素材上画 anchor 并关联实体，悬停或选中该实体时照片里的框会高亮并显示实体名。' },
+    ],
+  },
+  {
+    title: '视图与分析',
+    items: [
+      { key: '代码视图', text: '顶部「代码视图」切到 DSL，图形与文本是同一份文档，双向同步；Ctrl+K 打开命令面板。' },
+      { key: '时间线', text: '下方滑条同时控制缩放与游标；多轨模式可新建时间线、勾选它包含哪些事件，公用指针贯穿所有泳道。' },
+      { key: '地图', text: '拖图钉改坐标、双击图钉手填经纬度、可导入背景图；没有坐标的实体在左侧列表一键进入取点模式。' },
+      { key: '演示视图', text: '按关系逐条播放证据，并可在演示页直接改标题、状态、备注与标签。' },
+    ],
+  },
+  {
+    title: '素材与文字识别',
+    items: [
+      { key: '素材库分组', text: '可按文件夹 / 来源 / 日期分组；新建文件夹后导入的图片直接落到当前文件夹。' },
+      { key: '内置 OCR', text: '导入图片后自动用随包分发的 Tesseract（WASM）识别文字，完全离线；右栏可手动重跑并抽取金额、时间、账号。' },
+      { key: 'AI 生成图', text: '强制「AI 生成 · 模拟图」角标与 aiMeta，只进素材库 ai 分区，永不标为已证实。' },
+    ],
+  },
+  {
+    title: '我的操作方式（助手侧）',
+    items: [
+      { key: '只走命令层', text: '所有改动都经过 Command（Add/Update/Delete/Move），一次操作一条撤销记录，不直接改 store。' },
+      { key: '先给计划', text: '动手前先列 3–6 条计划（涉及文件 + 验收标准），把取舍写成决策记录而不是口头承诺。' },
+      { key: '改完就验', text: '每次改动跑 typecheck / smoke（逻辑断言）/ ui-smoke（打包产物）/ bench，桌面端再跑两轮自检。' },
+      { key: '痕迹留档', text: 'CHANGELOG 记做了什么，docs/MILESTONES.md 记为什么这么做（决策 D1…），验收记录给数字。' },
+      { key: '拿不准就问', text: '涉及产品取舍（例如是否回滚整版 UI、证书类型）先问，不替你拍板。' },
+    ],
+  },
+];
+
+function levelMark(level: SelfCheckReport['items'][number]['level']): string {
+  if (level === 'fail') return '✕';
+  if (level === 'warn') return '!';
+  return '✓';
+}
+
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误';
@@ -35,6 +107,22 @@ export function AiPanel({ onClose }: AiPanelProps) {
   const store = useAiStore();
   const [allowDelete, setAllowDelete] = useState(false);
   const [exporting, setExporting] = useState<'word' | 'pdf' | null>(null);
+
+  const doc = useDocStore((state) => state.doc);
+  const selectNode = useUiStore((state) => state.selectNode);
+  const setViewMode = useViewModeStore((state) => state.setMode);
+  /** 自动检验（M16）：停在这一页时随文档变化实时重算，改完一个字段就能看到结果。 */
+  const checkReport = useMemo(() => (tab === 'check' ? runSelfCheck(doc) : null), [doc, tab]);
+  const checkNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const node of doc.nodes) map.set(node.id, node.title.trim() || '未命名');
+    return map;
+  }, [doc.nodes]);
+
+  const jumpToNode = (nodeId: string) => {
+    selectNode(nodeId);
+    setViewMode('board');
+  };
 
   const pending = store.drafts.filter((entry) => entry.status === 'pending').length;
   const accepted = store.drafts.filter((entry) => entry.status === 'accepted').length;
@@ -366,6 +454,72 @@ export function AiPanel({ onClose }: AiPanelProps) {
                 {store.report ? <span className="cb-ai__count">{store.report.citations} 处引用</span> : null}
               </div>
               {store.report ? <pre className="cb-ai__report">{store.report.markdown}</pre> : <p className="cb-ai__tip">还没有生成报告。</p>}
+            </section>
+          ) : null}
+
+          {tab === 'guide' ? (
+            <section className="cb-ai__section cb-guide">
+              <p className="cb-ai__tip">
+                每一种交互的用法都在这里，按「做什么 → 怎么做」组织。画布上的操作不需要记快捷键也能全部点出来，快捷键只是加速。
+              </p>
+              {GUIDE_GROUPS.map((group) => (
+                <div key={group.title} className="cb-guide__group">
+                  <h3 className="cb-guide__title">{group.title}</h3>
+                  <dl className="cb-guide__list">
+                    {group.items.map((item) => (
+                      <div key={item.key} className="cb-guide__item">
+                        <dt className="cb-guide__key">{item.key}</dt>
+                        <dd className="cb-guide__text">{item.text}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ))}
+            </section>
+          ) : null}
+
+          {tab === 'check' ? (
+            <section className="cb-ai__section cb-check">
+              <p className="cb-ai__tip">
+                只读自检：不改文档、不产生命令。检查关系两端、分组引用、图片素材、标题、时间与坐标可解析性、线型与置信度、AI
+                生成图合规、假设与证据链引用。点实体名可以直接跳到画布上那个节点。
+              </p>
+              {checkReport ? (
+                <>
+                  <div className={'cb-check__summary is-' + (checkReport.fail > 0 ? 'fail' : checkReport.warn > 0 ? 'warn' : 'pass')}>
+                    <strong>{selfCheckSummary(checkReport)}</strong>
+                    <span className="cb-check__counts">
+                      {checkReport.pass} 通过 · {checkReport.warn} 建议核对 · {checkReport.fail} 必须修
+                    </span>
+                  </div>
+                  <ul className="cb-check__list">
+                    {checkReport.items.map((item) => (
+                      <li key={item.id} className={'cb-check__item is-' + item.level}>
+                        <span className="cb-check__mark">{levelMark(item.level)}</span>
+                        <div className="cb-check__body">
+                          <div className="cb-check__title">{item.title}</div>
+                          <div className="cb-check__detail">{item.detail}</div>
+                          {item.nodeIds.length > 0 ? (
+                            <div className="cb-check__chips">
+                              {item.nodeIds.map((nodeId) => (
+                                <button
+                                  key={nodeId}
+                                  type="button"
+                                  className="cb-check__chip"
+                                  onClick={() => jumpToNode(nodeId)}
+                                  title="在画布中定位"
+                                >
+                                  {checkNames.get(nodeId) ?? namedNodes(doc, [nodeId])[0] ?? nodeId}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
             </section>
           ) : null}
 

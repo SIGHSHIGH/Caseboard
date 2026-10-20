@@ -14,8 +14,10 @@ export function applyDockedMoves(
   deltas: ReadonlyMap<string, { dx: number; dy: number }>,
 ): number {
   if (deltas.size === 0) return 0;
+  // 兼容只有 nodes 的手写 draft（测试与脚本里常见）：没有图片节点就当作没有随动
+  const images = draft.imageNodes ?? [];
   let moved = 0;
-  for (const image of draft.imageNodes) {
+  for (const image of images) {
     const host = image.linkedNodeId;
     if (!host) continue;
     const delta = deltas.get(host);

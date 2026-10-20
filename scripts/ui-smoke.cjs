@@ -407,7 +407,7 @@ function check(name, condition, detail) {
   check('顶栏有 AI 助手按钮', [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].some((b) => (b.textContent || '').includes('AI 助手')));
   check('可打开 AI 助手面板', await clickByText('.cb-topbar__io .cb-btn', 'AI 助手'));
   check('AI 面板已渲染', doc.querySelector('.cb-ai') !== null);
-  check('五个功能页签', doc.querySelectorAll('.cb-ai__tab').length === 5, doc.querySelectorAll('.cb-ai__tab').length);
+  check('七个功能页签', doc.querySelectorAll('.cb-ai__tab').length === 7, doc.querySelectorAll('.cb-ai__tab').length);
   check('抽取页声明未采纳不改动画布', (doc.querySelector('.cb-ai__tip')?.textContent || '').includes('未采纳前不会改动画布'));
   check('可载入示例笔录', await clickByText('.cb-ai .cb-btn', '载入示例笔录'));
   check('示例笔录已填入文本框', (doc.querySelector('.cb-ai__input')?.value || '').includes('李梅'), (doc.querySelector('.cb-ai__input')?.value || '').slice(0, 40));
@@ -894,6 +894,71 @@ function check(name, condition, detail) {
     const bgBtn = [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((el) => (el.textContent || '').includes('背景图'));
     check('顶栏有「背景图…」入口（M15 / N5）', Boolean(bgBtn), doc.querySelector('.cb-topbar__io')?.textContent);
   }
+  console.log('[UI] M16 示例案卷 / 操作方式 / 自动检验');
+  check(
+    '样式表有示例案卷与自动检验的样式',
+    ['.cb-demo', '.cb-demo__tag', '.cb-guide__item', '.cb-check__item'].every((selector) => srcCss.includes(selector)),
+  );
+
+  const demoBtn = [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((el) => (el.textContent || '').includes('示例案卷'));
+  check('顶栏有「示例案卷」入口（M16）', Boolean(demoBtn), doc.querySelector('.cb-topbar__io')?.textContent);
+  if (demoBtn) {
+    demoBtn.click();
+    await sleep(200);
+    check('示例案卷对话框已打开', doc.querySelector('.cb-modal__mask .cb-demo') !== null);
+    check('对话框列出两份案卷', doc.querySelectorAll('.cb-demo .cb-demo__item').length === 2, doc.querySelectorAll('.cb-demo .cb-demo__item').length);
+    const demoText = doc.querySelector('.cb-demo')?.textContent || '';
+    check('对话框里能看到 ABC 谋杀案', demoText.includes('ABC'), demoText.slice(0, 80));
+
+    const abcItem = [...doc.querySelectorAll('.cb-demo .cb-demo__item')].find((el) => (el.textContent || '').includes('ABC'));
+    const abcLoad = abcItem ? abcItem.querySelector('.cb-btn') : null;
+    check('ABC 条目有载入按钮', Boolean(abcLoad));
+    if (abcLoad) {
+      window.confirm = () => true;
+      abcLoad.click();
+      await sleep(500);
+      check('载入后对话框关闭', doc.querySelector('.cb-demo') === null);
+      check('画布换成 ABC 案卷的 23 个实体', doc.querySelectorAll('.cb-node').length === 23, doc.querySelectorAll('.cb-node').length);
+      check('画布出现三个分组框', doc.querySelectorAll('.cb-group').length === 3, doc.querySelectorAll('.cb-group').length);
+      check('案件标题换成 ABC', (doc.querySelector('.cb-topbar__brand')?.textContent || '').includes('ABC'), doc.querySelector('.cb-topbar__brand')?.textContent);
+      check('关系线都画出来了', doc.querySelectorAll('.react-flow__edge').length >= 18, doc.querySelectorAll('.react-flow__edge').length);
+    }
+  }
+
+  check('可再次打开 AI 助手', await clickByText('.cb-topbar__io .cb-btn', 'AI 助手'));
+  await sleep(200);
+  const aiTabs = [...doc.querySelectorAll('.cb-ai__tab')].map((tab) => (tab.textContent || '').trim());
+  check('多出「操作方式」页签', aiTabs.includes('操作方式'), aiTabs);
+  check('多出「自动检验」页签', aiTabs.includes('自动检验'), aiTabs);
+
+  check('可切到操作方式', await clickByText('.cb-ai__tab', '操作方式'));
+  await sleep(200);
+  check('操作方式按主题分组', doc.querySelectorAll('.cb-guide__group').length >= 5, doc.querySelectorAll('.cb-guide__group').length);
+  const guideText = doc.querySelector('.cb-guide')?.textContent || '';
+  check('操作方式里有「我的操作方式」一组', guideText.includes('我的操作方式'), guideText.slice(0, 60));
+  check('操作方式写清了「只走命令层」', guideText.includes('只走命令层'));
+
+  check('可切到自动检验', await clickByText('.cb-ai__tab', '自动检验'));
+  await sleep(300);
+  check('自动检验渲染结论条', doc.querySelector('.cb-check__summary') !== null);
+  check('自动检验列出 12 项检查', doc.querySelectorAll('.cb-check__item').length === 12, doc.querySelectorAll('.cb-check__item').length);
+  const checkSummary = doc.querySelector('.cb-check__summary')?.textContent || '';
+  check('ABC 案卷没有必须修的项', checkSummary.includes('0 必须修'), checkSummary);
+  const checkChips = [...doc.querySelectorAll('.cb-check__chip')];
+  check('问题项带可点击的实体 chip', checkChips.length === 0 || checkChips.every((chip) => chip.tagName === 'BUTTON'), checkChips.length);
+  if (checkChips.length > 0) {
+    const firstChip = checkChips[0];
+    const chipLabel = (firstChip.textContent || '').trim();
+    firstChip.click();
+    await sleep(250);
+    check('点 chip 会在画布选中该实体', doc.querySelectorAll('.cb-node.is-selected').length >= 1 || doc.querySelector('.cb-node.selected') !== null, chipLabel);
+  }
+
+  const closeAiM16 = doc.querySelector('.cb-ai .cb-modal__icon');
+  if (closeAiM16) closeAiM16.click();
+  await sleep(200);
+  check('关闭后 AI 面板移除', doc.querySelector('.cb-ai') === null);
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

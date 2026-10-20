@@ -54,6 +54,7 @@
 | M13 | 复验收尾（L 反馈） | 1 周 | 改地点时自动断开指向旧地点的关系线（一条 `composeCommands` 删旧连新，只认「地点」标签的自动线，人工线不动）、建立统一控件尺寸令牌（按钮/单行输入框/下拉 28px、标签页 22px、圆角 6px）并把此前无样式的 `datetime-local`/`date`/`search` 纳入 | L9 通过、全局控件对齐；`smoke` 777 / `ui-smoke` 344 全绿 | ✅ 2026-10-20 |
 | M14 | 画布底衬与顶栏折叠 | 1 周 | 右栏「发生时刻/地点」各占整行（M5）、顶栏按宽度自动收进「⋯」菜单（M8）、软木板/黑板底衬与背景图导入（`settings.canvas` + `setCanvasSkin`/`setCanvasImage`）、结构分析与若干自我优化 | M5/M8 通过；`smoke` 800 / `ui-smoke` 362 全绿；底衬三档可循环切换 | ✅ 2026-10-20 |
 | M15 | 顶栏重排与背景图修复 | 1 周 | 「⋯」菜单改 portal + fixed 真正能打开（N3/N4）、背景图改走原件地址（N7/N8/N12）、去掉背景点阵、撤销重做只留图标、顶栏实测宽度 + 自动检测遮挡、顶栏新增「背景图…」入口（N5） | `smoke` 806 / `ui-smoke` 374 全绿 | ✅ 2026-10-20 |
+| M16 | 许可与示范案卷 | 1 周 | 非商业许可（PolyForm Noncommercial 1.0.0 全文 + 中英双语许可章节）、自动布局带走吸附图片（产出位移表复用 `applyDockedMoves`）、AI 助手「操作方式」与「自动检验」（12 项只读结构体检，问题可跳转画布）、内置《ABC 谋杀案》示范案卷与顶栏「示例案卷」载入面板 | `smoke` 845 / `ui-smoke` 399 全绿、桌面自检两轮 PASS | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -1189,6 +1190,61 @@
 | 主题 / 底衬按钮不进溢出菜单 | 一旦被挤出内联就永远点不到 | 去掉过滤，全部动作都可进菜单 |
 
 
+### M16 · 许可与示范案卷（1 周）
+
+**目标**：给出「可自由修改分发、禁止商用」的许可；修掉自动布局不带走吸附图片的老问题；让助手面板讲清操作方式并自带结构体检；用一部经典推理小说做一份可直接上手的示范案卷。
+
+**范围**
+
+1. 许可：`LICENSE`（PolyForm Noncommercial License 1.0.0 全文 + 中文摘要）、`package.json` 的 `license` 字段、README 中英双语许可章节。
+2. 布局随动：`applyLayout` 在写坐标的同时产出位移表，交给命令层 `applyDockedMoves` 带走吸附图片。
+3. 助手面板：新增「操作方式」页签（6 组指引）与「自动检验」页签（`src/lib/selfCheck.ts` 12 项只读体检，问题项可跳回画布）。
+4. 示范案卷：`src/data/demoAbc.ts`（《ABC 谋杀案》23 实体 / 20 关系 / 3 分组 / 2 假设 / 1 条自定义证据链 / 双轨时间线）+ `src/data/demos.ts` + `DemoDialog` + 顶栏「示例案卷」入口。
+
+**验收标准**
+
+1. `LICENSE` 为 PolyForm Noncommercial 1.0.0 全文，README 有中英双语许可章节并写明「可自由修改分发、不得商用、不是 OSI 开源许可」。
+2. 自动布局后吸附图片与宿主卡片同位移，一次撤销整体还原（`smoke [77]`）。
+3. 「操作方式」页签按主题分组给出可执行指引；「自动检验」页签列出 12 项检查与结论条，问题实体可点击跳转。
+4. 示范案卷可一键载入，载入后 23 实体 / 20 关系 / 3 分组，时间线双轨、证据链六阶段。
+5. `typecheck` / `smoke` / `ui-smoke` / `bench` 全绿，桌面自检两轮 PASS，安装包归档到 `release\`。
+
+**拆步与实现**
+
+| 步骤 | 实现 | 验收抓手 |
+|---|---|---|
+| M16-1 | `LICENSE` 写入 PolyForm Noncommercial 1.0.0 全文 + 中文摘要节 | 文件存在、章节齐全 |
+| M16-2 | `package.json` 加 `license` 字段、三处版本升 0.16.0 | 版本一致 |
+| M16-3 | README 中英双语许可章节 + 示范案卷 / 自动检验两行能力 | `ui-smoke` 源码断言 |
+| M16-4 | `layoutCommands.applyLayout` 产出 deltas 并调 `applyDockedMoves` | `smoke [77]` |
+| M16-5 | `applyDockedMoves` 兼容没有图片节点的手写 draft | `smoke [54]` 回归 |
+| M16-6 | `src/lib/selfCheck.ts` 12 项只读体检 + 结论句 | `smoke [75]` |
+| M16-7 | AiPanel 加「操作方式」「自动检验」页签与 CSS | `ui-smoke` M16 段 |
+| M16-8 | `demoAbc.ts` + `demos.ts` + `DemoDialog` + 顶栏入口 | `smoke [76]` |
+| M16-9 | 文档、打包、自检、归档 | 验收记录表 |
+
+**验收记录（2026-10-20，✅ 通过）**
+
+| 检查项 | 结果 |
+|---|---|
+| `pnpm typecheck` | 0 error |
+| `pnpm smoke` | 845 PASS / 0 FAIL（新增 [75]–[77]） |
+| `pnpm ui-smoke` | 399 PASS / 0 FAIL（新增 M16 段 25 条） |
+| `pnpm bench` | 102.1 ms（阈值 300） |
+| 桌面自检 | phase1 PASS / phase2 PASS |
+| 安装包 | `release\CaseBoard_0.16.0_x64-setup.exe` |
+
+**与计划的偏离**
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 许可候选含 CC BY-NC-SA | CC 系列不适合软件分发 | 选 PolyForm Noncommercial 1.0.0，并在 README 说明它不算开源 |
+| 期望自动布局「顺手」带走图片 | `applyLayout` 只改节点坐标 | 布局产出 deltas 复用 `applyDockedMoves`，不另写一套逻辑 |
+| 自检可能要写回 Model 标记问题 | 只读更安全且不污染撤销栈 | `runSelfCheck` 纯函数返回报告 |
+| 示范案卷做成第二份内置文档 | 与「打开文档」同一条链路最省 | `DemoDialog` 走 `replaceDocument` + 二次确认 |
+| tag 候选数按「每个 tag 都成对」估算 | 已有关系的实体对被跳过，实际 15 条 | 断言改成 15 并单列「被害者 6 对」 |
+
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -1376,6 +1432,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D87 | **背景图走原件地址而不是缩略图**：缩略图只按 `THUMB_SMALL = 256` / `THUMB_LARGE = 1024` 两档写进 IndexedDB，`thumbUrl(assetId, 1600)` 恒为 null，导致背景图永远拿不到 `src`。桌面端（`isTauri()`）用 `assetFileUrl(asset.path)`，浏览器里退回 1024 缩略图。 |
 | D88 | **顶栏折叠以实测宽度为准、估算只作首帧**：渲染后用 `getBoundingClientRect()` 采集每个按钮真实宽度参与规划，再用 `scrollWidth - clientWidth` 检测是否真挤爆，把优先级最低的内联项加进 `forced` 逐帧收敛；`ioWidth <= 0`（布局尚未测量，jsdom 恒为 0）时不折叠，避免「量不到宽度就把按钮全塞菜单」的假象。 |
 | D89 | **画布网格只留给纸张底衬**：删掉 `BackgroundVariant.Dots` 那一层，线条层由 `showsCanvasGrid(skin)` 门控 —— 纸张叠很淡的 80px 线条，软木板与黑板自带纹理不再叠网格，避免「底衬纹理 + 网格」双重噪点。 |
+| D90 | **许可证选 PolyForm Noncommercial 1.0.0** | 用户要求「任何人可以自由修改分发、但不允许商用」。OSI 认可的开源许可都不禁止商用，CC 系列又是为内容而非软件设计的，PolyForm 的非商业许可正好覆盖「改动与再分发自由、商业用途需授权」。README 里同时写清它**不是** OSI 开源许可（source-available），避免对外表述失真。 |
+| D91 | **自动布局复用 `applyDockedMoves`** | 布局只是一次批量位移，用户要的「图片跟着卡片走」与拖动、方向键是同一条规则。`applyLayout` 先算每条 placement 的 dx/dy 汇总成 deltas，交给命令层统一的随动逻辑，避免在布局命令里复制一份吸附代码。 |
+| D92 | **自动检验是只读纯函数** | `runSelfCheck(doc)` 只读文档并返回报告，不改 Model、不进撤销栈。体检是「看」不是「改」，写回会把用户的操作历史弄脏；需要修的地方由用户点回画布自己改。 |
+| D93 | **示范案卷走 `replaceDocument`** | 载入示例等价于「换成另一份文档」，因此复用打开文档的命令并前置二次确认；不把示例内容混进当前撤销链，避免「撤销到一半半新半旧」。 |
 
 ---
 
@@ -1408,3 +1468,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | **M13 整体验收通过**（✅ 打 tag `ms/M13`）：按用户 L1–L10 复验回执收尾——改「地点」时自动断开指向旧地点的关系线（`planPlaceRelink` 挑出 `label === '地点'` 且另一端为 place/org 的自动线，目标变了就 `deleteEdge` 旧线 + `addEdge` 新线，一次 `composeCommands` 撤销一步回退；目标未变不产生命令，清空只断开，人工线不动，D80 / L9）；全局控件视觉对齐——`--cb-control-h(28px)` / `--cb-control-h-sm(22px)` / `--cb-control-r(6px)` / `--cb-control-pad(8px)` 四个令牌统一按钮与单行输入框（此前按钮 27.6px、输入框 29.6px 相差 2px），输入框用排除式 `:not([type=…])` 一次性覆盖并把此前完全没有样式的 `datetime-local` / `date` / `search` 纳入（「发生时刻」不再是浏览器默认外观），`.cb-geo__ops` 等混排行容器统一 `align-items: center`（D81）；`pnpm smoke` **777**（新增 [72] 段 12 条）、`pnpm ui-smoke` **344**（新增 M13 段 8 条）、`pnpm bench` 1000 节点解析链 **74.6–74.6–116.4 ms**（两次实测抖动）、`pnpm build` 成功、桌面自检两轮 PASS、`tauri build --no-bundle` 4m24s（`caseboard.exe` 19,145,728 字节）、NSIS 安装包归档 `release\CaseBoard_0.13.0_x64-setup.exe`（12,192,983 字节，SHA-256 `D7DD6C6E…8E5E`，未签名）；版本三处升 **0.13.0**；§1 M13 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D80–D81、`docs/MANUAL-ACCEPTANCE.md` 新增 M 节；本轮唯一未能机器验证的是「视觉对齐」的实际观感——会话内没有可用桌面，截图核验失败，改由 CSS 令牌 + `ui-smoke` 正则断言守住结构，手感留给 M5–M8 人工复验。 |
 | 2026-10-20 | **M14 整体验收通过**（✅ 打 tag `ms/M14`）：按用户 M1–M8 回执与新需求落地——右栏「发生时刻」「地点」各占整行（`field.wide \|\| field.kind === 'datetime'`，M5）；顶栏改为按真实宽度折叠，放不下的按钮收进「⋯」菜单且宽度未知时不折叠（`src/lib/topbarOverflow.ts`，M8/D83）；新增**画布底衬**（纸张 / 软木板 / 黑板，`src/lib/canvasSkin.ts` + `canvasGrid`）与**背景图**（导入后 `object-fit: cover` 铺底、不透明度 10–100%、可清除），存储进 `settings.canvas` 并随项目保存（`normalizeCanvas` 容错，D82/D84），顶栏「背景·XX」一键循环切换，右栏「案件概览」新增 `CanvasBackdropForm` 块；结构分析做了三处自我优化——合并完全重复的 `.cb-group__header` CSS、把画布块从 1400 多行的 `RightPanel.tsx` 抽成独立组件、删掉顶栏重复的隐藏文件选择框（D85）。机器验收：`typecheck` 0 error、`smoke` **800**（新增 [73] 段 22 条）、`ui-smoke` **362**（新增 M14 段 20 条）、`bench` 1000 节点解析链 **80.9 ms**、`pnpm build` 成功；版本三处升 **0.14.0**；§3 写入 M14 拆步/验收/偏离三表、§6 新增 D82–D85、`docs/MANUAL-ACCEPTANCE.md` 新增 N 节。 |
 | 2026-10-20 | M15 整体验收通过（v0.15.0）：`smoke` 806 / `ui-smoke` 374 / `bench` 76.6 ms 全绿；桌面自检两轮 PASS；安装包 `release\CaseBoard_0.15.0_x64-setup.exe`（12,197,737 字节，SHA-256 `F4E710FF8CDC4884B26EEF590A777BE93313D1A06B25E425FD5BBAF0712A9BB5`）；tag `ms/M15` |
+| 2026-10-20 | **M16 整体验收通过**（✅ 打 tag `ms/M16`）：非商业许可（PolyForm Noncommercial 1.0.0）+ 中英双语许可章节；自动布局带走吸附图片（产出位移表复用 `applyDockedMoves`，一次撤销整体还原）；AI 助手新增「操作方式」与「自动检验」（12 项只读结构体检，问题可跳回画布）；内置《ABC 谋杀案》示范案卷 + 顶栏「示例案卷」载入面板；`smoke` 845 / `ui-smoke` 399 / `bench` 102.1 ms |

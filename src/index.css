@@ -5205,3 +5205,98 @@ button.cb-members__title--link:hover {
   --xy-background-color: transparent;
   background: transparent;
 }
+
+
+/* ===== M16：AI 助手「操作方式」与「自动检验」 ===== */
+.cb-guide { gap: 14px; }
+.cb-guide__group { display: flex; flex-direction: column; gap: 6px; }
+.cb-guide__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--cb-text);
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--cb-border);
+}
+.cb-guide__list { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.cb-guide__item { display: grid; grid-template-columns: minmax(88px, 132px) minmax(0, 1fr); gap: 8px; align-items: start; }
+.cb-guide__key { margin: 0; font-size: 12px; font-weight: 600; color: var(--cb-accent); }
+.cb-guide__text { margin: 0; font-size: 12px; line-height: 1.6; color: var(--cb-text); overflow-wrap: anywhere; }
+
+.cb-check__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: var(--cb-radius);
+  border: 1px solid var(--cb-border);
+  background: var(--cb-surface-2);
+  font-size: 12px;
+}
+.cb-check__summary.is-pass { border-left: 3px solid #4b7d4b; }
+.cb-check__summary.is-warn { border-left: 3px solid #a8781f; }
+.cb-check__summary.is-fail { border-left: 3px solid var(--cb-accent); }
+.cb-check__counts { color: var(--cb-muted); font-variant-numeric: tabular-nums; }
+.cb-check__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cb-check__item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: var(--cb-radius);
+  border: 1px solid var(--cb-border);
+  background: var(--cb-surface);
+}
+.cb-check__item.is-fail { border-color: rgba(192, 57, 43, .45); }
+.cb-check__mark {
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  font-weight: 700;
+  color: #4b7d4b;
+}
+.cb-check__item.is-warn .cb-check__mark { color: #a8781f; }
+.cb-check__item.is-fail .cb-check__mark { color: var(--cb-accent); }
+.cb-check__title { font-size: 12px; font-weight: 600; }
+.cb-check__detail { font-size: 12px; line-height: 1.55; color: var(--cb-muted); overflow-wrap: anywhere; }
+.cb-check__chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.cb-check__chip {
+  border: 1px solid var(--cb-border);
+  background: var(--cb-surface-2);
+  color: var(--cb-text);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.cb-check__chip:hover { border-color: var(--cb-accent); color: var(--cb-accent); }
+
+/* ===== M16：示例案卷面板 ===== */
+.cb-demo { width: min(760px, 94vw); max-height: 90vh; overflow: auto; }
+.cb-demo__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.cb-demo__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--cb-border);
+  border-left: 3px solid var(--cb-accent);
+  border-radius: var(--cb-radius);
+  background: var(--cb-surface);
+}
+.cb-demo__head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.cb-demo__title { font-size: 14px; }
+.cb-demo__no { font-size: 11px; color: var(--cb-muted); font-variant-numeric: tabular-nums; }
+.cb-demo__summary { margin: 0; font-size: 12px; line-height: 1.6; color: var(--cb-text); }
+.cb-demo__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.cb-demo__tag {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--cb-border);
+  background: var(--cb-surface-2);
+  color: var(--cb-muted);
+}
+.cb-demo__ops { display: flex; justify-content: flex-end; }

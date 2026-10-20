@@ -1,5 +1,6 @@
 import { bestAnchors, rectOf } from '../lib/edgeCurve';
 import type { LayoutResult } from '../lib/layout';
+import { applyDockedMoves } from './nodeCommands';
 import type { Command } from './types';
 
 /**
@@ -8,6 +9,10 @@ import type { Command } from './types';
  *
  * M9 / S3：布局把实体彻底搬动之后，原来手调的 sourceHandle/targetHandle 往往对不上，
  * 会出现连线交叉、线从卡片背面穿过去。这里在写坐标的同一条命令里按新的相对位置重算锚点。
+ *
+ * M16：自动布局同样要让吸附的图片跟随卡片——布局改坐标历来只动 draft.nodes，
+ * 于是「吸附的图片在自动布局后不跟随」成为反复出现的反馈；这里复用命令层的 applyDockedMoves，
+ * 与拖动、方向键走同一条随动逻辑。
  */
 export function applyLayout(result: LayoutResult): Command {
   const targets = new Map(
@@ -16,13 +21,19 @@ export function applyLayout(result: LayoutResult): Command {
   return {
     label: `自动布局（${result.moved} 个实体）`,
     apply(draft) {
+      const deltas = new Map<string, { dx: number; dy: number }>();
       for (const node of draft.nodes) {
         const target = targets.get(node.id);
         if (!target) continue;
-        if (node.x === target.x && node.y === target.y) continue;
+        const dx = target.x - node.x;
+        const dy = target.y - node.y;
+        if (dx === 0 && dy === 0) continue;
+        deltas.set(node.id, { dx, dy });
         node.x = target.x;
         node.y = target.y;
       }
+      // 吸附随动（M16）：被布局搬走的卡片，把吸在它身上的图片一起挪过去
+      applyDockedMoves(draft, deltas);
       const byId = new Map(draft.nodes.map((node) => [node.id, node]));
       for (const edge of draft.edges) {
         const source = byId.get(edge.source);

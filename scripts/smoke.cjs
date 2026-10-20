@@ -3684,6 +3684,145 @@ async function main() {
         gridOverflow.planTopbarOverflow(measured, 200).inline.join(','),
       );
     }
+  console.log('[75] 自动检验（M16）');
+  {
+    const selfCheck = require(path.join(out, 'lib', 'selfCheck.js'));
+    const abcDoc = require(path.join(out, 'data', 'demoAbc.js')).createAbcDoc();
+
+    const report = selfCheck.runSelfCheck(abcDoc, new Date('2026-01-01T00:00:00.000Z'));
+    check('自检返回 12 项检查', report.items.length === 12, report.items.length);
+    check(
+      '三项计数加起来等于总项数',
+      report.pass + report.warn + report.fail === report.items.length,
+      report,
+    );
+    check('示范案卷没有结构性失败项', report.fail === 0, report.items.filter((item) => item.level === 'fail'));
+    check('每项检查都带结论文字', report.items.every((item) => item.title.length > 0 && item.detail.length > 0));
+    check('自检结论是一句话', typeof selfCheck.selfCheckSummary(report) === 'string');
+
+    const solidWeak = JSON.parse(JSON.stringify(abcDoc));
+    solidWeak.edges[0].style = 'solid';
+    solidWeak.edges[0].confidence = 20;
+    const weakReport = selfCheck.runSelfCheck(solidWeak);
+    const lineItem = weakReport.items.find((item) => item.id === 'lines');
+    check('低置信度实线被点名（Gate 0-3）', lineItem.level === 'warn' && lineItem.detail.includes('实线'), lineItem);
+
+    const dupTitle = JSON.parse(JSON.stringify(abcDoc));
+    dupTitle.nodes[1].title = dupTitle.nodes[0].title;
+    const dupReport = selfCheck.runSelfCheck(dupTitle);
+    check(
+      '同名实体进「标题完整且不重复」',
+      dupReport.items.find((item) => item.id === 'titles').level === 'warn',
+      dupReport.items.find((item) => item.id === 'titles'),
+    );
+
+    const brokenEdge = JSON.parse(JSON.stringify(abcDoc));
+    brokenEdge.nodes = brokenEdge.nodes.filter((node) => node.id !== 'poirot');
+    const brokenReport = selfCheck.runSelfCheck(brokenEdge);
+    check(
+      '关系指向已删实体判为必须修',
+      brokenReport.items.find((item) => item.id === 'edges').level === 'fail',
+      brokenReport.items.find((item) => item.id === 'edges'),
+    );
+    check('有必须修项时结论提示要修', selfCheck.selfCheckSummary(brokenReport).includes('必须修'));
+
+    const badAi = JSON.parse(JSON.stringify(abcDoc));
+    badAi.assets = [{ id: 'a-ai', path: 'assets/ai.png', kind: 'image', hash: 'deadbeef', thumbnails: [], zone: 'ai', annotations: [] }];
+    const aiReport = selfCheck.runSelfCheck(badAi);
+    check(
+      'AI 生成图缺 aiMeta 判为必须修（Gate 0-5）',
+      aiReport.items.find((item) => item.id === 'ai').level === 'fail',
+      aiReport.items.find((item) => item.id === 'ai'),
+    );
+
+    const snapshot = JSON.stringify(abcDoc);
+    selfCheck.runSelfCheck(abcDoc);
+    check('自检是只读的（不改文档）', JSON.stringify(abcDoc) === snapshot);
+    check('实体 id 能翻译成标题', selfCheck.namedNodes(abcDoc, ['poirot'])[0] === '赫尔克里·波洛');
+  }
+
+  console.log('[76] ABC 谋杀案示范案卷（M16）');
+  {
+    const demos = require(path.join(out, 'data', 'demos.js'));
+    const abc = demos.findDemoCase('abc');
+    check('示例面板列出两份案卷', demos.DEMO_CASES.length === 2, demos.DEMO_CASES.map((item) => item.id));
+    check('示例可按 id 取回', abc !== undefined && abc.caseNo === 'ABC-1936');
+
+    const abcDoc = require(path.join(out, 'data', 'demoAbc.js')).createAbcDoc();
+    check('ABC 案卷 23 个实体', abcDoc.nodes.length === 23, abcDoc.nodes.length);
+    check('ABC 案卷 20 条关系', abcDoc.edges.length === 20, abcDoc.edges.length);
+    check('ABC 案卷 3 个分组', abcDoc.groups.length === 3);
+    check('实体 id 唯一', new Set(abcDoc.nodes.map((node) => node.id)).size === abcDoc.nodes.length);
+    check('关系两端都在画布上', abcDoc.edges.every((edge) => abcDoc.nodes.some((node) => node.id === edge.source) && abcDoc.nodes.some((node) => node.id === edge.target)));
+    check('三种线型齐全', new Set(abcDoc.edges.map((edge) => edge.style)).size === 3);
+    check('两条对立假设', abcDoc.hypotheses.length === 2);
+    check('自定义证据链一条、五个阶段', abcDoc.chains.length === 1 && abcDoc.chains[0].entries.length === 5);
+    check('时间线双轨配置', abcDoc.timeline.tracks.length === 2 && abcDoc.timeline.prefs.mode === 'tracks');
+
+    const migrated = require(path.join(out, 'serializers', 'migrate.js')).normalizeDoc(JSON.parse(JSON.stringify(abcDoc)));
+    check('迁移后保留自定义证据链', (migrated.chains || []).length === 1, migrated.chains);
+    check('迁移后保留双轨时间线', migrated.timeline.tracks.length === 2);
+    check('迁移后节点数不变', migrated.nodes.length === abcDoc.nodes.length);
+
+    const timeline = require(path.join(out, 'lib', 'timeline.js'));
+    const items = timeline.buildTimeline(abcDoc);
+    check('四个凶案事件都能进时间线', abcDoc.nodes.filter((node) => node.type === 'event').every((node) => timeline.nodeTimeRange(node) !== null));
+    check('时间线条目 6 个（4 案发 + 2 物证）', items.length === 6, items.length);
+    const tracks = require(path.join(out, 'lib', 'timelineTracks.js'));
+    const lanes = tracks.buildTrackLanes(abcDoc.nodes, items, abcDoc.timeline);
+    check('双轨时间线各就其位', lanes.length === 2 && lanes[0].items.length === 4 && lanes[1].items.length === 2, lanes.map((lane) => lane.items.length));
+
+    const map = require(path.join(out, 'lib', 'map.js'));
+    check('五个地点都有坐标', map.geoPoints(abcDoc.nodes).length === 5, map.geoPoints(abcDoc.nodes).length);
+
+    const tagLink = require(path.join(out, 'lib', 'tagLink.js'));
+    const candidates = tagLink.tagLinkCandidates(abcDoc);
+    check('同标签未连线实体对共 15 条候选（ABC案 6 + 被害者 6 + 书证 3）', candidates.length === 15, candidates.length);
+    check('候选里包含「被害者」两两成对', candidates.filter((item) => item.tag === '被害者').length === 6);
+    check('已连线的搭档不再候选', !candidates.some((item) => item.source === 'poirot' && item.target === 'hastings'));
+
+    const chains = require(path.join(out, 'lib', 'chains.js'));
+    const stages = chains.customChainStages(abcDoc, abcDoc.chains[0]);
+    check('自定义链展开成六个阶段', stages.length === 6);
+    check('「实施」阶段有 1 项', stages.find((stage) => stage.id === 'act').items.length === 1);
+    check('空阶段标记缺失', stages.find((stage) => stage.id === 'launder').missing === true);
+  }
+
+  console.log('[77] 自动布局带走吸附图片（M16 修复）');
+  {
+    const layoutLib = require(path.join(out, 'lib', 'layout.js'));
+    const layoutCmds = require(path.join(out, 'commands', 'layoutCommands.js'));
+    const imageCmds = require(path.join(out, 'commands', 'imageNodeCommands.js'));
+
+    const host = doc().nodes[0];
+    state().dispatch(addImageNode({ id: 'img-layout', assetId: 'a-folder', x: 0, y: 0, assetWidth: 300, assetHeight: 200 }));
+    state().dispatch(imageCmds.attachImageNode('img-layout', host.id, { corner: 'ne', offsetX: 10, offsetY: -6 }));
+    const imgBefore = { ...doc().imageNodes.find((item) => item.id === 'img-layout') };
+    const hostBefore = { ...doc().nodes.find((node) => node.id === host.id) };
+
+    const result = layoutLib.computeLayout(doc(), { kind: 'grid', gap: 48 });
+    state().dispatch(layoutCmds.applyLayout(result));
+
+    const hostAfter = doc().nodes.find((node) => node.id === host.id);
+    const imgAfter = doc().imageNodes.find((item) => item.id === 'img-layout');
+    const dx = hostAfter.x - hostBefore.x;
+    const dy = hostAfter.y - hostBefore.y;
+    check('自动布局确实搬动了卡片', dx !== 0 || dy !== 0, { dx, dy });
+    check(
+      '吸附图片跟着卡片一起走（不再掉队）',
+      imgAfter.x === imgBefore.x + dx && imgAfter.y === imgBefore.y + dy,
+      { imgBefore, imgAfter, dx, dy },
+    );
+
+    state().undo();
+    const hostUndone = doc().nodes.find((node) => node.id === host.id);
+    const imgUndone = doc().imageNodes.find((item) => item.id === 'img-layout');
+    check('一次撤销把卡片和图片一起还原', hostUndone.x === hostBefore.x && imgUndone.x === imgBefore.x, { hostUndone, imgUndone });
+
+    state().dispatch(imageCmds.attachImageNode('img-layout', null));
+    state().dispatch(require(path.join(out, 'commands', 'imageNodeCommands.js')).deleteImageNode('img-layout'));
+  }
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

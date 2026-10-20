@@ -13,6 +13,7 @@ import { AiPanel } from './AiPanel';
 import { AiImagePanel } from './AiImagePanel';
 import { HypothesisPanel } from './HypothesisPanel';
 import { SecurityDialog } from './SecurityDialog';
+import { DemoDialog } from './DemoDialog';
 import { usePaletteStore } from '../../store/paletteStore';
 import { useThemeStore } from '../../store/themeStore';
 import { THEME_META, nextThemeMode } from '../../lib/themeMode';
@@ -64,6 +65,7 @@ export function TopBar() {
   const [hypOpen, setHypOpen] = useState(false);
   const [aiImageOpen, setAiImageOpen] = useState(false);
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
   const openPalette = usePaletteStore((s) => s.openPalette);
   const themeMode = useThemeStore((s) => s.mode);
   const setThemeMode = useThemeStore((s) => s.setMode);
@@ -191,6 +193,14 @@ export function TopBar() {
       title: '导入一张图片作为画布背景（右栏「画布底衬与背景图」里还能调不透明度或清除）',
       priority: 13,
       onClick: () => void pickCanvasImage(),
+    },
+    {
+      key: 'demo',
+      label: '示例案卷',
+      title: '载入内置示例：连环诈骗案 / ABC 谋杀案（会替换当前案卷并清空撤销历史，先确认）',
+      priority: 14,
+      active: demoOpen,
+      onClick: () => setDemoOpen(true),
     },
     {
       key: 'search',
@@ -477,6 +487,7 @@ export function TopBar() {
       {hypOpen ? <HypothesisPanel onClose={() => setHypOpen(false)} /> : null}
       {aiImageOpen ? <AiImagePanel onClose={() => setAiImageOpen(false)} /> : null}
       {securityOpen ? <SecurityDialog onClose={() => setSecurityOpen(false)} /> : null}
+      {demoOpen ? <DemoDialog onClose={() => setDemoOpen(false)} /> : null}
     </header>
   );
 }
