@@ -2,6 +2,23 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [1.0.0-beta.1] · 首个 Beta（M1–M18 全部验收通过）
+
+### 这个版本意味着什么
+
+M1–M18 的 18 个里程碑全部验收通过（最近一轮是 M18 关系线自动梳理 + R7 判定范围修正），功能面已经定型，进入 **Beta 1.0**：核心办案闭环（画布 / 代码双视图 · 时间线 · 演示 / 地图 · 素材与 OCR · 证据链 · 多轨时间线 · 关系气泡 · 关系线自动梳理）可用、数据只落本机 SQLite、离线可用。Beta 期间只修缺陷与手感，不再加新模块。
+
+### 版本号
+
+- `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` 三处统一为 **`1.0.0-beta.1`**（语义化版本里这是「1.0 之前的第一个 Beta」，界面与安装包上读作 **Beta 1.0**）。
+- 许可仍为 PolyForm Noncommercial 1.0.0：可自由修改与分发，不得商用。
+
+### 验收
+
+- `pnpm typecheck` 0 error；`pnpm smoke` **871 PASS**；`pnpm ui-smoke` **430 PASS / 0 FAIL**；`pnpm bench` 1000 节点解析链 **74.5 ms**（阈值 300）；`pnpm build` 成功。
+- 桌面自检两轮 **PASS**（`phase1=PASS phase2=PASS`）。
+- 产物：`caseboard.exe` **19,162,112 字节**；安装包 `CaseBoard_1.0.0-beta.1_x64-setup.exe`（**12,210,066 字节**，SHA-256 `892A3146050025170424DF3B0E60208EA4E7D34A3AFC0915FF7BE9C1A859DB41`，未签名）归档到本地 `release\`。
+
 ## [未发布] v0.18.1 · M18 复验 R7 修正（判定范围＝卡片全部边框）
 
 ### 用户 R7 反馈
