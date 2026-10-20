@@ -56,6 +56,7 @@
 | M15 | 顶栏重排与背景图修复 | 1 周 | 「⋯」菜单改 portal + fixed 真正能打开（N3/N4）、背景图改走原件地址（N7/N8/N12）、去掉背景点阵、撤销重做只留图标、顶栏实测宽度 + 自动检测遮挡、顶栏新增「背景图…」入口（N5） | `smoke` 806 / `ui-smoke` 374 全绿 | ✅ 2026-10-20 |
 | M16 | 许可与示范案卷 | 1 周 | 非商业许可（PolyForm Noncommercial 1.0.0 全文 + 中英双语许可章节）、自动布局带走吸附图片（产出位移表复用 `applyDockedMoves`）、AI 助手「操作方式」与「自动检验」（12 项只读结构体检，问题可跳转画布）、内置《ABC 谋杀案》示范案卷与顶栏「示例案卷」载入面板 | `smoke` 845 / `ui-smoke` 399 全绿、桌面自检两轮 PASS | ✅ 2026-10-20 |
 | M17 | 关系气泡与线宽 | 1 周 | 八锚点连线与障碍代价模型 `pickAnchorPair`、`applyLayout` 无条件覆盖 handle、线宽 `thickness` 全链路（右栏滑杆 + DSL 往返）、第 9 类节点「关系气泡」与右键新建菜单、平行关系线 `parallelSpreads` 错开、仓库卫生（release / 录屏不入库、发布记录迁 `docs/RELEASES.md`）、`CONTRIBUTING.md` / `SECURITY.md`、README 双语 + 4 张截图 | `smoke` 855 / `ui-smoke` 411 / `bench` 74.1 ms 全绿；桌面自检两轮 PASS；安装包归档本地 `release\` | ✅ 2026-10-20 |
+| M18 | 关系线自动梳理 | 3 天 | 手动创建的线同样吃自动梳理、每条线可开关「连接点受自动梳理影响」、自动布局面板「关系线单独自动调整」与「检测交叉与压卡」、`src/lib/edgeOptimize.ts` 曲率自动优化（8 锚点 + 5 档曲率按压卡/交叉/曲率代价取最小）、`selfCheck` 第 13 项、`autoAnchor` / `curvature` 进迁移与 DSL | `smoke` 869 / `ui-smoke` 428 / `bench` 74.1 ms 全绿；桌面自检两轮 PASS；安装包归档本地 `release\` | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -1306,6 +1307,53 @@
 | 线宽复用 `weight` | `weight` 参与布局与统计，改它会动语义 | 独立 `thickness` 字段（D96） |
 | 安装包继续进仓库 | 仓库被 9 个 exe 撑大 | 移出索引 + 发布记录迁 `docs/RELEASES.md`（D97） |
 
+### M18 · 关系线自动梳理（3 天）
+
+**目标**：把「关系线怎么走」从一次性结果变成可反复梳理的对象——手动画的线也吃自动梳理、每条线可钉住、自动布局面板能只重排线，并让贝塞尔形状自动挑一个不压卡、少交叉的弧度。
+
+**范围**
+
+| 项 | 交付 |
+|---|---|
+| 手动线同样生效 | 画布 `autoAnchors` 只把 `edge.autoAnchor === false` 当钉住，其余一律用算出来的锚点 |
+| 单线开关 | `CaseEdge.autoAnchor` + 右栏「连接点受自动梳理影响」勾选框 |
+| 只梳理关系线 | 自动布局面板「关系线单独自动调整」（`optimizeEdgeGeometry()`，不动坐标、一条撤销记录） |
+| 交叉与压卡检测 | `detectEdgeConflicts(doc)` + 面板「检测交叉与压卡」+ `selfCheck` 第 13 项 |
+| 贝塞尔自动优化 | `src/lib/edgeOptimize.ts`：`bestGeometry` / `curvatureOffset` / `polylineHitsRect` / `polylinesIntersect` / `nearbyRects` |
+| 手调优先 | `controlPoints` > 自动曲率 > 平行错开；「清掉手调弧度」把形状交还自动梳理 |
+
+**拆步**
+
+| 步骤 | 内容 | 验收 |
+|---|---|---|
+| M18-1 几何判定 | `edgeCurve.ts` 加 `segmentsIntersect` / `polylinesIntersect` / `polylineHitsRect` / `sampleCurve` / `curvatureOffset` / `nearbyRects` | smoke [79] 交叉、压卡、曲率符号与幅度、障碍预筛 |
+| M18-2 梳理内核 | 新建 `lib/edgeOptimize.ts`（1200 / 320 / 6 三档代价、`optimizeDocEdges`、`detectEdgeConflicts`、`pickEdgeCurvature`） | smoke [79] 压卡下降、锁定边不改写 |
+| M18-3 模型与命令 | `autoAnchor` / `curvature` 进类型、迁移、`AddEdgeInput`；新建 `commands/edgeGeometryCommands.ts`；`applyLayout` 末尾调 `writeEdgeGeometry` | smoke [79] 迁移夹取、命令一次撤销、布局同步梳理 |
+| M18-4 画布渲染 | `Board` 的 `autoAnchors` 返回曲率、`edges` 按 `autoAnchor` 分叉、`BezierEdge` 用 `curvatureOffset` | ui-smoke M18 段、`boardSrc` 断言 |
+| M18-5 UI 与自检 | 右栏开关 + 「立即梳理此线 / 清掉手调弧度」；布局面板两个按钮；`selfCheck` 第 13 项 | ui-smoke M18 段 15 条 |
+| M18-6 收尾 | 版本 0.18.0、CHANGELOG、MILESTONES、MANUAL R 节、打包与归档 | 四件套 + 桌面自检 + NSIS |
+
+**验收记录**
+
+| 验收项 | 证据 | 结果 |
+|---|---|---|
+| typecheck | `pnpm typecheck` | ✅ 0 error |
+| 逻辑用例 | `pnpm smoke` | ✅ 869 PASS（新增 [79] 13 条） |
+| 打包产物 UI | `pnpm ui-smoke` | ✅ 428 PASS / 0 FAIL |
+| 性能 | `pnpm bench` | ✅ 74.1 ms < 300 |
+| 构建 | `pnpm build` | ✅ 成功 |
+| 桌面自检 | `node scripts/run-selftest.cjs` | ✅ 两轮 PASS（`phase1=PASS phase2=PASS`） |
+| 安装包 | NSIS 归档本地 `release\` | ✅ `CaseBoard_0.18.0_x64-setup.exe`（12,209,827 字节，SHA-256 `25A65D5E…C2338`，未签名） |
+
+**M18 与计划的偏离**
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 用户说「6 个圆点」 | 关系线实际有 8 个锚点（四边中点 + 四角，M10/D64 起） | 按 8 个挑，交付回执里说明；若确要限定 6 个需用户指定是哪 6 个 |
+| 交叉比较放进画布即时渲染 | 每条边 O(E) 太贵（1000 节点会卡） | 画布只避卡片，正式梳理才算交叉（D101） |
+| 曲率做连续搜索 | 采样几何判定代价高 | 5 档候选 `[0, ±0.35, ±0.6]` 打表（D100） |
+| 需要三态区分「没选过」与「用户选的」 | 单一布尔即可表达 | `autoAnchor` 缺省 undefined = 可被影响（D98） |
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -1501,6 +1549,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D95 | **锚点用「长度 + 背面 + 穿越障碍」代价模型，布局后无条件覆盖** | 只按相对位置选锚点仍会从卡片中间穿过。`pickAnchorPair` 在 8×8 组合里加权求和：线段长度 + 从背面出/进线惩罚 + 穿过其它节点矩形惩罚（`ANCHOR_BLOCK_PENALTY`），并给几何最优对一点偏好。布局命令里**不判断**已有 handle 是否为空——用户明确要求「自动布局自动更改使用哪个节点」，手调锚点会被下一次布局覆盖，这是可预期的行为。 |
 | D96 | **线宽独立成 `thickness` 字段** | `weight` 已参与层级、统计与筛选语义，直接改它会连带改变图语义与报表数字。新增 `thickness`（1–8，缺省按 `weight` 推导）专管视觉粗细，迁移、DSL、命令三处同步，避免「typecheck 过了但 DSL 往返丢字段」。 |
 | D97 | **安装包与录屏不入库，发布记录进 `docs/RELEASES.md`** | 9 个安装包 + 123 MB 宣传片会把仓库撑到几百 MB 且永久留在历史里。`release/` 与 `*.mp4` 写进 `.gitignore` 并 `git rm --cached`，仓库只留源码与文档；版本、字节数、SHA-256、重建与签名命令全部记在 `docs/RELEASES.md`，发行物走 GitHub Releases。 |
+| D98 | **用单向开关 `autoAnchor` 表达「是否可被自动梳理」** | 需要区分的只有「默认可被影响」与「用户钉住」两种语义；三态（undefined / true / false）会让迁移、DSL 与右栏控件都多一分歧。缺省 undefined 等于可被影响，只有明确取消勾选才写 `false`；迁移里也只保留 `false`，避免无意义地把默认值写进每一条边。 |
+| D99 | **只梳理关系线的命令独立成 `edgeGeometryCommands.ts`** | 「关系线单独自动调整」与「布局后顺手梳理」是同一件事，但一个不动坐标、一个动坐标。把几何写入抽成 `writeEdgeGeometry`，布局命令和独立命令都调它，避免两处各写一份锚点挑选逻辑。 |
+| D100 | **曲率用 5 档候选打表，不做连续搜索** | 每个候选调用一次 `sampleCurve` 做 8 段折线近似，再与单元矩阵做相交与包围盒判定；连续搜索会把每条边的代价从 5 次拉到数十次，`smoke` 里 1000 节点会明显变慢。五档足够覆盖「不弯 / 轻弯 / 弯」业务需求。 |
+| D101 | **画布即时渲染只避卡片，交叉交给正式梳理** | 画布每次重渲染都要算每条边与其他所有边的相交，是 O(E²)；而「不报错」与「不卡」中用户更在意后者。`pickEdgeCurvature` 只看卡片，交叉与前后对比留给 `optimizeDocEdges` 与面板检测。 |
 
 ---
 
@@ -1535,3 +1587,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | M15 整体验收通过（v0.15.0）：`smoke` 806 / `ui-smoke` 374 / `bench` 76.6 ms 全绿；桌面自检两轮 PASS；安装包 `release\CaseBoard_0.15.0_x64-setup.exe`（12,197,737 字节，SHA-256 `F4E710FF8CDC4884B26EEF590A777BE93313D1A06B25E425FD5BBAF0712A9BB5`）；tag `ms/M15` |
 | 2026-10-20 | **M16 整体验收通过**（✅ 打 tag `ms/M16`）：非商业许可（PolyForm Noncommercial 1.0.0）+ 中英双语许可章节；自动布局带走吸附图片（产出位移表复用 `applyDockedMoves`，一次撤销整体还原）；AI 助手新增「操作方式」与「自动检验」（12 项只读结构体检，问题可跳回画布）；内置《ABC 谋杀案》示范案卷 + 顶栏「示例案卷」载入面板；`smoke` 845 / `ui-smoke` 399 / `bench` 102.1 ms |
 | 2026-10-20 | **M17 整体验收通过**（✅ 打 tag `ms/M17`）：关系线可在八个锚点自由流转且布局后自动重选——`pickAnchorPair` 用「线段长度 + 背面出入线 + 穿越障碍」代价模型选点，`applyLayout` 无条件覆盖 handle（D95）；`thickness` 线宽独立于 `weight` 全链路贯通，右栏滑杆 0.5 步进（D96）；新增第 9 类节点「关系气泡」（圆角胶囊、隐藏卡片栏与字段区、168×64），右键空白与右键卡片都能新建、卡片入口一条命令同时建关系（D94）；同一对实体的平行关系线按 `parallelSpreads` 错开 34px；仓库卫生——`release/` 与 `*.mp4` 移出索引、发布记录迁 `docs/RELEASES.md`、新增 `CONTRIBUTING.md` / `SECURITY.md`、隐私扫描无本机路径与密钥（D97）；README 重写为中英双语 + 4 张真实截图（`docs/screenshots/`）。机器验收：`typecheck` 0 error、`smoke` **855**（新增 [78] 段 20 条）、`ui-smoke` **411**（新增 M17 段 14 条）、`bench` **74.1 ms**、`pnpm build` 成功、桌面自检两轮 PASS；版本三处升 **0.17.0**；§3 写入 M17 拆步/验收/偏离三表，§6 新增 D94–D97，`docs/MANUAL-ACCEPTANCE.md` 新增 Q 节。 |
+| 2026-10-20 | **M18 整体验收通过**（✅ 打 tag `ms/M18`）：手动创建的关系线同样吃自动梳理（画布只把 `autoAnchor === false` 当钉住）；右栏关系属性新增「连接点受自动梳理影响」开关与「立即梳理此线 / 清掉手调弧度」；自动布局面板新增「关系线自动梳理（M18）」小节——「关系线单独自动调整」不动坐标只重排线，「检测交叉与压卡」只体检；`src/lib/edgeOptimize.ts` 新增曲率自动优化（`bestGeometry` / `curvatureOffset` / `sampleCurve` / `polylineHitsRect` / `polylinesIntersect` / `nearbyRects`，代价 1200 / 320 / 6）；`selfCheck` 从 12 项变 13 项（关系线交叉与压卡）。机器验收：`typecheck` 0 error、`smoke` **869**（新增 [79] 段 13 条）、`ui-smoke` **428**（新增 M18 段 15 条，改 M17 段两处旧断言）、`bench` **74.1 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 安装包归档 `release\CaseBoard_0.18.0_x64-setup.exe`；版本三处升 **0.18.0**；§3 写入 M18 拆步/验收/偏离三表，§6 新增 D98–D101，`docs/MANUAL-ACCEPTANCE.md` 新增 R 节。 |

@@ -5366,3 +5366,14 @@ button.cb-members__title--link:hover {
 .cb-node[data-type='relation'] .cb-node__meta { justify-content: center; }
 .cb-node[data-type='relation'] .cb-node__fields,
 .cb-node[data-type='relation'] .cb-node__foot { display: none; }
+
+/* ===== 关系线自动梳理（M18 / Q1 / Q2）===== */
+.cb-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.cb-form__row > .cb-btn {
+  flex: 0 1 auto;
+}

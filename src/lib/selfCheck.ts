@@ -14,6 +14,7 @@ import type { CaseDoc, CaseNode } from '../types';
 import { GEO_KEYS, GEO_LAT_KEYS, GEO_LNG_KEYS, parseGeo } from './map';
 import { tagLinkCandidates, tagLinkLabel } from './tagLink';
 import { TIME_FIELD_KEYS, nodesWithoutTime, parseTimelineTime } from './timeline';
+import { detectEdgeConflicts } from './edgeOptimize';
 
 export type CheckLevel = 'pass' | 'warn' | 'fail';
 
@@ -367,6 +368,32 @@ function checkTagLinks(doc: CaseDoc): SelfCheckItem {
   };
 }
 
+function checkEdgeGeometry(doc: CaseDoc): SelfCheckItem {
+  if (doc.edges.length === 0) {
+    return { id: 'geometry', title: '关系线交叉与压卡', level: 'pass', detail: '还没有关系线', nodeIds: [] };
+  }
+  const report = detectEdgeConflicts(doc);
+  if (report.nodeHits === 0 && report.crossings === 0) {
+    return {
+      id: 'geometry',
+      title: '关系线交叉与压卡',
+      level: 'pass',
+      detail: '没有线穿过卡片，也没有线互相交叉',
+      nodeIds: [],
+    };
+  }
+  const parts: string[] = [];
+  if (report.nodeHits > 0) parts.push(`${report.nodeHits} 处线段压到卡片`);
+  if (report.crossings > 0) parts.push(`${report.crossings} 处线与线交叉`);
+  return {
+    id: 'geometry',
+    title: '关系线交叉与压卡',
+    level: 'warn',
+    detail: `${parts.join('、')}，可在「分析 → 自动布局」点「关系线单独自动调整」`,
+    nodeIds: [],
+  };
+}
+
 function checkTimeCoverage(doc: CaseDoc): SelfCheckItem {
   const missing = nodesWithoutTime(doc);
   const realNodes = doc.nodes.filter((node) => node.type !== 'note');
@@ -402,6 +429,7 @@ export function runSelfCheck(doc: CaseDoc, now: Date = new Date()): SelfCheckRep
     checkTime(doc),
     checkGeo(doc),
     checkLineSemantics(doc),
+    checkEdgeGeometry(doc),
     checkAiAssets(doc),
     checkHypotheses(doc),
     checkChains(doc),

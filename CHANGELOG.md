@@ -2,6 +2,21 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.18.0 · M18 关系线自动梳理
+
+### M18 整体验收通过（2026-10-20，tag ms/M18）
+
+- **手动创建的关系线也吃自动梳理**：以前 `sourceHandle`/`targetHandle` 一旦由用户拖出来就被画布当成定论，布局后线仍从老锚点绕出去。现在画布只把 `edge.autoAnchor === false` 视为「钉住」，其余一律用算出来的锚点（`Board.tsx` 的 `autoAnchors`），手画线与自动连线走同一条路。
+- **每条关系线可单独开关**：`CaseEdge.autoAnchor?: boolean`（缺省 = 可被影响）走类型 / 迁移 / 命令 / 右栏三处；右栏关系属性新增「连接点受自动梳理影响」勾选框，取消勾选就钉住当前连接点，`optimizeDocEdges` 会把它计入 `locked` 且不改写。
+- **自动布局面板新增「关系线自动梳理（M18）」小节**：两个按钮——「关系线单独自动调整」只重排线的连接点与弧度、不动任何卡片坐标（一次操作压一条撤销记录，状态栏给出压卡/交叉前后对比）；「检测交叉与压卡」只体检不改数据，零问题直接报「检测通过」。
+- **锚点从 8 个里挑最合适的**：`pickAnchorPair(source, target, obstacles)` 在四边中点 + 四角的 8×8 组合里按代价挑；`nearbyRects` 先用连线包围盒预筛附近卡片（不看全板，1000 节点也不卡），避免出现「线穿卡片」。
+- **贝塞尔形状自动优化（Q2）**：新增 `src/lib/edgeOptimize.ts`——`bestGeometry` 在曲率候选 `[0, ±0.35, ±0.6]` 里按「压卡 1200 × 交叉 320 + 曲率 6/单位」挑最小代价；`curvatureOffset`/`sampleCurve` 把标量曲率换成控制点偏移并用 8 段折线近邻采样做几何判定（`polylineHitsRect`、`polylinesIntersect`）；画布即时渲染用轻量版 `pickEdgeCurvature`（只避卡片，不做 O(E) 交叉比较）。手调 `controlPoints` 永远优先，其次才是自动曲率与平行错开。
+- **DSL 与右栏**：`CaseEdge.curvature`（-0.9~0.9）随边序列化解析；右栏「立即梳理此线」（只梳理这一条）与「清掉手调弧度」（把形状交还自动梳理）。
+- **自动检验加一条**：`selfCheck` 从 12 项变 13 项，新增「关系线交叉与压卡」——有压卡或交叉给 warn 并指路到自动布局面板。
+- **验收**：`pnpm typecheck` 0 error；`pnpm smoke` **869 PASS**（新增 [79] 段 13 条：几何判定、障碍预筛、曲率符号与幅度、迁移夹取、交叉检测、锁定边不改写、命令一次撤销、布局同时梳理，并改「自检 12 项 → 13 项」旧断言）；`pnpm ui-smoke` **428 PASS / 0 FAIL**（新增 M18 段 15 条，改 M17 段两处旧断言：自动检验项数与布局锚点实现方式）；`pnpm bench` 1000 节点解析链 **74.1 ms**（阈值 300）；`pnpm build` 成功。
+- **打包**：版本三处升 **0.18.0**；`tauri build --no-bundle` 重建 `caseboard.exe`（**19,162,112 字节**），`node scripts/run-selftest.cjs` 两轮 PASS（`phase1=PASS phase2=PASS`，含 OCR 内置引擎与零外呼两项）；`--bundles nsis` 出 `CaseBoard_0.18.0_x64-setup.exe` 归档到本地 `release\`（**12,209,827 字节**，SHA-256 `25A65D5E788981B69BA98770112A61E0689D8D2FEE151A81D01991334F7C2338`，未签名；`release/` 已不在版本控制内，文件只留在本机，记录见 `docs/RELEASES.md`）。
+- **文档**：`docs/MILESTONES.md` 写入 M18 三表与 D98–D101，`docs/MANUAL-ACCEPTANCE.md` 新增 R 节，`AGENTS.md` 里程碑范围改「M1–M18 / D1–D101」。
+
 ## [未发布] v0.17.0 · M17 关系气泡与线宽
 
 ### M17 整体验收通过（2026-10-20，tag ms/M17）

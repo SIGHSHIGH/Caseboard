@@ -336,3 +336,132 @@ export function parallelSpreads(
   }
   return out;
 }
+
+/* ===== M18：贝塞尔形状自动优化与交叉检测 ===== */
+
+/** 曲率取值范围：-0.9（向左弯）~ 0.9（向右弯），0 是直线贝塞尔 */
+export const CURVATURE_MIN = -0.9;
+export const CURVATURE_MAX = 0.9;
+
+/** 自动梳理时依次试的曲率候选（0 最优先，避免无理由把线掰弯） */
+export const CURVATURE_OPTIONS: number[] = [0, 0.35, -0.35, 0.6, -0.6];
+
+/** 检测交叉时把曲线切成几段（8 段足够抓住压卡与交叉，再细只是变慢） */
+export const EDGE_GEOMETRY_SAMPLES = 8;
+
+export function clampCurvature(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const clamped = Math.max(CURVATURE_MIN, Math.min(CURVATURE_MAX, value));
+  return Math.round(clamped * 100) / 100;
+}
+
+/** 把标量曲率换成控制点偏移：垂直于连线方向按长度比例外推 */
+export function curvatureOffset(from: XY, to: XY, curvature: number): XY {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy);
+  const curve = clampCurvature(curvature);
+  if (len === 0 || curve === 0) return { x: 0, y: 0 };
+  const amount = curve * len * 0.25;
+  return { x: (-dy / len) * amount, y: (dx / len) * amount };
+}
+
+/** 采样三次贝塞尔：两个控制点 = 端点 + 同一偏移（与 curveGeometry 的几何一致） */
+export function sampleCurve(from: XY, to: XY, offset: XY, samples = 8): XY[] {
+  const c1 = { x: from.x + offset.x, y: from.y + offset.y };
+  const c2 = { x: to.x + offset.x, y: to.y + offset.y };
+  const out: XY[] = [];
+  const steps = Math.max(2, Math.round(samples));
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const mt = 1 - t;
+    const a = mt * mt * mt;
+    const b = 3 * mt * mt * t;
+    const c = 3 * mt * t * t;
+    const d = t * t * t;
+    out.push({
+      x: a * from.x + b * c1.x + c * c2.x + d * to.x,
+      y: a * from.y + b * c1.y + c * c2.y + d * to.y,
+    });
+  }
+  return out;
+}
+
+export function polylineHitsRect(points: XY[], rect: RectLike, pad = 0): boolean {
+  for (let i = 0; i + 1 < points.length; i += 1) {
+    if (segmentHitsRect(points[i], points[i + 1], rect, pad)) return true;
+  }
+  return false;
+}
+
+function orientation(a: XY, b: XY, c: XY): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+/** 两条线段是否真正相交（含端点接触与共线重叠） */
+export function segmentsIntersect(a1: XY, a2: XY, b1: XY, b2: XY): boolean {
+  const eps = 1e-6;
+  const d1 = orientation(b1, b2, a1);
+  const d2 = orientation(b1, b2, a2);
+  const d3 = orientation(a1, a2, b1);
+  const d4 = orientation(a1, a2, b2);
+  if (((d1 > eps && d2 < -eps) || (d1 < -eps && d2 > eps)) && ((d3 > eps && d4 < -eps) || (d3 < -eps && d4 > eps))) {
+    return true;
+  }
+  const on = (p: XY, q: XY, r: XY): boolean =>
+    Math.abs(orientation(p, q, r)) <= eps &&
+    r.x >= Math.min(p.x, q.x) - eps && r.x <= Math.max(p.x, q.x) + eps &&
+    r.y >= Math.min(p.y, q.y) - eps && r.y <= Math.max(p.y, q.y) + eps;
+  return on(b1, b2, a1) || on(b1, b2, a2) || on(a1, a2, b1) || on(a1, a2, b2);
+}
+
+/** 两条折线是否交叉（调用方保证是两条不同的边，否则端点必然「相交」） */
+export function polylinesIntersect(a: XY[], b: XY[]): boolean {
+  for (let i = 0; i + 1 < a.length; i += 1) {
+    for (let j = 0; j + 1 < b.length; j += 1) {
+      if (segmentsIntersect(a[i], a[i + 1], b[j], b[j + 1])) return true;
+    }
+  }
+  return false;
+}
+
+/** 折线包围盒（统一成 {x,y,w,h}） */
+export function boundsOfPoints(points: XY[], pad = 0): RectLike {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y > maxY) maxY = point.y;
+  }
+  if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
+  return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 };
+}
+
+export function rectsIntersect(a: RectLike, b: RectLike): boolean {
+  return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+}
+
+/**
+ * 只挑出「可能挡路」的障碍：先用连线的包围盒筛一遍。
+ * 不做这一步时锚点评分会对全图每个矩形各算一次，1000 节点会明显卡。
+ */
+export function nearbyRects(
+  entries: ReadonlyArray<{ id: string; rect: RectLike }>,
+  from: XY,
+  to: XY,
+  pad = 80,
+  exclude: ReadonlyArray<string> = [],
+): RectLike[] {
+  const box = boundsOfPoints([from, to], pad);
+  const skip = new Set(exclude);
+  const out: RectLike[] = [];
+  for (const entry of entries) {
+    if (skip.has(entry.id)) continue;
+    if (rectsIntersect(box, entry.rect)) out.push(entry.rect);
+  }
+  return out;
+}

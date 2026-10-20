@@ -79,6 +79,13 @@ export interface CaseEdge {
   weight?: number;
   /** 线宽像素（M17）：1–8，缺省时按 weight 推导 */
   thickness?: number;
+  /**
+   * 是否让自动梳理改写这条线的连接点（M18）：缺省（undefined）视为「可被影响」，
+   * 设成 false 表示用户手动钉住了锚点，自动布局与「关系线单独自动调整」都不动它。
+   */
+  autoAnchor?: boolean;
+  /** 自动梳理挑出的标量曲率（M18）：-0.9~0.9，0 即直线；手调 controlPoints 时以手调为准 */
+  curvature?: number;
   time?: TimeRange;
   confidence: number;
   evidenceIds: string[];

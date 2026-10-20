@@ -198,6 +198,10 @@ function normalizeEdge(raw: unknown, index: number): CaseEdge | null {
   // M17：线宽独立于 weight（weight 是金额/频次这类视觉重量，线宽是纯排版参数）
   const thickness = num(raw.thickness, Number.NaN);
   if (Number.isFinite(thickness)) edge.thickness = Math.min(8, Math.max(1, Math.round(thickness * 10) / 10));
+  // M18：连接是否受自动梳理影响（只存 false，缺省即「可被影响」）+ 自动挑出的曲率
+  if (raw.autoAnchor === false) edge.autoAnchor = false;
+  const curvature = num(raw.curvature, Number.NaN);
+  if (Number.isFinite(curvature)) edge.curvature = Math.max(-0.9, Math.min(0.9, Math.round(curvature * 100) / 100));
   const time = timeOf(raw.time);
   if (time) edge.time = time;
   const notes = str(raw.notes);

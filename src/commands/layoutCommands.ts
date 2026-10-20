@@ -1,6 +1,6 @@
-import { bestAnchors, pickAnchorPair, rectOf, type RectLike } from '../lib/edgeCurve';
 import type { LayoutResult } from '../lib/layout';
 import { applyDockedMoves } from './nodeCommands';
+import { writeEdgeGeometry } from './edgeGeometryCommands';
 import type { Command } from './types';
 
 /**
@@ -13,6 +13,10 @@ import type { Command } from './types';
  * M16：自动布局同样要让吸附的图片跟随卡片——布局改坐标历来只动 draft.nodes，
  * 于是「吸附的图片在自动布局后不跟随」成为反复出现的反馈；这里复用命令层的 applyDockedMoves，
  * 与拖动、方向键走同一条随动逻辑。
+ *
+ * M18：手机反馈「自动布局之后线还是交叉、还是压在卡片上」，于是把「挑锚点」升级成
+ * writeEdgeGeometry（锚点 + 贝塞尔曲率一起挑），与「关系线单独自动调整」按钮共用同一份实现。
+ * 只梳理 autoAnchor !== false 的边；被用户钉住的边保持原样。
  */
 export function applyLayout(result: LayoutResult): Command {
   const targets = new Map(
@@ -34,29 +38,8 @@ export function applyLayout(result: LayoutResult): Command {
       }
       // 吸附随动（M16）：被布局搬走的卡片，把吸在它身上的图片一起挪过去
       applyDockedMoves(draft, deltas);
-      const byId = new Map(draft.nodes.map((node) => [node.id, node]));
-      const rects = new Map<string, RectLike>();
-      for (const node of draft.nodes) rects.set(node.id, rectOf(node));
-      for (const edge of draft.edges) {
-        const source = byId.get(edge.source);
-        const target = byId.get(edge.target);
-        if (!source || !target) continue;
-        // M17：布局后可能还是会「线穿卡片」，所以挑锚点时把其他卡片当障碍一起评分；
-        // 而且无条件覆盖旧 handle —— 用户明确要求「自动布局自动更改使用哪个节点」。
-        const sourceRect = rects.get(source.id);
-        const targetRect = rects.get(target.id);
-        if (!sourceRect || !targetRect) continue;
-        const obstacles: RectLike[] = [];
-        for (const [id, rect] of rects) {
-          if (id === source.id || id === target.id) continue;
-          obstacles.push(rect);
-        }
-        const anchors = obstacles.length > 0
-          ? pickAnchorPair(sourceRect, targetRect, obstacles)
-          : bestAnchors(sourceRect, targetRect);
-        edge.sourceHandle = anchors.source;
-        edge.targetHandle = anchors.target;
-      }
+      // 关系线几何（M18）：坐标定下来之后再挑锚点与曲率，避免「先挑后挪」
+      writeEdgeGeometry(draft);
     },
   };
 }

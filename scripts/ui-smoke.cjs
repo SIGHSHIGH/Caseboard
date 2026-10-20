@@ -941,7 +941,7 @@ function check(name, condition, detail) {
   check('可切到自动检验', await clickByText('.cb-ai__tab', '自动检验'));
   await sleep(300);
   check('自动检验渲染结论条', doc.querySelector('.cb-check__summary') !== null);
-  check('自动检验列出 12 项检查', doc.querySelectorAll('.cb-check__item').length === 12, doc.querySelectorAll('.cb-check__item').length);
+  check('自动检验列出 13 项检查（M18 加关系线交叉）', doc.querySelectorAll('.cb-check__item').length === 13, doc.querySelectorAll('.cb-check__item').length);
   const checkSummary = doc.querySelector('.cb-check__summary')?.textContent || '';
   check('ABC 案卷没有必须修的项', checkSummary.includes('0 必须修'), checkSummary);
   const checkChips = [...doc.querySelectorAll('.cb-check__chip')];
@@ -982,9 +982,7 @@ function check(name, condition, detail) {
   const layoutSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'commands', 'layoutCommands.ts'), 'utf8');
   check(
     '自动布局后按障碍重算锚点并覆盖旧 handle（M17）',
-    layoutSrc.includes('pickAnchorPair') &&
-      layoutSrc.includes('edge.sourceHandle = anchors.source') &&
-      layoutSrc.includes('edge.targetHandle = anchors.target'),
+    layoutSrc.includes('writeEdgeGeometry') && layoutSrc.includes('applyDockedMoves'),
     '',
   );
   const rightSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'panels', 'RightPanel.tsx'), 'utf8');
@@ -1012,6 +1010,75 @@ function check(name, condition, detail) {
     });
     check('建完菜单收起', doc.querySelector('.cb-ctxmenu') === null);
   }
+
+  const rootDir = path.join(__dirname, '..');
+  const cssM18 = fs.readFileSync(path.join(rootDir, 'src', 'index.css'), 'utf8');
+  console.log('[UI] M18 关系线自动梳理（Q1 / Q2）');
+  const edgeOptSrc = fs.readFileSync(path.join(rootDir, 'src', 'lib', 'edgeOptimize.ts'), 'utf8');
+  check(
+    '有 edgeOptimize 纯函数模块（检测 + 梳理）',
+    edgeOptSrc.includes('export function detectEdgeConflicts') && edgeOptSrc.includes('export function optimizeDocEdges'),
+  );
+  const nodePenalty = Number((edgeOptSrc.match(/EDGE_NODE_PENALTY\s*=\s*(\d+)/) || [])[1]);
+  const crossPenalty = Number((edgeOptSrc.match(/EDGE_CROSS_PENALTY\s*=\s*(\d+)/) || [])[1]);
+  check('代价设计：压卡比交叉更不可接受', nodePenalty > 0 && crossPenalty > 0 && crossPenalty < nodePenalty, [nodePenalty, crossPenalty]);
+  check('有只梳理关系线的命令文件', fs.existsSync(path.join(rootDir, 'src', 'commands', 'edgeGeometryCommands.ts')));
+  check(
+    '布局命令在坐标定下来之后梳理关系线',
+    fs.readFileSync(path.join(rootDir, 'src', 'commands', 'layoutCommands.ts'), 'utf8').includes('writeEdgeGeometry'),
+  );
+  const layoutPanelSrc = fs.readFileSync(path.join(rootDir, 'src', 'components', 'panels', 'LayoutPanel.tsx'), 'utf8');
+  check('自动布局面板有「关系线单独自动调整」', layoutPanelSrc.includes('关系线单独自动调整'));
+  check('自动布局面板有「检测交叉与压卡」', layoutPanelSrc.includes('检测交叉与压卡'));
+  const rightPanelSrc = fs.readFileSync(path.join(rootDir, 'src', 'components', 'panels', 'RightPanel.tsx'), 'utf8');
+  check('关系线属性有「连接点受自动梳理影响」开关', rightPanelSrc.includes('连接点受自动梳理影响'));
+  check('关系线属性有「立即梳理此线」', rightPanelSrc.includes('立即梳理此线'));
+  const boardSrcM18 = fs.readFileSync(path.join(rootDir, 'src', 'components', 'flow', 'Board.tsx'), 'utf8');
+  check(
+    '画布按 autoAnchor 决定连接点、按曲率描边（手动线也生效）',
+    boardSrcM18.includes('autoAnchor === false') && boardSrcM18.includes('pickEdgeCurvature'),
+  );
+  check('样式表有按钮行 .cb-form__row', cssM18.includes('.cb-form__row'));
+
+  const analysisTabM18 = [...doc.querySelectorAll('.cb-tab')].find((tab) => (tab.textContent || '').trim() === '分析');
+  if (analysisTabM18) analysisTabM18.click();
+  await new Promise((resolve) => setTimeout(resolve, 220));
+  const layoutTabM18 = [...doc.querySelectorAll('.cb-subtab')].find((tab) => (tab.textContent || '').includes('自动布局'));
+  if (layoutTabM18) layoutTabM18.click();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  check(
+    '面板出现「关系线自动梳理（M18）」小节',
+    [...doc.querySelectorAll('.cb-layout .cb-filter__title')].some((title) => (title.textContent || '').includes('关系线自动梳理')),
+    [...doc.querySelectorAll('.cb-layout .cb-filter__title')].map((title) => title.textContent),
+  );
+  const tidyBtn = [...doc.querySelectorAll('.cb-layout .cb-btn')].find((btn) => (btn.textContent || '').includes('关系线单独自动调整'));
+  const checkConflictBtn = [...doc.querySelectorAll('.cb-layout .cb-btn')].find((btn) => (btn.textContent || '').includes('检测交叉与压卡'));
+  check('两个按钮都在面板里', !!tidyBtn && !!checkConflictBtn);
+  if (checkConflictBtn) checkConflictBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  const conflictStatus = [...doc.querySelectorAll('.cb-layout__status')].map((node) => node.textContent || '');
+  check('检测后给出结论（通过或报数）', conflictStatus.some((text) => text.includes('检测')), conflictStatus);
+  if (tidyBtn) tidyBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  const tidyStatus = [...doc.querySelectorAll('.cb-layout__status')].map((node) => node.textContent || '');
+  check('梳理后给出前后对比', tidyStatus.some((text) => text.includes('梳理完成')), tidyStatus);
+
+  const edgeM18 = doc.querySelector('.react-flow__edge');
+  if (edgeM18) edgeM18.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  check(
+    '关系线属性里出现「连接点受自动梳理影响」',
+    [...doc.querySelectorAll('.cb-form .cb-field span')].some((span) => (span.textContent || '').includes('连接点受自动梳理影响')),
+  );
+  const tidyEdgeBtn = [...doc.querySelectorAll('.cb-form .cb-btn')].find((btn) => (btn.textContent || '').includes('立即梳理此线'));
+  check('关系线属性里有「立即梳理此线」', !!tidyEdgeBtn);
+  const edgesBeforeM18 = doc.querySelectorAll('.react-flow__edge').length;
+  if (tidyEdgeBtn) tidyEdgeBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  check('梳理单条线不会增删关系', doc.querySelectorAll('.react-flow__edge').length === edgesBeforeM18, [
+    edgesBeforeM18,
+    doc.querySelectorAll('.react-flow__edge').length,
+  ]);
 
   console.log('');
   if (failures > 0) {

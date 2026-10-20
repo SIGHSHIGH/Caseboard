@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
-import { applyLayout } from '../../commands/layoutCommands';
+import { useMemo, useState } from 'react';
+import { applyLayout, optimizeEdgeGeometry } from '../../commands';
 import { computeLayout, type LayoutKind } from '../../lib/layout';
+import { detectEdgeConflicts } from '../../lib/edgeOptimize';
 import { useDocStore } from '../../store/docStore';
 import { useLayoutStore } from '../../store/layoutStore';
 import { useUiStore } from '../../store/uiStore';
@@ -43,6 +44,33 @@ export function LayoutPanel() {
     if (result.groupClamped > 0) parts.push(`${result.groupClamped} 个回到组内`);
     parts.push('可 Ctrl+Z 一次还原');
     setStatus(parts.join(' · '));
+  };
+
+  const [edgeStatus, setEdgeStatus] = useState('');
+
+  /** M18：只梳理关系线，不动坐标；一次操作压一条撤销记录 */
+  const tidyEdges = () => {
+    const before = detectEdgeConflicts(doc);
+    if (doc.edges.length === 0) {
+      setEdgeStatus('当前案卷还没有关系线。');
+      return;
+    }
+    dispatch(optimizeEdgeGeometry());
+    const after = detectEdgeConflicts(useDocStore.getState().doc);
+    setEdgeStatus(
+      `梳理完成：压卡 ${before.nodeHits} → ${after.nodeHits} 处 · 交叉 ${before.crossings} → ${after.crossings} 处。可 Ctrl+Z 一次还原。`,
+    );
+  };
+
+  const checkEdges = () => {
+    const report = detectEdgeConflicts(doc);
+    if (report.nodeHits === 0 && report.crossings === 0) {
+      setEdgeStatus('检测通过：没有线穿过卡片，也没有线互相交叉。');
+      return;
+    }
+    setEdgeStatus(
+      `检测到压卡 ${report.nodeHits} 处、交叉 ${report.crossings} 处（${report.nodeHitEdgeIds.length} 条线压到卡片），可点上面的按钮自动梳理。`,
+    );
   };
 
   return (
@@ -88,6 +116,23 @@ export function LayoutPanel() {
         <p className="cb-filter__hint">
           自动布局只改坐标，不改关系与属性；一次应用只压一条撤销记录。
         </p>
+      </section>
+
+      <section className="cb-filter__section">
+        <h3 className="cb-filter__title">关系线自动梳理（M18）</h3>
+        <p className="cb-filter__hint">
+          只重排关系线：给每条线挑两端最合适的连接点（四边中点 + 四角，共 8 个），再挑一个不穿过卡片、少交叉的弧度。
+          卡片坐标不动，钉住连接点的线（右栏关掉「受自动梳理影响」）也不会被改。
+        </p>
+        <div className="cb-filter__row">
+          <button type="button" className="cb-btn" onClick={tidyEdges}>
+            关系线单独自动调整
+          </button>
+          <button type="button" className="cb-btn" onClick={checkEdges}>
+            检测交叉与压卡
+          </button>
+        </div>
+        {edgeStatus ? <p className="cb-filter__hint cb-layout__status">{edgeStatus}</p> : null}
       </section>
     </div>
   );

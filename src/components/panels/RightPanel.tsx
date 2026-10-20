@@ -21,6 +21,7 @@ import {
   updateEdge,
   updateGroup,
   updateNode,
+  optimizeEdgeGeometry,
 } from '../../commands';
 import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } from '../../lib/theme';
 import { memberNodeIds } from '../../lib/groups';
@@ -663,6 +664,35 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
           onBlur={commitThickness}
         />
       </label>
+
+      <label className="cb-field cb-field--inline">
+        <input
+          type="checkbox"
+          checked={edge.autoAnchor !== false}
+          onChange={(event) =>
+            dispatch(updateEdge(edge.id, { autoAnchor: event.target.checked ? undefined : false }))
+          }
+        />
+        <span>连接点受自动梳理影响（关掉 = 钉住现在的连接点）</span>
+      </label>
+      <div className="cb-form__row">
+        <button
+          type="button"
+          className="cb-btn cb-btn--ghost"
+          title="只重排这一条线的连接点与弧度，不动任何卡片坐标"
+          onClick={() => dispatch(optimizeEdgeGeometry([edge.id]))}
+        >
+          立即梳理此线
+        </button>
+        <button
+          type="button"
+          className="cb-btn cb-btn--ghost"
+          title="清掉手调弧度，把形状交还给自动梳理"
+          onClick={() => dispatch(updateEdge(edge.id, { controlPoints: undefined, curvature: undefined }))}
+        >
+          清掉手调弧度
+        </button>
+      </div>
 
       <label className="cb-field">
         <span>置信度：{confidence}</span>

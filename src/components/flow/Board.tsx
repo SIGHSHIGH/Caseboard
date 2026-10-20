@@ -42,7 +42,17 @@ import {
   nodeIdsInRect,
   parseBoardNodeId,
 } from '../../lib/groups';
-import { bestAnchors, fanOutLabels, parallelSpreads, pickAnchorPair, type EdgeAnchor } from '../../lib/edgeCurve';
+import {
+  anchorPoint,
+  bestAnchors,
+  fanOutLabels,
+  nearbyRects,
+  parallelSpreads,
+  pickAnchorPair,
+  type EdgeAnchor,
+  type RectLike,
+} from '../../lib/edgeCurve';
+import { OBSTACLE_PAD, pickEdgeCurvature } from '../../lib/edgeOptimize';
 import { newId } from '../../lib/id';
 import {
   CARD_LAYER_Z,
@@ -349,18 +359,31 @@ export function Board() {
     highlight,
   ]);
 
-  /** S3：没有显式锚点的关系按两端相对位置挑「面对面」的连接点，布局后也不会绕到卡片背后 */
+  /**
+   * S3：没有显式锚点的关系按两端相对位置挑「面对面」的连接点，布局后也不会绕到卡片背后。
+   * M17：把其他卡片当障碍一起评分（避免线穿卡片）。
+   * M18：「手动拉出来的线」也一起照顾——只要 `autoAnchor !== false`，画布就用算出来的锚点，
+   * 不再退回到拖拽时随手落下的那个 handle；曲率有存值就用存值，没有才即时挑一个。
+   */
   const autoAnchors = useMemo(() => {
-    const rects = new Map(doc.nodes.map((node) => [node.id, { x: node.x, y: node.y, w: node.w, h: node.h }]));
-    const out = new Map<string, { source: EdgeAnchor; target: EdgeAnchor }>();
-    const obstacles = Array.from(rects.values());
+    const rects = new Map<string, RectLike>(
+      doc.nodes.map((node) => [node.id, { x: node.x, y: node.y, w: node.w, h: node.h }]),
+    );
+    const entries = Array.from(rects, ([id, rect]) => ({ id, rect }));
+    const out = new Map<string, { source: EdgeAnchor; target: EdgeAnchor; curvature: number }>();
     for (const edge of model.edges) {
       const source = rects.get(edge.source);
       const target = rects.get(edge.target);
       if (!source || !target) continue;
-      // M17：把其他卡片当障碍，避免「自动布局之后线还是穿过卡片」
-      const others = obstacles.filter((rect) => rect !== source && rect !== target);
-      out.set(edge.id, others.length > 0 ? pickAnchorPair(source, target, others) : bestAnchors(source, target));
+      const from = { x: source.x + source.w / 2, y: source.y + source.h / 2 };
+      const to = { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+      const others = nearbyRects(entries, from, to, OBSTACLE_PAD, [edge.source, edge.target]);
+      const anchors = others.length > 0 ? pickAnchorPair(source, target, others) : bestAnchors(source, target);
+      const sourcePoint = anchorPoint(source, anchors.source);
+      const targetPoint = anchorPoint(target, anchors.target);
+      const stored = edge.curvature;
+      const curvature = stored !== undefined ? stored : pickEdgeCurvature(sourcePoint, targetPoint, others);
+      out.set(edge.id, { ...anchors, curvature });
     }
     return out;
   }, [doc.nodes, model.edges]);
@@ -397,19 +420,29 @@ export function Board() {
         const dimmed =
           view.dimEdges.has(edge.id) || stateOf(edge.source).dim || stateOf(edge.target).dim;
         const auto = autoAnchors.get(edge.id);
+        // M18：用户在右栏钉住连接点（autoAnchor === false）时只认存下来的 handle
+        const pinned = edge.autoAnchor === false;
+        const sourceHandle = pinned
+          ? (edge.sourceHandle ?? auto?.source ?? 'right')
+          : (auto?.source ?? edge.sourceHandle ?? 'right');
+        const targetHandle = pinned
+          ? (edge.targetHandle ?? auto?.target ?? 'left')
+          : (auto?.target ?? edge.targetHandle ?? 'left');
+        const curvature = edge.curvature ?? (pinned ? 0 : (auto?.curvature ?? 0));
         return {
           id: edge.id,
           type: 'bezier' as const,
           source: edge.source,
           target: edge.target,
-          sourceHandle: edge.sourceHandle ?? auto?.source ?? 'right',
-          targetHandle: edge.targetHandle ?? auto?.target ?? 'left',
+          sourceHandle,
+          targetHandle,
           data: {
             edge,
             dimmed,
             highlighted: highlight.edges.has(edge.id),
             labelDy: labelDys.get(edge.id) ?? 0,
             spread: spreadByEdge.get(edge.id) ?? 0,
+            curvature,
           },
           selected: edge.id === selectedEdgeId,
           markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 16, height: 16 } : undefined,

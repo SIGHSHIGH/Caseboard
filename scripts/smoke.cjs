@@ -3690,7 +3690,7 @@ async function main() {
     const abcDoc = require(path.join(out, 'data', 'demoAbc.js')).createAbcDoc();
 
     const report = selfCheck.runSelfCheck(abcDoc, new Date('2026-01-01T00:00:00.000Z'));
-    check('自检返回 12 项检查', report.items.length === 12, report.items.length);
+    check('自检返回 13 项检查（M18 加关系线交叉与压卡）', report.items.length === 13, report.items.length);
     check(
       '三项计数加起来等于总项数',
       report.pass + report.warn + report.fail === report.items.length,
@@ -3940,6 +3940,259 @@ check(
     );
   })(),
 );
+
+// [79] M18：关系线自动梳理（交叉与压卡检测、曲率搜索、锁定与命令）
+{
+  const edgeCurve = require(path.join(out, 'lib', 'edgeCurve.js'));
+  const edgeOpt = require(path.join(out, 'lib', 'edgeOptimize.js'));
+  const {
+    segmentsIntersect,
+    polylinesIntersect,
+    polylineHitsRect,
+    sampleCurve,
+    curvatureOffset,
+    nearbyRects,
+    CURVATURE_MIN,
+    CURVATURE_MAX,
+  } = edgeCurve;
+  const { detectEdgeConflicts, edgeCurvatureOf, optimizeDocEdges, pickEdgeCurvature } = edgeOpt;
+  const { optimizeEdgeGeometry } = require(path.join(out, 'commands', 'edgeGeometryCommands.js'));
+  const { applyLayout } = require(path.join(out, 'commands', 'layoutCommands.js'));
+  const { computeLayout } = require(path.join(out, 'lib', 'layout.js'));
+
+  check(
+    '线段相交判定：交叉为真、平行与错开为假',
+    segmentsIntersect({ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }, { x: 100, y: 0 }) &&
+      !segmentsIntersect({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 20 }, { x: 100, y: 20 }) &&
+      !segmentsIntersect({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 10 }, { x: 300, y: 10 }),
+  );
+  check(
+    '折线段相交：两条交叉曲线为真、两条平行曲线为假',
+    polylinesIntersect(
+      sampleCurve({ x: 0, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 0 }),
+      sampleCurve({ x: 0, y: 200 }, { x: 200, y: 0 }, { x: 0, y: 0 }),
+    ) &&
+      !polylinesIntersect(
+        sampleCurve({ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 0, y: 0 }),
+        sampleCurve({ x: 0, y: 60 }, { x: 200, y: 60 }, { x: 0, y: 0 }),
+      ),
+  );
+  check(
+    '曲线压卡片判定：穿过卡片为真、绕开为假',
+    polylineHitsRect(sampleCurve({ x: -50, y: 40 }, { x: 150, y: 40 }, { x: 0, y: 0 }), {
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 80,
+    }) &&
+      !polylineHitsRect(sampleCurve({ x: -50, y: 400 }, { x: 150, y: 400 }, { x: 0, y: 0 }), {
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 80,
+      }),
+  );
+  check(
+    '曲率把线推到一侧：正负号相反、幅度随曲率增大',
+    (() => {
+      const from = { x: 0, y: 0 };
+      const to = { x: 200, y: 0 };
+      const plus = curvatureOffset(from, to, 0.5);
+      const minus = curvatureOffset(from, to, -0.5);
+      const small = curvatureOffset(from, to, 0.2);
+      return plus.y > 0 && minus.y < 0 && Math.abs(plus.y) > Math.abs(small.y);
+    })(),
+  );
+  check(
+    '障碍预筛只留连线附近的卡片，并按 id 排除两端',
+    (() => {
+      const entries = [
+        { id: 'a', rect: { x: 0, y: 0, w: 100, h: 60 } },
+        { id: 'b', rect: { x: 400, y: 0, w: 100, h: 60 } },
+        { id: 'near', rect: { x: 200, y: -20, w: 100, h: 60 } },
+        { id: 'far', rect: { x: 200, y: 2000, w: 100, h: 60 } },
+      ];
+      const got = nearbyRects(entries, { x: 50, y: 30 }, { x: 450, y: 30 }, 80, ['a', 'b']);
+      return got.length === 1 && got[0].x === 200;
+    })(),
+  );
+  check(
+    '即时曲率：没有障碍不弯、有障碍才弯且落在允许区间',
+    (() => {
+      const none = pickEdgeCurvature({ x: 0, y: 30 }, { x: 400, y: 30 }, []);
+      const bent = pickEdgeCurvature({ x: 0, y: 30 }, { x: 400, y: 30 }, [{ x: 150, y: 0, w: 100, h: 60 }]);
+      return none === 0 && bent !== 0 && bent >= CURVATURE_MIN && bent <= CURVATURE_MAX;
+    })(),
+  );
+  check(
+    '手调曲率（controlPoints）优先：edgeCurvatureOf 归 0',
+    (() => {
+      const edge = doc().edges[0];
+      if (!edge) return false;
+      const withPoints = { ...edge, controlPoints: [{ x: 10, y: 10 }, { x: 20, y: 20 }], curvature: 0.6 };
+      return edgeCurvatureOf(withPoints) === 0 && edgeCurvatureOf({ ...edge, curvature: 0.33 }) === 0.33;
+    })(),
+  );
+  check(
+    '迁移：曲率夹到 ±0.9 并保留两位、autoAnchor=false 保留',
+    (() => {
+      const migrate = require(path.join(out, 'serializers', 'migrate.js'));
+      const raw = clone(doc());
+      if (raw.edges.length < 3) return false;
+      raw.edges[0].curvature = 3;
+      raw.edges[0].autoAnchor = false;
+      raw.edges[1].curvature = -2;
+      raw.edges[2].curvature = 0.33333;
+      const next = migrate.normalizeDoc(raw);
+      return (
+        next.edges[0].curvature === CURVATURE_MAX &&
+        next.edges[0].autoAnchor === false &&
+        next.edges[1].curvature === CURVATURE_MIN &&
+        next.edges[2].curvature === 0.33
+      );
+    })(),
+  );
+  check(
+    '曲率与 autoAnchor 进 DSL：序列化有字段、再解析回来一致',
+    (() => {
+      const base = clone(doc());
+      const edge = base.edges[0];
+      if (!edge) return false;
+      edge.curvature = -0.35;
+      edge.autoAnchor = false;
+      const text = serializeDoc(base);
+      const back = parseDsl(text);
+      const parsed = back.doc.edges.find((item) => item.id === edge.id);
+      return (
+        text.includes('curvature: -0.35') &&
+        text.includes('autoAnchor: false') &&
+        parsed !== undefined &&
+        parsed.curvature === -0.35 &&
+        parsed.autoAnchor === false
+      );
+    })(),
+  );
+  check(
+    '交叉与压卡检测：线穿过卡片时能抓出来',
+    (() => {
+      const baseNode = {
+        id: 'x',
+        type: 'event',
+        title: '事件',
+        x: 0,
+        y: 0,
+        w: 180,
+        h: 80,
+        fields: {},
+        tags: [],
+        status: 'todo',
+        confidence: 50,
+        attachments: [],
+      };
+      const sample = clone(doc());
+      const template = sample.edges[0];
+      if (!template) return false;
+      sample.nodes = [
+        { ...baseNode, id: 'left', title: '左', x: 0, y: 0, w: 160, h: 80 },
+        { ...baseNode, id: 'blocker', title: '中间卡片', x: 300, y: 0, w: 160, h: 80 },
+        { ...baseNode, id: 'right', title: '右', x: 600, y: 0, w: 160, h: 80 },
+      ];
+      sample.edges = [
+        { ...template, id: 'e-through', source: 'left', target: 'right', sourceHandle: 'right', targetHandle: 'left', curvature: 0 },
+      ];
+      const report = detectEdgeConflicts(sample);
+      return report.nodeHits >= 1 && report.nodeHitEdgeIds.includes('e-through');
+    })(),
+  );
+  check(
+    '自动梳理会减少压卡并给线写入连接点',
+    (() => {
+      const baseNode = {
+        id: 'x',
+        type: 'event',
+        title: '事件',
+        x: 0,
+        y: 0,
+        w: 180,
+        h: 80,
+        fields: {},
+        tags: [],
+        status: 'todo',
+        confidence: 50,
+        attachments: [],
+      };
+      const sample = clone(doc());
+      const template = sample.edges[0];
+      if (!template) return false;
+      sample.nodes = [
+        { ...baseNode, id: 'left', title: '左', x: 0, y: 0, w: 160, h: 80 },
+        { ...baseNode, id: 'blocker', title: '中间卡片', x: 300, y: 0, w: 160, h: 80 },
+        { ...baseNode, id: 'right', title: '右', x: 600, y: 0, w: 160, h: 80 },
+      ];
+      sample.edges = [
+        { ...template, id: 'e-through', source: 'left', target: 'right', sourceHandle: 'right', targetHandle: 'left', curvature: 0 },
+      ];
+      const before = detectEdgeConflicts(sample);
+      const result = optimizeDocEdges(sample);
+      const geometry = result.geometries[0];
+      return (
+        before.nodeHits >= 1 &&
+        result.nodeHitsAfter <= result.nodeHitsBefore &&
+        typeof geometry.anchors.source === 'string' &&
+        typeof geometry.anchors.target === 'string' &&
+        result.optimized === 1
+      );
+    })(),
+  );
+  check(
+    '锁定连接点的线不被自动梳理改写',
+    (() => {
+      const sample = clone(doc());
+      const target = sample.edges.find((edge) => edge.autoAnchor !== false);
+      if (!target) return false;
+      target.autoAnchor = false;
+      target.sourceHandle = 'top';
+      target.targetHandle = 'bottom';
+      const result = optimizeDocEdges(sample);
+      const geometry = result.geometries.find((item) => item.id === target.id);
+      return (
+        result.locked >= 1 &&
+        geometry.anchors.source === 'top' &&
+        geometry.anchors.target === 'bottom' &&
+        result.optimized === result.geometries.length - result.locked
+      );
+    })(),
+  );
+  check(
+    '命令：梳理关系线一次写入、撤销一次全部还原',
+    (() => {
+      const current = doc();
+      if (current.edges.length === 0) return false;
+      const before = current.edges.map((edge) => edge.sourceHandle);
+      state().dispatch(optimizeEdgeGeometry());
+      const after = doc().edges.map((edge) => edge.sourceHandle);
+      const changed = after.some((handle, index) => handle !== before[index]);
+      state().undo();
+      const back = doc().edges.map((edge) => edge.sourceHandle);
+      return changed && back.every((handle, index) => handle === before[index]);
+    })(),
+  );
+  check(
+    '自动布局同时梳理关系线（坐标定下来再挑锚点）',
+    (() => {
+      const current = doc();
+      if (current.nodes.length < 3) return false;
+      const result = computeLayout(current, { kind: 'grid', gap: 48 });
+      state().dispatch(applyLayout(result));
+      const after = doc();
+      const hasHandle = after.edges.every(
+        (edge) => typeof edge.sourceHandle === 'string' && typeof edge.targetHandle === 'string',
+      );
+      state().undo();
+      return hasHandle;
+    })(),
+  );
+}
 
   console.log('');
   if (failures > 0) {

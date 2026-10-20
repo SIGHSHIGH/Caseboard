@@ -173,6 +173,9 @@ function edgeBlock(edge: CaseEdge, table: DslNameTable): string[] {
   if (!edge.directed) lines.push('    directed: false');
   if (edge.weight !== undefined) lines.push('    weight: ' + num(edge.weight));
   if (edge.thickness !== undefined) lines.push('    thickness: ' + num(edge.thickness));
+  // M18：连接点是否受自动梳理影响、自动梳理给出的曲率
+  if (edge.autoAnchor === false) lines.push('    autoAnchor: false');
+  if (edge.curvature !== undefined) lines.push('    curvature: ' + num(edge.curvature));
   if (edge.time) lines.push('    time: ' + timeLiteral(edge.time));
   if (edge.evidenceIds.length > 0) {
     lines.push('    evidence: [' + edge.evidenceIds.map((id) => quoteString(id)).join(', ') + ']');

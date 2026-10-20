@@ -8,7 +8,7 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import { updateEdge } from '../../commands';
-import { CURVE_MIN, curveGeometry, curveOffsetFromHandle, curveOffsetOf, curvePath } from '../../lib/edgeCurve';
+import { CURVE_MIN, curveGeometry, curveOffsetFromHandle, curveOffsetOf, curvatureOffset, curvePath } from '../../lib/edgeCurve';
 import { LINE_STYLE_META, relColor } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
 import type { CaseEdge, XY } from '../../types';
@@ -22,6 +22,8 @@ export type CaseEdgeData = {
   labelDy?: number;
   /** M17：同一对实体之间的平行关系线横向错开量（像素） */
   spread?: number;
+  /** M18：自动梳理挑出的曲率（-0.9~0.9），手调 controlPoints 优先 */
+  curvature?: number;
 };
 export type CaseFlowEdge = Edge<CaseEdgeData, 'bezier'>;
 
@@ -86,7 +88,13 @@ function BezierEdgeInner({
     if (len === 0) return null;
     return { x: (-dy / len) * spread, y: (dx / len) * spread };
   })();
-  const offset = previewOffset ?? storedOffset ?? spreadOffset;
+  // M18：自动梳理给出的曲率（只在没有手调曲率时生效，手调优先）
+  const curveOffset = (() => {
+    const curve = data?.curvature ?? 0;
+    if (!curve || storedOffset) return null;
+    return curvatureOffset({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, curve);
+  })();
+  const offset = previewOffset ?? storedOffset ?? curveOffset ?? spreadOffset;
   const geometry = offset ? curveGeometry({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, offset) : null;
   const path = geometry ? curvePath(geometry) : basePath;
   const handleX = geometry ? geometry.handle.x : baseLabelX;

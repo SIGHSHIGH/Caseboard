@@ -14,6 +14,7 @@ export { composeCommands } from './compose';
 export { addChain, updateChain, deleteChain, setChainEntry } from './chainCommands';
 export type { AddChainInput, ChainPatch } from './chainCommands';
 export { applyLayout } from './layoutCommands';
+export { optimizeEdgeGeometry, writeEdgeGeometry } from './edgeGeometryCommands';
 export { restoreEntities } from './restoreCommands';
 export type { RestoreEntitiesInput } from './restoreCommands';
 export { applyDslChanges } from './dslCommands';

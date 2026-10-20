@@ -15,6 +15,10 @@ export interface AddEdgeInput {
   weight?: number;
   /** 线宽像素（M17） */
   thickness?: number;
+  /** 是否允许自动梳理改写连接点（M18） */
+  autoAnchor?: boolean;
+  /** 自动梳理挑出的曲率（M18） */
+  curvature?: number;
   color?: string;
   time?: { start: string; end?: string };
   evidenceIds?: string[];
@@ -42,6 +46,8 @@ export function addEdge(input: AddEdgeInput): Command {
       if (input.label !== undefined) edge.label = input.label;
       if (input.weight !== undefined) edge.weight = input.weight;
       if (input.thickness !== undefined) edge.thickness = input.thickness;
+      if (input.autoAnchor === false) edge.autoAnchor = false;
+      if (input.curvature !== undefined) edge.curvature = input.curvature;
       if (input.color !== undefined) edge.color = input.color;
       if (input.time !== undefined) edge.time = input.time;
       draft.edges.push(edge);

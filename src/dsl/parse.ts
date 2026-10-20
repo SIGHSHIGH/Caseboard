@@ -681,6 +681,16 @@ class Builder {
               edge.thickness = Math.max(1, Math.min(8, Math.round(px * 10) / 10));
               break;
             }
+            case 'autoAnchor':
+              // M18：false = 用户钉住连接点，不参与自动梳理
+              if (this.booleanOf(value, field, true) === false) edge.autoAnchor = false;
+              break;
+            case 'curvature': {
+              // M18：自动梳理给出的曲率 -0.9~0.9
+              const curve = this.numberOf(value, field, 'curvature');
+              edge.curvature = Math.max(-0.9, Math.min(0.9, Math.round(curve * 100) / 100));
+              break;
+            }
             case 'time': {
               const time = this.timeOf(value);
               if (time) edge.time = time;
