@@ -98,3 +98,12 @@ export function canvasGrid(skin: CanvasSkin, theme: ThemeMode): SkinGrid {
   if (normalized === 'paper') return THEME_GRID[theme] ?? THEME_GRID.board;
   return SKIN_GRID[normalized];
 }
+
+/**
+ * 是否要在画布上叠网格线（M15）。
+ * 只有纸张底衬需要网格；软木板 / 黑板自带纹理，再叠一层线条就脏了，
+ * 用户也明确要求去掉背景上的原点矩阵。
+ */
+export function showsCanvasGrid(skin: CanvasSkin): boolean {
+  return normalizeCanvasSkin(skin) === 'paper';
+}

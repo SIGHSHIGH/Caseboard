@@ -3663,6 +3663,27 @@ async function main() {
       check('事件「地点」整行显示（M14 / M5）', Boolean(placeField) && placeField.wide === true, placeField && String(placeField.wide));
     }
 
+    console.log('[74] 画布网格与实测重排（M15）');
+    {
+      const gridSkin = require(path.join(out, 'lib', 'canvasSkin.js'));
+      const gridOverflow = require(path.join(out, 'lib', 'topbarOverflow.js'));
+
+      check('纸张底衬保留网格线', gridSkin.showsCanvasGrid('paper') === true);
+      check('软木板自带纹理，不叠网格（M15：去掉原点矩阵）', gridSkin.showsCanvasGrid('cork') === false);
+      check('黑板自带纹理，不叠网格', gridSkin.showsCanvasGrid('chalk') === false);
+      check('未知底衬按纸张处理', gridSkin.showsCanvasGrid('marble') === true);
+
+      const measured = [
+        { key: 'a', width: 100, priority: 0 },
+        { key: 'b', width: 100, priority: 1 },
+      ];
+      check('实测宽度够宽时都留在顶栏', gridOverflow.planTopbarOverflow(measured, 240).inline.length === 2);
+      check(
+        '实测宽度超一点就把低优先级收进菜单（M15 自动检测遮挡）',
+        gridOverflow.planTopbarOverflow(measured, 200).inline.join(',') === 'a',
+        gridOverflow.planTopbarOverflow(measured, 200).inline.join(','),
+      );
+    }
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

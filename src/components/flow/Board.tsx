@@ -52,7 +52,7 @@ import {
   snapImageRect,
   type AlignGuide,
 } from '../../lib/imageNode';
-import { canvasGrid, DEFAULT_CANVAS, normalizeCanvasSkin } from '../../lib/canvasSkin';
+import { canvasGrid, DEFAULT_CANVAS, normalizeCanvasSkin, showsCanvasGrid } from '../../lib/canvasSkin';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodeStore } from '../../store/codeStore';
@@ -60,6 +60,7 @@ import { useDocStore } from '../../store/docStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
 import { useViewStore } from '../../store/viewStore';
+import { assetFileUrl, isTauri } from '../../services/platform';
 import type { CaseNode, Group, ImageNode, XY } from '../../types';
 import { useAssetThumb } from '../hooks/useAssetThumb';
 import { ConnectDialog } from '../panels/ConnectDialog';
@@ -168,8 +169,11 @@ export function Board() {
   const canvasSkin = normalizeCanvasSkin(canvasConfig.skin);
   const grid = canvasGrid(canvasSkin, themeMode);
   const canvasBg = canvasConfig.assetId ? doc.assets.find((item) => item.id === canvasConfig.assetId) : undefined;
-  // 背景图走缩略图管线（objectURL 由 hook 管生命周期），找不到原件时自然为 null
-  const canvasBgUrl = useAssetThumb(canvasBg?.id, 1600);
+  // M15（N7/N8/N12）：背景图以前用 useAssetThumb(id, 1600)，而缩略图只按 256/1024 两个
+  // 固定尺寸生成，1600 永远查不到 ⇒ <img> 拿不到 src、背景图从不显示。
+  // 现在桌面端直接走原件 asset:// 地址，缩略图只在浏览器里兜底。
+  const canvasThumbUrl = useAssetThumb(canvasBg?.id, 1024);
+  const canvasBgUrl = canvasBg && isTauri() ? assetFileUrl(canvasBg.path) : canvasThumbUrl;
 
   const filter = useViewStore((s) => s.filter);
   const focus = useViewStore((s) => s.focus);
@@ -866,8 +870,10 @@ export function Board() {
           instance.fitView({ padding: 0.25 });
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} color={grid.dot} />
-        <Background id="cb-grid" variant={BackgroundVariant.Lines} gap={80} size={0.6} color={grid.line} />
+        {/* M15：去掉原点矩阵（点阵），只留很淡的 80px 线条；软木板 / 黑板有自带纹理，不再叠网格 */}
+        {showsCanvasGrid(canvasSkin) ? (
+          <Background id="cb-grid" variant={BackgroundVariant.Lines} gap={80} size={0.6} color={grid.line} />
+        ) : null}
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
           pannable

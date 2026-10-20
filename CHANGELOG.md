@@ -2,6 +2,20 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.15.0 · M15 顶栏重排与背景图修复
+
+### M15 整体验收通过（2026-10-20，tag ms/M15）
+
+- **「⋯」菜单打不开（N3 / N4）**：根因是 `overflow` 裁剪 —— `.cb-topbar` 有 `overflow: hidden`、`.cb-topbar__io` 有 `overflow-x: auto`（M10 为防挤压加的），而溢出菜单是它的绝对定位子元素，整块被裁到可视区外，所以点「⋯」看起来毫无反应、菜单项也点不到。改成 `createPortal` 挂到 `document.body` + `position: fixed`，按「⋯」按钮的 `getBoundingClientRect()` 定位；点外部、Esc、窗口 resize 都会收起。顺带去掉「主题 / 底衬不进菜单」的过滤 —— 这两个按钮一旦被挤出去就再也点不到。
+- **背景图不显示（N7 / N8 / N12）**：`Board.tsx` 用的是 `useAssetThumb(assetId, 1600)`，而缩略图只按 `THUMB_SMALL = 256` / `THUMB_LARGE = 1024` 两个固定尺寸写进 IndexedDB，1600 永远查不到 ⇒ `<img class="cb-canvas__bg">` 拿不到 `src`。改为桌面端直接用原件 `assetFileUrl(asset.path)`（与地图底图同一条链路），浏览器里退回 1024 缩略图；并把 `.react-flow` 抬一层、`--xy-background-color: transparent`，保证背景图不被画布底色盖住。
+- **去掉背景原点矩阵**：删掉 `BackgroundVariant.Dots` 那一层，只留很淡的 80px 线条；抽出纯函数 `showsCanvasGrid(skin)`，软木板与黑板自带纹理不再叠网格。
+- **撤销 / 重做只留图标**：改成 `↶` / `↷` 两个图标按钮（`.cb-btn--icon`），操作名与快捷键仍在 `title` 与 `aria-label` 里，不影响可访问性。
+- **顶栏自动检测遮挡**：以前只用 `estimateLabelWidth` 估算宽度，估算与真实字体 / 内边距不一致，窗口缩小时仍有残留遮挡。现在渲染后用 `getBoundingClientRect()` 采集每个按钮的**实测宽度**参与规划，并在 `useLayoutEffect` 里检查容器 `scrollWidth - clientWidth`：真挤爆了就把当前内联项里优先级最低的一项强制收进菜单，逐帧收敛；窗口一 resize 就清空「强制收起」集合并关闭菜单，按新宽度重排。
+- **导入背景图入口（N5）**：顶栏新增「背景图…」动作（复用 `useCanvasImagePicker`，与右栏「画布底衬与背景图」是同一条导入链路）。
+- **验收**：`pnpm typecheck` 0 error；`pnpm smoke` **806**（新增 [74] 段 6 条：`showsCanvasGrid` 三档与未知底衬回落、实测宽度规划）；`pnpm ui-smoke` **374**（新增 M15 段 12 条：图标按钮、portal + fixed、实测宽度与自动收敛、背景图走原件地址、无点阵层、React Flow 透明、顶栏「背景图…」入口）；`pnpm bench` 1000 节点解析链 **76.6 ms**（阈值 300）；`pnpm build` 成功（主包 975.13 kB / gzip 332.66、CodePanel 345.92 kB）。
+- **打包**：版本三处（`package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`）升 **0.15.0**；`tauri build --no-bundle` 2m03s → `caseboard.exe` **19,148,800 字节**，桌面自检两轮 **PASS**（`phase1=PASS phase2=PASS`，含「OCR 字段抽取 — 识别引擎可用 内置 Tesseract（WASM）」「零外呼」）；`--bundles nsis` 2m48s → `CaseBoard_0.15.0_x64-setup.exe`（11.63 MiB），归档到 `release\`，**12,197,737 字节**，SHA-256 `F4E710FF8CDC4884B26EEF590A777BE93313D1A06B25E425FD5BBAF0712A9BB5`，未签名。
+- **文档**：`docs/MILESTONES.md` §1 M15 置 ✅、§3 写入拆步 / 验收 / 偏离三表、§6 新增 D86–D89、§7 追加验收行；`docs/MANUAL-ACCEPTANCE.md` 新增 O 节；`AGENTS.md` / `README.md` 里程碑范围改 M1–M15 与 D1–D89。
+
 ## [未发布] v0.14.0 · M14 画布底衬与顶栏折叠
 
 ### M14 整体验收通过（2026-10-20，tag ms/M14）

@@ -5173,3 +5173,35 @@ button.cb-members__title--link:hover {
   color: var(--cb-accent);
 }
 
+
+/* ===================== M15：图标按钮 / 顶栏浮动菜单 / 背景图层级 ===================== */
+
+/* 撤销 / 重做只留图标（汉字收进 title 与 aria-label） */
+.cb-btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--cb-control-h);
+  padding: 0 6px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 「⋯」面板改成 body 里的 fixed 浮层：顶栏有 overflow:hidden、.cb-topbar__io 有
+   overflow-x:auto，以前绝对定位时整个面板被裁掉，点「⋯」看起来毫无反应（M15 / N3、N4）。 */
+.cb-topbar__morepanel {
+  position: fixed;
+  z-index: 2200;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+
+/* 画布层级：底衬（背景色 + 纹理）→ 背景图 → React Flow。
+   .react-flow 默认是 static 且自带背景色变量，这里显式抬一层并保持透明，
+   免得它的底色把导入的背景图盖住（M15 / N7、N8、N12）。 */
+.cb-canvas > .react-flow {
+  position: relative;
+  z-index: 1;
+  --xy-background-color: transparent;
+  background: transparent;
+}

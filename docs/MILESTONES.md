@@ -53,6 +53,7 @@
 | M12 | 复验修订（K 反馈） | 1 周 | 圈选框改容器相对坐标、框选改 Partial、时间线满宽 + 时间片错行、假设面板出框修复、按关系与 tag 自动构建假设草案、自定义证据链与链选择条、地点字段自动成虚线关系 | K1/K8/K13/K14/K15 通过；`smoke` 770 / `ui-smoke` 354 全绿 | ✅ 2026-10-20 |
 | M13 | 复验收尾（L 反馈） | 1 周 | 改地点时自动断开指向旧地点的关系线（一条 `composeCommands` 删旧连新，只认「地点」标签的自动线，人工线不动）、建立统一控件尺寸令牌（按钮/单行输入框/下拉 28px、标签页 22px、圆角 6px）并把此前无样式的 `datetime-local`/`date`/`search` 纳入 | L9 通过、全局控件对齐；`smoke` 777 / `ui-smoke` 344 全绿 | ✅ 2026-10-20 |
 | M14 | 画布底衬与顶栏折叠 | 1 周 | 右栏「发生时刻/地点」各占整行（M5）、顶栏按宽度自动收进「⋯」菜单（M8）、软木板/黑板底衬与背景图导入（`settings.canvas` + `setCanvasSkin`/`setCanvasImage`）、结构分析与若干自我优化 | M5/M8 通过；`smoke` 800 / `ui-smoke` 362 全绿；底衬三档可循环切换 | ✅ 2026-10-20 |
+| M15 | 顶栏重排与背景图修复 | 1 周 | 「⋯」菜单改 portal + fixed 真正能打开（N3/N4）、背景图改走原件地址（N7/N8/N12）、去掉背景点阵、撤销重做只留图标、顶栏实测宽度 + 自动检测遮挡、顶栏新增「背景图…」入口（N5） | `smoke` 806 / `ui-smoke` 374 全绿 | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -1121,6 +1122,73 @@
 | 重复 CSS 选择器 16 组 | 多数是后续里程碑对早期规则的有意覆盖，合并会改观感 | 只合并完全重复的 `.cb-group__header` 一对，其余保留（D85） |
 | 「视觉对齐」的实际观感 | 会话内无桌面可截图 | 仍由 CSS 令牌 + `ui-smoke` 正则守住结构，手感留给人工复验 |
 
+### M15 · 顶栏重排与背景图修复（1 周）
+
+**目标**：把 M14 交付后被用户点名的两个缺陷（「⋯」菜单点了没反应、背景图始终不显示）修到根上，并按新要求重排顶栏、去掉背景点阵。
+
+**范围**
+
+1. N3 / N4：溢出菜单改 `createPortal` + `position: fixed`，点击能打开、菜单项能打开各面板，且脱离裁剪上下文。
+2. N7 / N8 / N12：背景图改用原件 `assetFileUrl(asset.path)`，缩略图只作浏览器兜底；React Flow 底色透明、层级抬到背景图之上。
+3. 去掉背景原点矩阵（删除 Dots 层），网格只留给纸张底衬。
+4. 撤销 / 重做只留图标，操作名与快捷键保留在 `title` / `aria-label`。
+5. 顶栏以实测宽度做折叠，并自动检测遮挡自动调整；新增「背景图…」入口（N5）。
+
+**验收标准**
+
+- 「⋯」按钮点击后菜单在「⋯」下方展开，不被顶栏裁切；菜单项能打开导出 / 历史 / 安全 / 代码视图等面板。
+- 画布背景不再有点阵；软木板 / 黑板不叠线条网格，纸张保留很淡线条。
+- 撤销 / 重做按钮只显示 `↶` / `↷`，`aria-label` 为「撤销」/「重做」。
+- 把窗口横向拖窄，顶栏按钮不重叠：超出部分自动收进「⋯」；拖宽后自动回到内联。
+- 选中背景图后画布能真正显示该图片（桌面端走原件地址），可调不透明度、可清除。
+- 顶栏有「背景图…」入口，选图后立即成为画布背景。
+- 四件套全绿（typecheck / smoke / ui-smoke / bench），桌面自检两轮 PASS。
+- 安装包出包并归档到 `release\`。
+
+#### M15 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 |
+|---|---|---|
+| M15-1 定位「⋯」失灵的根因 | 读 `src/index.css` 顶栏段，确认 `.cb-topbar` 的 `overflow: hidden` 与 `.cb-topbar__io` 的 `overflow-x: auto` 会裁掉绝对定位面板 | 菜单改 fixed 后可见 |
+| M15-2 菜单出 portal | `src/components/panels/TopBar.tsx` 用 `createPortal` 挂 body，`openMenu()` 按按钮 rect 算 `top/right` | `ui-smoke`：源码含 `createPortal` 与 `position: 'fixed'` |
+| M15-3 菜单项不再被过滤 | `menuActions = overflowActions`（原来排除 theme / canvas） | 窄窗里主题与底衬仍可点 |
+| M15-4 背景图地址 | `Board.tsx`：`isTauri() ? assetFileUrl(asset.path) : useAssetThumb(id, 1024)` | `ui-smoke`：不再出现 `useAssetThumb(canvasBg?.id, 1600)` |
+| M15-5 画布分层与透明 | `.cb-canvas > .react-flow` 设 `z-index: 1` 与 `--xy-background-color: transparent` | 背景图可见、节点仍可交互 |
+| M15-6 去掉点阵 | 删除 `BackgroundVariant.Dots` 层；`showsCanvasGrid(skin)` 门控线条层 | `smoke [74]`：paper 为 true，cork / chalk 为 false |
+| M15-7 图标按钮 | 撤销 / 重做改 `.cb-btn--icon` + `aria-label` | `ui-smoke`：文本为 `↶`、无「↶ 撤销」 |
+| M15-8 实测宽度 | `useLayoutEffect` 采集 `[data-topbar-action]` 的真实宽度写入 `widths` | `smoke [74]`：实测宽度参与规划 |
+| M15-9 自动检测遮挡 | 检查 `scrollWidth - clientWidth`，把最低优先级项加入 `forced` 逐帧收敛；resize 时清空 | `ui-smoke`：源码含 `scrollWidth` 与 `setForced` |
+| M15-10 背景图入口（N5） | 顶栏新增 `bgimage` 动作，复用 `useCanvasImagePicker` | 顶栏出现「背景图…」 |
+| M15-11 验收四件套 | typecheck / smoke 806 / ui-smoke 374 / bench 76.6 ms | 见验收记录 |
+| M15-12 打包归档 | 版本 0.15.0；exe 19,148,800 字节；NSIS 归档 | `release\CaseBoard_0.15.0_x64-setup.exe` |
+
+#### M15 验收记录（2026-10-20，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| `pnpm typecheck` | 0 error |
+| `pnpm smoke` | 806 PASS / 0 FAIL（含新增 [74] 段 6 条） |
+| `pnpm ui-smoke` | 374 PASS / 0 FAIL（含新增 M15 段 12 条） |
+| `pnpm bench` | 1000 节点解析链 76.6 ms（阈值 300） |
+| `pnpm build` | 成功（主包 975.13 kB / gzip 332.66） |
+| 桌面重建 | `caseboard.exe` 19,148,800 字节，2m03s |
+| 桌面自检 | `phase1=PASS phase2=PASS`（18 项，含「零外呼」） |
+| 安装包 | `CaseBoard_0.15.0_x64-setup.exe` 12,197,737 字节，SHA-256 `F4E710FF8CDC4884B26EEF590A777BE93313D1A06B25E425FD5BBAF0712A9BB5` |
+| N3 / N4 | 菜单出 portal，点击可见、菜单项可用 |
+| N7 / N8 / N12 | 背景图走原件地址，桌面端可见 |
+| 四条新要求 | 去点阵 / 图标按钮 / 实测重排 / 背景图入口 全部落地 |
+
+#### M15 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 只把菜单的 `z-index` 调高就能解决「⋯」 | 父级 `overflow` 裁剪与 `z-index` 无关，调高仍被裁 | 改 `createPortal` 到 body + fixed（D86） |
+| 背景图继续用缩略图，只换个尺寸 | 缩略图只生成 256 / 1024 两档，其它尺寸恒为 null | 桌面端直接用原件地址，缩略图只做浏览器兜底（D87） |
+| 折叠仍用估算宽度 | 估算与实际渲染差 10%~20%，窄窗仍挤 | 实测宽度为准、估算只作首帧（D88） |
+| 背景网格整体去掉 | 纸张底衬没有纹理，全去掉会显得空 | 只删点阵，纸张保留很淡线条；软木板 / 黑板不叠网格（D89） |
+| 主题 / 底衬按钮不进溢出菜单 | 一旦被挤出内联就永远点不到 | 去掉过滤，全部动作都可进菜单 |
+
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -1304,6 +1372,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D83 | **顶栏溢出用纯函数 + 宽度未知不折叠**：`planTopbarOverflow` 按优先级贪心保留，`ioWidth <= 0` 时全部 inline，由 `ResizeObserver` 拿到真实宽度后再折叠 | 折叠必须基于真实测量；用「窗口宽 - 固定量」的估算会在首帧与测试环境里把整排按钮塞进菜单 | smoke [73]、ui-smoke M14 段 |
 | D84 | **背景图复用素材库导入链路**：`pickFiles → prepare → save → importAssets → setCanvasImage`，图同时进素材库；素材被删时只摘图保留底衬 | 单独写一条文件读取会把校验/去重/缩略图再造一遍；背景图本质也是素材 | smoke「dangling assetId 只摘图」 |
 | D85 | **重复 CSS 只合并完全重复的**：盘点 16 组重复选择器，只清理 `.cb-group__header` 一对，其余（`.cb-btn`/`.cb-tab`/`.cb-input`/`.cb-timeline__lanes` 等）是后续里程碑的有意覆盖，保留并按里程碑分段注释 | 合并「后覆盖前」的规则会静默改观感，属于为了整洁制造回归 | `pnpm ui-smoke` 全绿 |
+| D86 | **「⋯」菜单必须出 portal**：顶栏 `.cb-topbar` 是 `overflow: hidden`、`.cb-topbar__io` 是 `overflow-x: auto`（M10 防挤压引入），绝对定位下拉会被滚动 / 裁剪祖先整块裁掉 —— 调 `z-index` 无效。菜单改用 `createPortal` 挂到 `document.body` + `position: fixed`，按「⋯」按钮的 `getBoundingClientRect()` 定位；点外部 / Esc / resize 收起。 |
+| D87 | **背景图走原件地址而不是缩略图**：缩略图只按 `THUMB_SMALL = 256` / `THUMB_LARGE = 1024` 两档写进 IndexedDB，`thumbUrl(assetId, 1600)` 恒为 null，导致背景图永远拿不到 `src`。桌面端（`isTauri()`）用 `assetFileUrl(asset.path)`，浏览器里退回 1024 缩略图。 |
+| D88 | **顶栏折叠以实测宽度为准、估算只作首帧**：渲染后用 `getBoundingClientRect()` 采集每个按钮真实宽度参与规划，再用 `scrollWidth - clientWidth` 检测是否真挤爆，把优先级最低的内联项加进 `forced` 逐帧收敛；`ioWidth <= 0`（布局尚未测量，jsdom 恒为 0）时不折叠，避免「量不到宽度就把按钮全塞菜单」的假象。 |
+| D89 | **画布网格只留给纸张底衬**：删掉 `BackgroundVariant.Dots` 那一层，线条层由 `showsCanvasGrid(skin)` 门控 —— 纸张叠很淡的 80px 线条，软木板与黑板自带纹理不再叠网格，避免「底衬纹理 + 网格」双重噪点。 |
 
 ---
 
@@ -1335,4 +1407,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | **M12 整体验收通过**（✅ 打 tag `ms/M12`）：按用户 K1–K18 复验回执落地——圈选框改容器相对坐标、整框不再被左栏与顶栏偏移（K1/D75）、框选改 `SelectionMode.Partial` 只需框到一部分（K13/D76）、时间线满宽 + `stackChips` 时间片错行 + 轨道高度跟随 + 右端 `.cb-timeline__chip.is-end` 左展开（K8/D77）、假设面板「新增假设输入框 + 分数」出框修复（K14a）、按关系线与 tag 自动构建假设的草案勾选确认面板（确认后一次 `composeCommands` 落库，K14b/D78）、自定义证据链进 `doc.chains` 并在证据链页签独立展示（新建/删除/归入/移出，迁移丢脏，K14c/D79）、「地点」命中已有地点或单位时一条命令写字段 + 虚线推测关系（K15）；`pnpm smoke` **770**（新增 [68]–[71] 四段）、`pnpm ui-smoke` **354**（新增 M12 段 40 条）、`pnpm bench` 1000 节点解析链 **110.8 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 安装包归档 `release\CaseBoard_0.12.0_x64-setup.exe`；版本三处升 **0.12.0**；§1 M12 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D75–D79、`docs/MANUAL-ACCEPTANCE.md` 新增 L 节。 |
 | 2026-10-20 | **M13 整体验收通过**（✅ 打 tag `ms/M13`）：按用户 L1–L10 复验回执收尾——改「地点」时自动断开指向旧地点的关系线（`planPlaceRelink` 挑出 `label === '地点'` 且另一端为 place/org 的自动线，目标变了就 `deleteEdge` 旧线 + `addEdge` 新线，一次 `composeCommands` 撤销一步回退；目标未变不产生命令，清空只断开，人工线不动，D80 / L9）；全局控件视觉对齐——`--cb-control-h(28px)` / `--cb-control-h-sm(22px)` / `--cb-control-r(6px)` / `--cb-control-pad(8px)` 四个令牌统一按钮与单行输入框（此前按钮 27.6px、输入框 29.6px 相差 2px），输入框用排除式 `:not([type=…])` 一次性覆盖并把此前完全没有样式的 `datetime-local` / `date` / `search` 纳入（「发生时刻」不再是浏览器默认外观），`.cb-geo__ops` 等混排行容器统一 `align-items: center`（D81）；`pnpm smoke` **777**（新增 [72] 段 12 条）、`pnpm ui-smoke` **344**（新增 M13 段 8 条）、`pnpm bench` 1000 节点解析链 **74.6–74.6–116.4 ms**（两次实测抖动）、`pnpm build` 成功、桌面自检两轮 PASS、`tauri build --no-bundle` 4m24s（`caseboard.exe` 19,145,728 字节）、NSIS 安装包归档 `release\CaseBoard_0.13.0_x64-setup.exe`（12,192,983 字节，SHA-256 `D7DD6C6E…8E5E`，未签名）；版本三处升 **0.13.0**；§1 M13 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D80–D81、`docs/MANUAL-ACCEPTANCE.md` 新增 M 节；本轮唯一未能机器验证的是「视觉对齐」的实际观感——会话内没有可用桌面，截图核验失败，改由 CSS 令牌 + `ui-smoke` 正则断言守住结构，手感留给 M5–M8 人工复验。 |
 | 2026-10-20 | **M14 整体验收通过**（✅ 打 tag `ms/M14`）：按用户 M1–M8 回执与新需求落地——右栏「发生时刻」「地点」各占整行（`field.wide \|\| field.kind === 'datetime'`，M5）；顶栏改为按真实宽度折叠，放不下的按钮收进「⋯」菜单且宽度未知时不折叠（`src/lib/topbarOverflow.ts`，M8/D83）；新增**画布底衬**（纸张 / 软木板 / 黑板，`src/lib/canvasSkin.ts` + `canvasGrid`）与**背景图**（导入后 `object-fit: cover` 铺底、不透明度 10–100%、可清除），存储进 `settings.canvas` 并随项目保存（`normalizeCanvas` 容错，D82/D84），顶栏「背景·XX」一键循环切换，右栏「案件概览」新增 `CanvasBackdropForm` 块；结构分析做了三处自我优化——合并完全重复的 `.cb-group__header` CSS、把画布块从 1400 多行的 `RightPanel.tsx` 抽成独立组件、删掉顶栏重复的隐藏文件选择框（D85）。机器验收：`typecheck` 0 error、`smoke` **800**（新增 [73] 段 22 条）、`ui-smoke` **362**（新增 M14 段 20 条）、`bench` 1000 节点解析链 **80.9 ms**、`pnpm build` 成功；版本三处升 **0.14.0**；§3 写入 M14 拆步/验收/偏离三表、§6 新增 D82–D85、`docs/MANUAL-ACCEPTANCE.md` 新增 N 节。 |
-| 2026-10-20 | **M13 整体验收通过**（✅ 打 tag `ms/M13`）：按用户 L1–L10 复验回执收尾——改「地点」时自动断开指向旧地点的关系线（`planPlaceRelink` 挑出 `label === '地点'` 且另一端为 place/org 的自动线，目标变了就 `deleteEdge` 旧线 + `addEdge` 新线，一次 `composeCommands` 撤销一步回退；目标未变不产生命令，清空只断开，人工线不动，D80 / L9）；全局控件视觉对齐——`--cb-control-h(28px)` / `--cb-control-h-sm(22px)` / `--cb-control-r(6px)` / `--cb-control-pad(8px)` 四个令牌统一按钮与单行输入框（此前按钮 27.6px、输入框 29.6px 相差 2px），输入框用排除式 `:not([type=…])` 一次性覆盖并把此前完全没有样式的 `datetime-local` / `date` / `search` 纳入（「发生时刻」不再是浏览器默认外观），`.cb-geo__ops` 等混排行容器统一 `align-items: center`（D81）；`pnpm smoke` **777**（新增 [72] 段 12 条）、`pnpm ui-smoke` **344**（新增 M13 段 8 条）、`pnpm bench` 1000 节点解析链 **74.6–74.6–116.4 ms**（两次实测抖动）、`pnpm build` 成功、桌面自检两轮 PASS、`tauri build --no-bundle` 4m24s（`caseboard.exe` 19,145,728 字节）、NSIS 安装包归档 `release\CaseBoard_0.13.0_x64-setup.exe`（12,192,983 字节，SHA-256 `D7DD6C6E…8E5E`，未签名）；版本三处升 **0.13.0**；§1 M13 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D80–D81、`docs/MANUAL-ACCEPTANCE.md` 新增 M 节；本轮唯一未能机器验证的是「视觉对齐」的实际观感——会话内没有可用桌面，截图核验失败，改由 CSS 令牌 + `ui-smoke` 正则断言守住结构，手感留给 M5–M8 人工复验。 |
+| 2026-10-20 | M15 整体验收通过（v0.15.0）：`smoke` 806 / `ui-smoke` 374 / `bench` 76.6 ms 全绿；桌面自检两轮 PASS；安装包 `release\CaseBoard_0.15.0_x64-setup.exe`（12,197,737 字节，SHA-256 `F4E710FF8CDC4884B26EEF590A777BE93313D1A06B25E425FD5BBAF0712A9BB5`）；tag `ms/M15` |

@@ -615,7 +615,8 @@ function check(name, condition, detail) {
   check('点击切到深色并写入本地记忆', htmlEl.getAttribute('data-theme') === 'dark' && window.localStorage.getItem('caseboard-theme') === 'dark', htmlEl.getAttribute('data-theme') + ' / ' + window.localStorage.getItem('caseboard-theme'));
   check('按钮文案同步为深色', (themeButton().textContent || '').includes('深色'), themeButton().textContent);
   const gridStyle = (doc.querySelector('.react-flow__background')?.getAttribute('style') || '').toUpperCase();
-  check('深色下画布网格换色', gridStyle.includes('3E3934'), gridStyle.slice(0, 160) || 'no background style');
+  // M15：点阵层已去掉，只留线条层；深色主题线条色是 #302C29
+  check('深色下画布线条网格换色（M15）', gridStyle.includes('302C29'), gridStyle.slice(0, 160) || 'no background style');
   themeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   await sleep(150);
   check('再点切到高对比', htmlEl.getAttribute('data-theme') === 'contrast' && (themeButton().textContent || '').includes('高对比'), htmlEl.getAttribute('data-theme'));
@@ -838,19 +839,20 @@ function check(name, condition, detail) {
   {
     const canvasClass = () => doc.querySelector('.cb-canvas')?.className || '';
     check('默认底衬是纸张', canvasClass().includes('cb-canvas--paper'), canvasClass());
+    // M15：顶栏多了「背景图…」，查找底衬按钮时要带分隔符，避免命中它
     const findTopBtn = (needle) => [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((el) => (el.textContent || '').includes(needle));
-    const canvasBtn = findTopBtn('背景');
+    const canvasBtn = findTopBtn('背景·');
     check('顶栏渲染出「背景·纸张」按钮', Boolean(canvasBtn), doc.querySelector('.cb-topbar__io')?.textContent);
     if (canvasBtn) {
       canvasBtn.click();
       await sleep(150);
       check('点一次切到软木板', canvasClass().includes('cb-canvas--cork'), canvasClass());
-      const second = findTopBtn('背景');
+      const second = findTopBtn('背景·');
       if (second) {
         second.click();
         await sleep(150);
         check('再点切到黑板', canvasClass().includes('cb-canvas--chalk'), canvasClass());
-        const third = findTopBtn('背景');
+        const third = findTopBtn('背景·');
         if (third) {
           third.click();
           await sleep(150);
@@ -870,6 +872,27 @@ function check(name, condition, detail) {
       check('地点整行显示', wide.some((labelText) => labelText.includes('地点')), wide.join(' | '));
       check('发生时刻是日期时间控件', doc.querySelector('.cb-fields input[type="datetime-local"]') !== null);
     }
+  }
+  console.log('[UI] M15 图标按钮 / 顶栏浮动菜单 / 背景图显示');
+  {
+    const topSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'panels', 'TopBar.tsx'), 'utf8');
+    const boardSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'flow', 'Board.tsx'), 'utf8');
+    check('撤销 / 重做只留图标（M15）', /aria-label="撤销"/.test(topSrc) && /aria-label="重做"/.test(topSrc) && !topSrc.includes('↶ 撤销'), '仍有汉字');
+    check('图标按钮样式存在', srcCss.includes('.cb-btn--icon'));
+    check('菜单 portal 到 body 并用 fixed 定位（避开 overflow 裁剪）', topSrc.includes('createPortal') && topSrc.includes("position: 'fixed'"));
+    check('菜单按按钮实际位置定位', topSrc.includes('getBoundingClientRect') && topSrc.includes('menuPos'));
+    check('实测宽度 + 挤爆就自动收进菜单（M15 自动检测遮挡）', topSrc.includes('useLayoutEffect') && topSrc.includes('scrollWidth') && topSrc.includes('setForced'));
+    check('菜单面板是 fixed 浮层', /\.cb-topbar__morepanel\s*\{[^}]*position:\s*fixed/.test(srcCss));
+    check('画布背景图改走原件地址（M15 / N7、N8、N12）', boardSrc.includes('assetFileUrl(canvasBg.path)') && !boardSrc.includes('useAssetThumb(canvasBg?.id, 1600)'));
+    check('去掉背景原点矩阵，只有纸张底衬叠线条', !boardSrc.includes('BackgroundVariant.Dots') && boardSrc.includes('showsCanvasGrid'));
+    check('React Flow 底色透明、不盖住背景图', /\.cb-canvas > \.react-flow\s*\{[^}]*background:\s*transparent/.test(srcCss));
+  }
+  {
+    const undoBtn = doc.querySelector('.cb-topbar__tools button');
+    check('撤销按钮文本只有箭头', (undoBtn?.textContent || '').trim() === '↶', undoBtn?.textContent);
+    check('撤销按钮保留中文 aria-label', undoBtn?.getAttribute('aria-label') === '撤销');
+    const bgBtn = [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((el) => (el.textContent || '').includes('背景图'));
+    check('顶栏有「背景图…」入口（M15 / N5）', Boolean(bgBtn), doc.querySelector('.cb-topbar__io')?.textContent);
   }
   console.log('');
   if (failures > 0) {

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { replaceDocument, setCanvasSkin } from '../../commands';
 import { fromJson } from '../../serializers/json';
 import { exportCaseboardFile, openCaseboardFile } from '../../services/exporters';
@@ -17,6 +18,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { THEME_META, nextThemeMode } from '../../lib/themeMode';
 import { CANVAS_SKIN_META, canvasLabel, nextCanvasSkin, normalizeCanvasSkin } from '../../lib/canvasSkin';
 import { estimateLabelWidth, planTopbarOverflow } from '../../lib/topbarOverflow';
+import { useCanvasImagePicker } from '../hooks/useCanvasImage';
 
 const VIEW_TABS: Array<{ id: ViewMode; label: string; hint: string }> = [
   { id: 'board', label: '画布', hint: '图形视图：拖拽、连线、分组' },
@@ -67,17 +69,33 @@ export function TopBar() {
   const setThemeMode = useThemeStore((s) => s.setMode);
   const themeLabel = THEME_META[themeMode]?.label ?? '默认';
   const [savingProject, setSavingProject] = useState(false);
+  // M15（N5）：顶栏也提供「背景图…」入口，不必先点空白处再去右栏找
+  const pickCanvasImage = useCanvasImagePicker();
 
   // M14（M8）：窗口变窄时按钮不再互相挤压/重叠，放不下的收进「⋯」菜单
+  // M15（N3/N4）：菜单改成 portal 到 body + fixed 定位——顶栏和 .cb-topbar__io 都有
+  // overflow 裁剪，绝对定位的下拉面板以前整个被裁掉，所以点「⋯」看起来毫无反应。
   const ioRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const morePanelRef = useRef<HTMLDivElement>(null);
   const [ioWidth, setIoWidth] = useState(0);
   const [winWidth, setWinWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
   const [moreOpen, setMoreOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  // 实测宽度（估算只用于首帧）与「因为真的挤在一起而强制收进菜单」的集合
+  const [widths, setWidths] = useState<Record<string, number>>({});
+  const [forced, setForced] = useState<string[]>([]);
 
   useEffect(() => {
     const element = ioRef.current;
-    const onResize = () => setWinWidth(window.innerWidth);
+    const onResize = () => {
+      setWinWidth(window.innerWidth);
+      // 窗口一变就按新宽度重新量一遍，避免越缩越紧之后再放大也放不回来
+      setForced([]);
+      // 菜单是 fixed 定位的，窗口一动位置就不对了，直接收起
+      setMoreOpen(false);
+    };
     window.addEventListener('resize', onResize);
     if (!element) return () => window.removeEventListener('resize', onResize);
     setIoWidth(element.clientWidth);
@@ -93,7 +111,10 @@ export function TopBar() {
   useEffect(() => {
     if (!moreOpen) return undefined;
     const onDown = (event: PointerEvent) => {
-      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
+      const target = event.target as Node;
+      if (moreRef.current?.contains(target)) return;
+      if (morePanelRef.current?.contains(target)) return;
+      setMoreOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMoreOpen(false);
@@ -160,9 +181,16 @@ export function TopBar() {
     {
       key: 'canvas',
       label: `背景·${canvasLabel(canvasConfig)}`,
-      title: `画布底衬：${CANVAS_SKIN_META[canvasSkin].hint}（点击在 纸张 / 软木板 / 黑板 之间切换；导入背景图在右栏「案件概览」）`,
+      title: `画布底衬：${CANVAS_SKIN_META[canvasSkin].hint}（点击在 纸张 / 软木板 / 黑板 之间切换；导入背景图用旁边的「背景图…」）`,
       priority: 6,
       onClick: () => dispatch(setCanvasSkin(nextCanvasSkin(canvasSkin))),
+    },
+    {
+      key: 'bgimage',
+      label: '背景图…',
+      title: '导入一张图片作为画布背景（右栏「画布底衬与背景图」里还能调不透明度或清除）',
+      priority: 13,
+      onClick: () => void pickCanvasImage(),
     },
     {
       key: 'search',
@@ -254,20 +282,67 @@ export function TopBar() {
     if (ioWidth <= 0) {
       return { inline: actions.map((action) => action.key), overflow: [], used: 0 };
     }
-    return planTopbarOverflow(
+    const base = planTopbarOverflow(
       actions.map((action) => ({
         key: action.key,
-        width: estimateLabelWidth(action.label),
+        // M15：优先用实测宽度，估算值只在首帧生效
+        width: widths[action.key] ?? estimateLabelWidth(action.label),
         priority: action.priority,
       })),
       ioWidth,
     );
+    if (forced.length === 0) return base;
+    const forcedSet = new Set(forced);
+    const inline = base.inline.filter((key) => !forcedSet.has(key));
+    return {
+      inline,
+      overflow: actions.filter((action) => !inline.includes(action.key)).map((action) => action.key),
+      used: base.used,
+    };
     // 只依赖标签与宽度：actions 每次渲染都是新数组，不能进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ioWidth, winWidth, actions.map((action) => action.key + action.label).join('|')]);
+  }, [ioWidth, winWidth, widths, forced, actions.map((action) => action.key + action.label).join('|')]);
 
   const inlineKeys = new Set(plan.inline);
   const overflowActions = actions.filter((action) => !inlineKeys.has(action.key));
+
+  // M15：真实渲染之后再量一次——采集按钮实际宽度，并检测容器是否真的挤爆了
+  // （scrollWidth > clientWidth 就是被压/被裁），挤了就再把最低优先级的一项收进菜单。
+  // 这样「估算与真实字体不一致」导致的残留遮挡也会被自动收拾掉。
+  useLayoutEffect(() => {
+    const container = ioRef.current;
+    if (!container) return;
+    const measured: Record<string, number> = {};
+    container.querySelectorAll<HTMLElement>('[data-topbar-action]').forEach((element) => {
+      const key = element.dataset.topbarAction;
+      if (!key) return;
+      const width = Math.ceil(element.getBoundingClientRect().width);
+      if (width > 0) measured[key] = width;
+    });
+    if (Object.keys(measured).length > 0) {
+      const changed = Object.entries(measured).some(([key, value]) => Math.abs((widths[key] ?? 0) - value) > 1);
+      if (changed) setWidths((current) => ({ ...current, ...measured }));
+    }
+    if (ioWidth <= 0) return;
+    if (container.scrollWidth - container.clientWidth <= 1) return;
+    const victim = actions
+      .filter((action) => inlineKeys.has(action.key))
+      .sort((left, right) => right.priority - left.priority)[0];
+    if (victim && !forced.includes(victim.key)) setForced((current) => [...current, victim.key]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  const openMenu = () => {
+    const button = moreBtnRef.current;
+    if (button) {
+      const rect = button.getBoundingClientRect();
+      setMenuPos({
+        top: Math.round(rect.bottom + 6),
+        right: Math.round(Math.max(8, window.innerWidth - rect.right)),
+      });
+    }
+    setMoreOpen(true);
+  };
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -298,7 +373,8 @@ export function TopBar() {
     </button>
   );
 
-  const menuActions = overflowActions.filter((action) => !['theme', 'canvas'].includes(action.key));
+  // M15：溢出的一律进菜单（以前把 theme / canvas 过滤掉了，万一被挤出去就彻底点不到）
+  const menuActions = overflowActions;
   const collapsibleMenu = overflowActions.length > 0;
 
   return (
@@ -329,23 +405,26 @@ export function TopBar() {
       </div>
 
       <div className="cb-topbar__tools">
+        {/* M15：只要图标，不要汉字（title / aria-label 里仍有完整说明） */}
         <button
           type="button"
-          className="cb-btn"
+          className="cb-btn cb-btn--icon"
           disabled={!canUndo}
+          aria-label="撤销"
           title={canUndo ? `撤销：${lastLabel}（Ctrl+Z）` : '没有可撤销的操作'}
           onClick={undo}
         >
-          ↶ 撤销
+          ↶
         </button>
         <button
           type="button"
-          className="cb-btn"
+          className="cb-btn cb-btn--icon"
           disabled={!canRedo}
+          aria-label="重做"
           title={canRedo ? `重做：${nextLabel}（Ctrl+Shift+Z）` : '没有可重做的操作'}
           onClick={redo}
         >
-          ↷ 重做
+          ↷
         </button>
       </div>
 
@@ -354,6 +433,7 @@ export function TopBar() {
         {collapsibleMenu || menuActions.length > 0 ? (
           <div className="cb-topbar__more" ref={moreRef}>
             <button
+              ref={moreBtnRef}
               type="button"
               className={'cb-btn cb-topbar__morebtn' + (moreOpen ? ' is-active' : '')}
               aria-expanded={moreOpen}
@@ -363,15 +443,13 @@ export function TopBar() {
                   ? '窗口较窄：放不下的按钮收在这里（' + menuActions.map((action) => action.label).join(' / ') + '）'
                   : '更多操作'
               }
-              onClick={() => setMoreOpen((open) => !open)}
+              onClick={() => {
+                if (moreOpen) setMoreOpen(false);
+                else openMenu();
+              }}
             >
               ⋯
             </button>
-            {moreOpen && menuActions.length > 0 ? (
-              <div className="cb-topbar__morepanel" role="menu">
-                {menuActions.map((action) => renderAction(action, true))}
-              </div>
-            ) : null}
           </div>
         ) : null}
         <span className="cb-topbar__save" title={backend === 'sqlite' ? '数据写入本机 SQLite' : '数据写入浏览器本机存储'}>
@@ -379,6 +457,20 @@ export function TopBar() {
           {lastSavedAt ? ' · 已保存 ' + new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
         </span>
       </div>
+      {/* M15（N3/N4）：菜单 portal 到 body，避开顶栏与 .cb-topbar__io 的 overflow 裁剪 */}
+      {moreOpen && menuPos && menuActions.length > 0
+        ? createPortal(
+            <div
+              ref={morePanelRef}
+              className="cb-topbar__morepanel"
+              role="menu"
+              style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 2200 }}
+            >
+              {menuActions.map((action) => renderAction(action, true))}
+            </div>,
+            document.body,
+          )
+        : null}
       {exportOpen ? <ExportDialog onClose={() => setExportOpen(false)} /> : null}
       {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
       {aiOpen ? <AiPanel onClose={() => setAiOpen(false)} /> : null}
