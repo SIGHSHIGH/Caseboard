@@ -9,6 +9,7 @@
  * 「压到卡片数」与「互相交叉数」。写回 Model 由命令层负责（见 `edgeGeometryCommand`）。
  */
 import {
+  CURVATURE_MAX,
   CURVATURE_OPTIONS,
   EDGE_GEOMETRY_SAMPLES,
   anchorPoint,
@@ -17,6 +18,7 @@ import {
   curvatureOffset,
   isEdgeAnchor,
   nearbyRects,
+  nearbyRectsOf,
   pickAnchorPair,
   polylinesIntersect,
   polylineHitsRect,
@@ -35,6 +37,17 @@ export const EDGE_CROSS_PENALTY = 320;
 export const CURVATURE_PENALTY = 6;
 /** 障碍预筛选的包围盒外扩量 */
 export const OBSTACLE_PAD = 80;
+/**
+ * M18 复验 R7：判定范围严格等于卡片边框本身（四边 + 四角），不再外扩 2 px。
+ * 预筛仍在折线自身包围盒上外扩，防止曲线鼓出去的部分漏判。
+ */
+export const EDGE_JUDGE_PAD = 0;
+
+/** 候选曲率最远能鼓出多少：曲率上限 × 弦长 × 0.25，用它给锚点挑选做保守预筛 */
+export function obstacleReach(from: XY, to: XY): number {
+  const span = Math.hypot(to.x - from.x, to.y - from.y);
+  return OBSTACLE_PAD + Math.round(span * 0.25 * CURVATURE_MAX);
+}
 
 export interface EdgeGeometry {
   id: string;
@@ -135,8 +148,8 @@ export function countEdgeConflicts(
   let nodeHits = 0;
   for (const line of lines) {
     const skip = new Set(endpointsOf(line));
-    const obstacles = nearbyRects(rects, line.from, line.to, OBSTACLE_PAD, Array.from(skip));
-    if (obstacles.some((rect) => polylineHitsRect(line.points, rect, 2))) nodeHits += 1;
+    const obstacles = nearbyRectsOf(line.points, rects, EDGE_JUDGE_PAD, Array.from(skip));
+    if (obstacles.some((rect) => polylineHitsRect(line.points, rect, 0))) nodeHits += 1;
   }
   let crossings = 0;
   for (let i = 0; i < lines.length; i += 1) {
@@ -159,7 +172,7 @@ function bestGeometry(
 ): { anchors: AnchorPair; curvature: number; points: XY[] } {
   const source = rects.get(edge.source) as RectLike;
   const target = rects.get(edge.target) as RectLike;
-  const obstacles = nearbyRects(entries, from, to, OBSTACLE_PAD, [edge.source, edge.target]);
+  const obstacles = nearbyRects(entries, from, to, obstacleReach(from, to), [edge.source, edge.target]);
   const anchors = obstacles.length > 0
     ? pickAnchorPair(source, target, obstacles)
     : bestAnchors(source, target);
@@ -178,7 +191,7 @@ function bestGeometry(
     const points = sampleCurve(sourcePoint, targetPoint, offset, EDGE_GEOMETRY_SAMPLES);
     let hits = 0;
     for (const rect of obstacles) {
-      if (polylineHitsRect(points, rect, 2)) hits += 1;
+      if (polylineHitsRect(points, rect, 0)) hits += 1;
     }
     const line: EdgeLine = {
       id: edge.id,
@@ -277,7 +290,7 @@ export function pickEdgeCurvature(from: XY, to: XY, obstacles: ReadonlyArray<Rec
     const points = sampleCurve(from, to, offset, EDGE_GEOMETRY_SAMPLES);
     let hits = 0;
     for (const rect of obstacles) {
-      if (polylineHitsRect(points, rect, 2)) hits += 1;
+      if (polylineHitsRect(points, rect, 0)) hits += 1;
     }
     if (hits === 0) return candidate;
     if (hits < bestHits || (hits === bestHits && Math.abs(candidate) < Math.abs(best))) {
@@ -299,8 +312,8 @@ export function pickEdgeCurvature(from: XY, to: XY, obstacles: ReadonlyArray<Rec
   const counts = countEdgeConflicts(lines, entries, (line) => [line.sourceId, line.targetId]);
   const hitIds: string[] = [];
   for (const line of lines) {
-    const obstacles = nearbyRects(entries, line.from, line.to, OBSTACLE_PAD, [line.sourceId, line.targetId]);
-    if (obstacles.some((rect) => polylineHitsRect(line.points, rect, 2))) hitIds.push(line.id);
+    const obstacles = nearbyRectsOf(line.points, entries, EDGE_JUDGE_PAD, [line.sourceId, line.targetId]);
+    if (obstacles.some((rect) => polylineHitsRect(line.points, rect, 0))) hitIds.push(line.id);
   }
   return { nodeHits: counts.nodeHits, crossings: counts.crossings, nodeHitEdgeIds: hitIds };
 }

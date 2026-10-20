@@ -1354,6 +1354,17 @@
 | 曲率做连续搜索 | 采样几何判定代价高 | 5 档候选 `[0, ±0.35, ±0.6]` 打表（D100） |
 | 需要三态区分「没选过」与「用户选的」 | 单一布尔即可表达 | `autoAnchor` 缺省 undefined = 可被影响（D98） |
 
+**M18 复验修正（R7，v0.18.1）**
+
+用户 R1–R9 复验只有 R7 不通过：「绕过卡片的判定范围为全部的边框，其他逻辑不要改动」。根因有两处，都在判定的**范围**上，不在算法上：
+
+1. 障碍预筛用的是「两端锚点包围盒 + 80 px」（`nearbyRects`）。贝塞尔曲线鼓出去的部分最远可达弦长的 22.5%（曲率上限 0.9 × 0.25），比 80 px 大时，被鼓出段穿过的卡片根本不在候选里 ⇒ 漏判。
+2. 命中判定用 `polylineHitsRect(points, rect, 2)`，把卡片外扩了 2 px，等于判定范围比边框大一圈。
+
+改法：`edgeCurve.ts` 新增 `nearbyRectsOf(points, entries, pad, exclude)`，按折线自身包围盒预筛；`countEdgeConflicts` / `detectEdgeConflicts` 改用它并把命中判定改成 pad 0（新增 `EDGE_JUDGE_PAD = 0`），判定区域严格等于卡片边框（四边 + 四角，边框上算、边框外不算）；锚点挑选的保守预筛改用 `obstacleReach(from, to) = OBSTACLE_PAD + 弦长 × 0.25 × CURVATURE_MAX`，`Board.tsx` 即时描边同步。**代价模型（1200 / 320 / 6）、8 锚点、5 档曲率、命令与撤销语义一律未动。**
+
+验收：`smoke` **871**（[79] 段 +2：贴边算压卡 / 离边框 1.5 px 不算、曲线鼓出包围盒仍能判到）、`ui-smoke` **430**（+2 源码断言）、`typecheck` 0、`pnpm build` 成功；版本三处升 **0.18.1**。
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -1588,3 +1599,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | **M16 整体验收通过**（✅ 打 tag `ms/M16`）：非商业许可（PolyForm Noncommercial 1.0.0）+ 中英双语许可章节；自动布局带走吸附图片（产出位移表复用 `applyDockedMoves`，一次撤销整体还原）；AI 助手新增「操作方式」与「自动检验」（12 项只读结构体检，问题可跳回画布）；内置《ABC 谋杀案》示范案卷 + 顶栏「示例案卷」载入面板；`smoke` 845 / `ui-smoke` 399 / `bench` 102.1 ms |
 | 2026-10-20 | **M17 整体验收通过**（✅ 打 tag `ms/M17`）：关系线可在八个锚点自由流转且布局后自动重选——`pickAnchorPair` 用「线段长度 + 背面出入线 + 穿越障碍」代价模型选点，`applyLayout` 无条件覆盖 handle（D95）；`thickness` 线宽独立于 `weight` 全链路贯通，右栏滑杆 0.5 步进（D96）；新增第 9 类节点「关系气泡」（圆角胶囊、隐藏卡片栏与字段区、168×64），右键空白与右键卡片都能新建、卡片入口一条命令同时建关系（D94）；同一对实体的平行关系线按 `parallelSpreads` 错开 34px；仓库卫生——`release/` 与 `*.mp4` 移出索引、发布记录迁 `docs/RELEASES.md`、新增 `CONTRIBUTING.md` / `SECURITY.md`、隐私扫描无本机路径与密钥（D97）；README 重写为中英双语 + 4 张真实截图（`docs/screenshots/`）。机器验收：`typecheck` 0 error、`smoke` **855**（新增 [78] 段 20 条）、`ui-smoke` **411**（新增 M17 段 14 条）、`bench` **74.1 ms**、`pnpm build` 成功、桌面自检两轮 PASS；版本三处升 **0.17.0**；§3 写入 M17 拆步/验收/偏离三表，§6 新增 D94–D97，`docs/MANUAL-ACCEPTANCE.md` 新增 Q 节。 |
 | 2026-10-20 | **M18 整体验收通过**（✅ 打 tag `ms/M18`）：手动创建的关系线同样吃自动梳理（画布只把 `autoAnchor === false` 当钉住）；右栏关系属性新增「连接点受自动梳理影响」开关与「立即梳理此线 / 清掉手调弧度」；自动布局面板新增「关系线自动梳理（M18）」小节——「关系线单独自动调整」不动坐标只重排线，「检测交叉与压卡」只体检；`src/lib/edgeOptimize.ts` 新增曲率自动优化（`bestGeometry` / `curvatureOffset` / `sampleCurve` / `polylineHitsRect` / `polylinesIntersect` / `nearbyRects`，代价 1200 / 320 / 6）；`selfCheck` 从 12 项变 13 项（关系线交叉与压卡）。机器验收：`typecheck` 0 error、`smoke` **869**（新增 [79] 段 13 条）、`ui-smoke` **428**（新增 M18 段 15 条，改 M17 段两处旧断言）、`bench` **74.1 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 安装包归档 `release\CaseBoard_0.18.0_x64-setup.exe`；版本三处升 **0.18.0**；§3 写入 M18 拆步/验收/偏离三表，§6 新增 D98–D101，`docs/MANUAL-ACCEPTANCE.md` 新增 R 节。 |
+| 2026-10-20 | **M18 复验修正（R7，v0.18.1）**：R1–R6、R8、R9 全通过，R7「绕过卡片的判定范围为全部的边框」不通过。修的是判定**范围**不是算法：`edgeCurve.ts` 新增 `nearbyRectsOf(points, entries, pad, exclude)` 按折线自身包围盒预筛（原来按两端锚点包围盒 + 80 px，曲线鼓出最远 22.5% 弦长时会漏判被穿过的卡片）；`countEdgeConflicts` / `detectEdgeConflicts` 改用折线包围盒并把命中判定从 `pad=2` 改成 `pad=0`（新增 `EDGE_JUDGE_PAD = 0`），判定区域严格等于卡片边框——四边四角算、边框外 2 px 的擦边不再误判；锚点挑选的保守预筛改用 `obstacleReach(from, to) = 80 + 弦长 × 0.25 × 曲率上限`，`Board.tsx` 即时描边同步。代价模型 1200/320/6、8 锚点、5 档曲率、命令与撤销语义未动。`smoke` **871**（+2）、`ui-smoke` **430**（+2）、`typecheck` 0、`pnpm build` 成功，版本三处升 **0.18.1**，安装包归档 `release\CaseBoard_0.18.1_x64-setup.exe`。 |

@@ -1039,6 +1039,16 @@ function check(name, condition, detail) {
     boardSrcM18.includes('autoAnchor === false') && boardSrcM18.includes('pickEdgeCurvature'),
   );
   check('样式表有按钮行 .cb-form__row', cssM18.includes('.cb-form__row'));
+  const edgeCurveSrcR7 = fs.readFileSync(path.join(rootDir, 'src', 'lib', 'edgeCurve.ts'), 'utf8');
+  const edgeOptSrcR7 = fs.readFileSync(path.join(rootDir, 'src', 'lib', 'edgeOptimize.ts'), 'utf8');
+  check(
+    '判定范围＝卡片全部边框（R7）：按折线自身包围盒预筛、命中判定不外扩',
+    edgeCurveSrcR7.includes('export function nearbyRectsOf') &&
+      edgeOptSrcR7.includes('EDGE_JUDGE_PAD = 0') &&
+      edgeOptSrcR7.includes('polylineHitsRect(line.points, rect, 0)') &&
+      !edgeOptSrcR7.includes('polylineHitsRect(line.points, rect, 2)'),
+  );
+  check('画布预筛跟着曲率鼓出量放宽（R7）', boardSrcM18.includes('obstacleReach(from, to)'));
 
   const analysisTabM18 = [...doc.querySelectorAll('.cb-tab')].find((tab) => (tab.textContent || '').trim() === '分析');
   if (analysisTabM18) analysisTabM18.click();

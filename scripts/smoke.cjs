@@ -4105,6 +4105,56 @@ check(
     })(),
   );
   check(
+    '判定范围＝卡片全部边框：贴边算压卡、离边框 1.5 px 不算（M18 复验 R7）',
+    (() => {
+      const curve = require(path.join(out, 'lib', 'edgeCurve.js'));
+      const card = { x: 100, y: 100, w: 200, h: 100 };
+      // 从左边界外 1.5 px 平行穿过：不碰边框
+      const outside = [
+        { x: 98.5, y: 60 },
+        { x: 98.5, y: 240 },
+      ];
+      // 沿左边界走：边框本身也算判定范围
+      const onBorder = [
+        { x: 100, y: 60 },
+        { x: 100, y: 240 },
+      ];
+      // 只压右下角一小段
+      const corner = [
+        { x: 250, y: 190 },
+        { x: 350, y: 250 },
+      ];
+      return (
+        curve.polylineHitsRect(outside, card, 0) === false &&
+        curve.polylineHitsRect(onBorder, card, 0) === true &&
+        curve.polylineHitsRect(corner, card, 0) === true
+      );
+    })(),
+  );
+  check(
+    '曲线鼓出两端包围盒时仍能判到卡片（M18 复验 R7：按折线自身包围盒预筛）',
+    (() => {
+      const curve = require(path.join(out, 'lib', 'edgeCurve.js'));
+      const optimize = require(path.join(out, 'lib', 'edgeOptimize.js'));
+      const from = { x: 0, y: 0 };
+      const to = { x: 400, y: 0 };
+      const offset = curve.curvatureOffset(from, to, 0.9);
+      const points = curve.sampleCurve(from, to, offset, 12);
+      const bulge = Math.max(...points.map((point) => Math.abs(point.y)));
+      // 卡片只挡在鼓出来的那一侧，且完全在两端的包围盒之外
+      const card = { x: 150, y: bulge - 10, w: 100, h: 20 };
+      const entries = [{ id: 'bulge', rect: card }];
+      const narrow = curve.nearbyRects(entries, from, to, 0, []);
+      const widened = curve.nearbyRectsOf(points, entries, 0, []);
+      return (
+        bulge > 10 &&
+        curve.polylineHitsRect(points, card, 0) === true &&
+        narrow.length === 0 &&
+        widened.length === 1
+      );
+    })(),
+  );
+  check(
     '自动梳理会减少压卡并给线写入连接点',
     (() => {
       const baseNode = {

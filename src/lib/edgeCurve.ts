@@ -465,3 +465,24 @@ export function nearbyRects(
   }
   return out;
 }
+
+/**
+ * M18 复验 R7：按折线自身的包围盒预筛（曲线鼓出去的部分也要算），
+ * 保证「线穿过卡片任何一个边框」都能被判到，不漏判。
+ */
+export function nearbyRectsOf(
+  points: ReadonlyArray<XY>,
+  entries: ReadonlyArray<{ id: string; rect: RectLike }>,
+  pad = 0,
+  exclude: ReadonlyArray<string> = [],
+): RectLike[] {
+  if (points.length === 0) return [];
+  const box = boundsOfPoints([...points], pad);
+  const skip = new Set(exclude);
+  const out: RectLike[] = [];
+  for (const entry of entries) {
+    if (skip.has(entry.id)) continue;
+    if (rectsIntersect(box, entry.rect)) out.push(entry.rect);
+  }
+  return out;
+}

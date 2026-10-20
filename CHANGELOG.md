@@ -2,6 +2,24 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.18.1 · M18 复验 R7 修正（判定范围＝卡片全部边框）
+
+### 用户 R7 反馈
+
+> R7 绕过卡片的判定范围为全部的边框，其他逻辑不要改动。
+
+### 改了什么（只动判定范围）
+
+- `src/lib/edgeCurve.ts` 新增 `nearbyRectsOf(points, entries, pad, exclude)`：按**折线自己**的包围盒预筛障碍。原来按「两端锚点包围盒 + 80 px」预筛，贝塞尔曲线鼓出去的部分（曲率上限 0.9 时最远可达弦长的 22.5%）会落到包围盒外，卡片明明被线穿过四个边框之一却不被判到。
+- `src/lib/edgeOptimize.ts`：`countEdgeConflicts` 与 `detectEdgeConflicts` 改用 `nearbyRectsOf(line.points, …)`；命中判定从 `polylineHitsRect(points, rect, 2)` 改成 `polylineHitsRect(points, rect, 0)`（新增常量 `EDGE_JUDGE_PAD = 0`），即**判定区域严格等于卡片边框本身**——四边、四角都算，边框外 2 px 的「擦边」不再误判。
+- 锚点挑选的保守预筛改用 `obstacleReach(from, to) = 80 + 弦长 × 0.25 × 曲率上限`，保证任何候选曲率能鼓到的位置都在预筛范围内（`Board.tsx` 即时描边同样走它）。
+- 代价模型、锚点集合、曲率档位、命令与撤销语义**未改动**。
+
+### 验收
+
+- `pnpm typecheck` 0 error；`pnpm smoke` **871 PASS**（[79] 段新增 2 条：贴边算压卡 / 离边框 1.5 px 不算；曲线鼓出两端包围盒时仍能判到卡片）；`pnpm ui-smoke` **430 PASS / 0 FAIL**（新增 2 条源码断言）；`pnpm build` 成功。
+- 版本三处升 **0.18.1**；`tauri build --no-bundle` 重建 `caseboard.exe`（**19,162,112 字节**），`node scripts/run-selftest.cjs` 两轮 PASS（`phase1=PASS phase2=PASS`）；`--bundles nsis` 出 `CaseBoard_0.18.1_x64-setup.exe`（**12,211,004 字节**，SHA-256 `5A76D7A91839211080E68C394E89A9DE70A196124F82525D9C51E84A79FCAE5B`，未签名），归档到本地 `release\`。
+
 ## [未发布] v0.18.0 · M18 关系线自动梳理
 
 ### M18 整体验收通过（2026-10-20，tag ms/M18）

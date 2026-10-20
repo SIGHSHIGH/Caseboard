@@ -52,7 +52,7 @@ import {
   type EdgeAnchor,
   type RectLike,
 } from '../../lib/edgeCurve';
-import { OBSTACLE_PAD, pickEdgeCurvature } from '../../lib/edgeOptimize';
+import { obstacleReach, pickEdgeCurvature } from '../../lib/edgeOptimize';
 import { newId } from '../../lib/id';
 import {
   CARD_LAYER_Z,
@@ -377,7 +377,7 @@ export function Board() {
       if (!source || !target) continue;
       const from = { x: source.x + source.w / 2, y: source.y + source.h / 2 };
       const to = { x: target.x + target.w / 2, y: target.y + target.h / 2 };
-      const others = nearbyRects(entries, from, to, OBSTACLE_PAD, [edge.source, edge.target]);
+      const others = nearbyRects(entries, from, to, obstacleReach(from, to), [edge.source, edge.target]);
       const anchors = others.length > 0 ? pickAnchorPair(source, target, others) : bestAnchors(source, target);
       const sourcePoint = anchorPoint(source, anchors.source);
       const targetPoint = anchorPoint(target, anchors.target);
