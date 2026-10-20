@@ -20,6 +20,8 @@ export type CaseEdgeData = {
   highlighted?: boolean;
   /** M9 / S3 标签避让：同一区域里的第 n 个标签向下错开的像素 */
   labelDy?: number;
+  /** M17：同一对实体之间的平行关系线横向错开量（像素） */
+  spread?: number;
 };
 export type CaseFlowEdge = Edge<CaseEdgeData, 'bezier'>;
 
@@ -27,6 +29,14 @@ function weightToWidth(weight?: number): number {
   if (!weight || weight <= 0) return 1.6;
   const scaled = 1.4 + Math.log10(weight) * 0.45;
   return Math.max(1.4, Math.min(4.5, scaled));
+}
+
+/** M17：线宽既可以显式设置（thickness），也保留按金额/频次推导的老行为 */
+function strokeWidthOf(edge: CaseEdge): number {
+  if (edge.thickness !== undefined && edge.thickness > 0) {
+    return Math.max(1, Math.min(8, edge.thickness));
+  }
+  return weightToWidth(edge.weight);
 }
 
 function round1(value: number): number {
@@ -66,7 +76,17 @@ function BezierEdgeInner({
   });
   const mid = { x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 };
   const storedOffset = edge ? curveOffsetOf(edge) : null;
-  const offset = previewOffset ?? storedOffset;
+  // M17：平行关系线横向错开（只在没有手调曲率时生效，手调优先）
+  const spread = data?.spread ?? 0;
+  const spreadOffset = (() => {
+    if (!spread || storedOffset) return null;
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return null;
+    return { x: (-dy / len) * spread, y: (dx / len) * spread };
+  })();
+  const offset = previewOffset ?? storedOffset ?? spreadOffset;
   const geometry = offset ? curveGeometry({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, offset) : null;
   const path = geometry ? curvePath(geometry) : basePath;
   const handleX = geometry ? geometry.handle.x : baseLabelX;
@@ -118,7 +138,7 @@ function BezierEdgeInner({
   const stroke = edge.color ?? relColor(edge.relType);
   const dash = lineStyle.dash;
   const highlighted = data?.highlighted === true;
-  const width = weightToWidth(edge.weight) + (selected ? 1 : 0) + (highlighted ? 1.8 : 0);
+  const width = strokeWidthOf(edge) + (selected ? 1 : 0) + (highlighted ? 1.8 : 0);
 
   const commitLabel = () => {
     const label = draft.trim();

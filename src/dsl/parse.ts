@@ -675,6 +675,12 @@ class Builder {
             case 'weight':
               edge.weight = this.numberOf(value, field, 'weight');
               break;
+            case 'thickness': {
+              // M17：线宽 1–8 像素
+              const px = this.numberOf(value, field, 'thickness');
+              edge.thickness = Math.max(1, Math.min(8, Math.round(px * 10) / 10));
+              break;
+            }
             case 'time': {
               const time = this.timeOf(value);
               if (time) edge.time = time;
@@ -707,7 +713,7 @@ class Builder {
               edge.scenario = this.scenarioOf(value, field);
               break;
             default:
-              this.report('warning', `未知字段「${key}」，已忽略`, field.firstChild ?? field, '关系支持的字段：rel / style / directed / weight / time / evidence / confidence / color / path / notes / scenario');
+              this.report('warning', `未知字段「${key}」，已忽略`, field.firstChild ?? field, '关系支持的字段：rel / style / directed / weight / thickness / time / evidence / confidence / color / path / notes / scenario');
               break;
           }
         }

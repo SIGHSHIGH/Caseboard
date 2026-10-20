@@ -168,6 +168,115 @@ export function isEdgeAnchor(value: unknown): value is EdgeAnchor {
   return typeof value === 'string' && (ANCHORS as string[]).includes(value);
 }
 
+/** 每个连接点的外法线（判断「从背面出线」用） */
+const ANCHOR_NORMAL: Record<EdgeAnchor, XY> = {
+  top: { x: 0, y: -1 },
+  bottom: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+  tl: { x: -0.71, y: -0.71 },
+  tr: { x: 0.71, y: -0.71 },
+  br: { x: 0.71, y: 0.71 },
+  bl: { x: -0.71, y: 0.71 },
+};
+
+/**
+ * 线段是否穿过矩形（Liang–Barsky 裁剪）。
+ * M17：用它给「线穿过别的卡片」打分，布局后重算锚点时优先避让。
+ */
+export function segmentHitsRect(a: XY, b: XY, rect: RectLike, pad = 0): boolean {
+  const minX = rect.x - pad;
+  const maxX = rect.x + rect.w + pad;
+  const minY = rect.y - pad;
+  const maxY = rect.y + rect.h + pad;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  let t0 = 0;
+  let t1 = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (p === 0) return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  return (
+    clip(-dx, a.x - minX) &&
+    clip(dx, maxX - a.x) &&
+    clip(-dy, a.y - minY) &&
+    clip(dy, maxY - a.y) &&
+    t1 - t0 >= 0
+  );
+}
+
+export interface AnchorPair {
+  source: EdgeAnchor;
+  target: EdgeAnchor;
+}
+
+/** 穿越障碍的惩罚（远大于一般距离差，保证「不穿卡片」优先） */
+export const ANCHOR_BLOCK_PENALTY = 4000;
+/** 从背面出线/进线的惩罚 */
+export const ANCHOR_BACK_PENALTY = 900;
+
+/**
+ * 在 8×8 个锚点组合里挑代价最小的那对。
+ * 代价 = 线段长度 + 背向出线惩罚 + 穿过其他卡片的惩罚，并对几何最优解略微加权以避免抖动。
+ * `obstacles` 传其他节点的矩形（调用方负责排除两端自己）。
+ */
+export function pickAnchorPair(source: RectLike, target: RectLike, obstacles: RectLike[] = []): AnchorPair {
+  const fallback = bestAnchors(source, target);
+  let best: AnchorPair = fallback;
+  let bestCost = Number.POSITIVE_INFINITY;
+  for (const s of ANCHORS) {
+    const from = anchorPoint(source, s);
+    for (const t of ANCHORS) {
+      const to = anchorPoint(target, t);
+      const span = Math.hypot(to.x - from.x, to.y - from.y);
+      const dx = span === 0 ? 0 : (to.x - from.x) / span;
+      const dy = span === 0 ? 0 : (to.y - from.y) / span;
+      let cost = span;
+      const out = ANCHOR_NORMAL[s];
+      const into = ANCHOR_NORMAL[t];
+      if (dx * out.x + dy * out.y <= 0) cost += ANCHOR_BACK_PENALTY;
+      if (dx * into.x + dy * into.y >= 0) cost += ANCHOR_BACK_PENALTY;
+      for (const rect of obstacles) {
+        if (segmentHitsRect(from, to, rect, 10)) {
+          cost += ANCHOR_BLOCK_PENALTY;
+          break;
+        }
+      }
+      if (s === fallback.source && t === fallback.target) cost -= 40;
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = { source: s, target: t };
+      }
+    }
+  }
+  return best;
+}
+
+/** 挑锚点并返回代价（测试与调参用） */
+export function pickAnchorPairWithCost(
+  source: RectLike,
+  target: RectLike,
+  obstacles: RectLike[] = [],
+): { pair: AnchorPair; cost: number } {
+  const pair = pickAnchorPair(source, target, obstacles);
+  const from = anchorPoint(source, pair.source);
+  const to = anchorPoint(target, pair.target);
+  let cost = Math.hypot(to.x - from.x, to.y - from.y);
+  for (const rect of obstacles) {
+    if (segmentHitsRect(from, to, rect, 10)) cost += ANCHOR_BLOCK_PENALTY;
+  }
+  return { pair, cost };
+}
+
 /* ===== M9 / S3：标签避让 ===== */
 
 /** 标签去重用的网格边长（世界坐标）：同一格里的标签视为会重叠 */
@@ -197,3 +306,33 @@ export function fanOutLabels(points: Array<{ id: string; x: number; y: number }>
   return out;
 }
 
+
+/** M17：同一对实体之间的多条关系线互相错开（避免完全重叠） */
+export const PARALLEL_EDGE_GAP = 34;
+
+/**
+ * 给同一对实体之间的平行关系线分配横向错开量。
+ * 第 i 条（共 n 条）偏移 `(i - (n-1)/2) * PARALLEL_EDGE_GAP`，单条为 0。
+ */
+export function parallelSpreads(
+  edges: ReadonlyArray<{ id: string; source: string; target: string }>,
+): Map<string, number> {
+  const groups = new Map<string, string[]>();
+  for (const edge of edges) {
+    const key = edge.source < edge.target ? `${edge.source}|${edge.target}` : `${edge.target}|${edge.source}`;
+    const list = groups.get(key);
+    if (list) list.push(edge.id);
+    else groups.set(key, [edge.id]);
+  }
+  const out = new Map<string, number>();
+  for (const ids of groups.values()) {
+    if (ids.length < 2) {
+      for (const id of ids) out.set(id, 0);
+      continue;
+    }
+    ids.forEach((id, index) => {
+      out.set(id, Math.round((index - (ids.length - 1) / 2) * PARALLEL_EDGE_GAP * 10) / 10);
+    });
+  }
+  return out;
+}

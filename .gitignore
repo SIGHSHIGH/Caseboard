@@ -29,3 +29,7 @@ src-tauri/gen/
 
 # 用户手工验收截图（不随仓库分发）
 test project/
+
+# 安装包与本机演示视频（构建/录制产物，不入库）
+release/
+*.mp4

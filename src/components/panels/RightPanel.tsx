@@ -560,10 +560,13 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
   const [label, setLabel] = useState(edge.label ?? '');
   const [notes, setNotes] = useState(edge.notes ?? '');
   const [confidence, setConfidence] = useState(edge.confidence);
+  // M17：线宽独立于 weight，缺省 1.6px（与旧 weightToWidth 的基线一致）
+  const [thickness, setThickness] = useState(edge.thickness ?? 1.6);
 
   useEffect(() => setLabel(edge.label ?? ''), [edge.id, edge.label]);
   useEffect(() => setNotes(edge.notes ?? ''), [edge.id, edge.notes]);
   useEffect(() => setConfidence(edge.confidence), [edge.id, edge.confidence]);
+  useEffect(() => setThickness(edge.thickness ?? 1.6), [edge.id, edge.thickness]);
 
   const commitLabel = () => {
     const next = label.trim();
@@ -581,6 +584,11 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
 
   const commitConfidence = () => {
     if (confidence !== edge.confidence) dispatch(updateEdge(edge.id, { confidence }));
+  };
+
+  const commitThickness = () => {
+    const clamped = Math.min(8, Math.max(1, Math.round(thickness * 2) / 2));
+    if (clamped !== (edge.thickness ?? 1.6)) dispatch(updateEdge(edge.id, { thickness: clamped }));
   };
 
   return (
@@ -640,6 +648,20 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
           onChange={(event) => dispatch(updateEdge(edge.id, { directed: event.target.checked }))}
         />
         <span>有向（箭头指向目标）</span>
+      </label>
+
+      <label className="cb-field">
+        <span>线宽：{thickness} px（M17 可自由调整，1–8）</span>
+        <input
+          type="range"
+          min={1}
+          max={8}
+          step={0.5}
+          value={thickness}
+          onChange={(event) => setThickness(Number(event.target.value))}
+          onPointerUp={commitThickness}
+          onBlur={commitThickness}
+        />
       </label>
 
       <label className="cb-field">

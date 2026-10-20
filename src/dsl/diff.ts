@@ -73,6 +73,7 @@ export const DSL_EDGE_KEYS = [
   'style',
   'color',
   'weight',
+  'thickness',
   'time',
   'confidence',
   'evidenceIds',

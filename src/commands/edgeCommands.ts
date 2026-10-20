@@ -13,6 +13,8 @@ export interface AddEdgeInput {
   style?: LineStyle;
   confidence?: number;
   weight?: number;
+  /** 线宽像素（M17） */
+  thickness?: number;
   color?: string;
   time?: { start: string; end?: string };
   evidenceIds?: string[];
@@ -39,6 +41,7 @@ export function addEdge(input: AddEdgeInput): Command {
       };
       if (input.label !== undefined) edge.label = input.label;
       if (input.weight !== undefined) edge.weight = input.weight;
+      if (input.thickness !== undefined) edge.thickness = input.thickness;
       if (input.color !== undefined) edge.color = input.color;
       if (input.time !== undefined) edge.time = input.time;
       draft.edges.push(edge);

@@ -65,8 +65,8 @@ function check(name, condition, detail) {
     const brand = doc.querySelector('.cb-topbar__brand');
     return brand !== null && brand.querySelector('.cb-topbar__logo') === null;
   })());
-  check('左栏 8 个节点类型按钮', doc.querySelectorAll('.cb-type-btn').length === 8, doc.querySelectorAll('.cb-type-btn').length);
-  check('每个类型按钮带字段数提示', doc.querySelectorAll('.cb-type-btn__hint').length === 8, doc.querySelectorAll('.cb-type-btn__hint').length);
+  check('左栏 9 个节点类型按钮（M17 加关系气泡）', doc.querySelectorAll('.cb-type-btn').length === 9, doc.querySelectorAll('.cb-type-btn').length);
+  check('每个类型按钮带字段数提示', doc.querySelectorAll('.cb-type-btn__hint').length === 9, doc.querySelectorAll('.cb-type-btn__hint').length);
   check('节点卡片展示模板字段摘要', doc.querySelectorAll('.cb-node__field').length >= 2, doc.querySelectorAll('.cb-node__field').length);
   check('画布渲染 6 个节点', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
   check('关系线已渲染', doc.querySelectorAll('.react-flow__edge').length === 6, doc.querySelectorAll('.react-flow__edge').length);
@@ -123,7 +123,7 @@ function check(name, condition, detail) {
   check('分组标签含 2 个入口', doc.querySelectorAll('.cb-group-actions .cb-btn').length === 2, doc.querySelectorAll('.cb-group-actions .cb-btn').length);
 
   check('可切回对象标签', await clickByText('.cb-tabs .cb-tab', '对象'));
-  check('切回后类型按钮恢复 8 个', doc.querySelectorAll('.cb-type-btn').length === 8, doc.querySelectorAll('.cb-type-btn').length);
+  check('切回后类型按钮恢复 9 个', doc.querySelectorAll('.cb-type-btn').length === 9, doc.querySelectorAll('.cb-type-btn').length);
   check('粘贴导入不会破坏初始渲染', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
 
   console.log('[UI] M2-4 自由图片节点');
@@ -644,7 +644,7 @@ function check(name, condition, detail) {
   await sleep(300);
   check('双击画布空白弹出「新建节点」对话框', doc.querySelector('.cb-newnode') !== null);
   check('对话框挂在遮罩层里（居中而不是塞进顶栏）', doc.querySelector('.cb-modal__mask .cb-newnode') !== null);
-  check('对话框有类型下拉（8 类）与标题输入', doc.querySelectorAll('.cb-newnode select option').length === 8 && doc.querySelector('.cb-newnode input') !== null, doc.querySelectorAll('.cb-newnode select option').length);
+  check('对话框有类型下拉（9 类）与标题输入', doc.querySelectorAll('.cb-newnode select option').length === 9 && doc.querySelector('.cb-newnode input') !== null, doc.querySelectorAll('.cb-newnode select option').length);
   const m9TitleInput = doc.querySelector('.cb-newnode input');
   if (m9TitleInput) await setInputValue(m9TitleInput, 'M9 新建实体');
   check('点「创建」提交新建', await clickByText('.cb-newnode .cb-modal__actions .cb-btn', '创建'));
@@ -958,6 +958,60 @@ function check(name, condition, detail) {
   if (closeAiM16) closeAiM16.click();
   await sleep(200);
   check('关闭后 AI 面板移除', doc.querySelector('.cb-ai') === null);
+
+  // ===== M17：右键新建 / 线宽 / 锚点避障 / 关系气泡 =====
+  console.log('');
+  console.log('[UI] M17 关系气泡 / 右键新建 / 线宽 / 锚点避障');
+
+  check('样式表有右键菜单（M17）', srcCss.includes('.cb-ctxmenu') && srcCss.includes('.cb-ctxmenu__item'), '');
+  check(
+    '关系气泡用圆角胶囊样式（M17）',
+    /\.cb-node\[data-type='relation'\][^{]*\{[^}]*border-radius:\s*999px/.test(srcCss),
+    '',
+  );
+  const boardSrcM17 = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'flow', 'Board.tsx'), 'utf8');
+  check(
+    '画布接了右键菜单与关系气泡入口（M17）',
+    boardSrcM17.includes('onPaneContextMenu') &&
+      boardSrcM17.includes('onNodeContextMenu') &&
+      boardSrcM17.includes('addRelationBubble') &&
+      boardSrcM17.includes("type: 'relation'"),
+    '',
+  );
+  check('画布自动锚点改用避障取点（M17）', boardSrcM17.includes('pickAnchorPair'));
+  const layoutSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'commands', 'layoutCommands.ts'), 'utf8');
+  check(
+    '自动布局后按障碍重算锚点并覆盖旧 handle（M17）',
+    layoutSrc.includes('pickAnchorPair') &&
+      layoutSrc.includes('edge.sourceHandle = anchors.source') &&
+      layoutSrc.includes('edge.targetHandle = anchors.target'),
+    '',
+  );
+  const rightSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'panels', 'RightPanel.tsx'), 'utf8');
+  check('右栏有「线宽」滑杆（M17）', rightSrc.includes('线宽') && rightSrc.includes('commitThickness'));
+  const dslSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'dsl', 'parse.ts'), 'utf8');
+  check('代码视图认 thickness 字段（M17）', dslSrc.includes("case 'thickness'"));
+
+  // 右键空白 → 菜单 → 新建关系气泡
+  const ctxPane = doc.querySelector('.react-flow__pane');
+  check('画布 pane 仍在（右键用）', ctxPane !== null);
+  if (ctxPane) {
+    ctxPane.dispatchEvent(
+      new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 520, clientY: 360 }),
+    );
+    await sleep(200);
+    const menu = doc.querySelector('.cb-ctxmenu');
+    check('右键空白弹出画布菜单（M17）', menu !== null);
+    const items = [...doc.querySelectorAll('.cb-ctxmenu__item')].map((item) => (item.textContent || '').trim());
+    check('菜单里有「新建节点…」与「新建关系气泡」', items.some((t) => t.includes('新建节点')) && items.some((t) => t.includes('新建关系气泡')), items);
+    const beforeBubbles = doc.querySelectorAll('.cb-node[data-type="relation"]').length;
+    const created = await clickByText('.cb-ctxmenu__item', '新建关系气泡');
+    check('点「新建关系气泡」能建出来（M17）', created && doc.querySelectorAll('.cb-node[data-type="relation"]').length === beforeBubbles + 1, {
+      before: beforeBubbles,
+      after: doc.querySelectorAll('.cb-node[data-type="relation"]').length,
+    });
+    check('建完菜单收起', doc.querySelector('.cb-ctxmenu') === null);
+  }
 
   console.log('');
   if (failures > 0) {

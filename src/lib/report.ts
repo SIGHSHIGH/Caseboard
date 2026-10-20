@@ -20,6 +20,7 @@ const TYPE_LABEL: Record<CaseNode['type'], string> = {
   evidence: '证据',
   time: '时间',
   note: '便签',
+  relation: '关系',
 };
 
 const STYLE_LABEL: Record<LineStyle, string> = {

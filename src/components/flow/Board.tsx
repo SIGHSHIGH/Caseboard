@@ -18,6 +18,7 @@ import {
   addImageNode,
   addNode,
   attachImageNode,
+  addEdge,
   composeCommands,
   deleteGroup,
   deleteImageNode,
@@ -41,7 +42,7 @@ import {
   nodeIdsInRect,
   parseBoardNodeId,
 } from '../../lib/groups';
-import { bestAnchors, fanOutLabels, type EdgeAnchor } from '../../lib/edgeCurve';
+import { bestAnchors, fanOutLabels, parallelSpreads, pickAnchorPair, type EdgeAnchor } from '../../lib/edgeCurve';
 import { newId } from '../../lib/id';
 import {
   CARD_LAYER_Z,
@@ -152,6 +153,7 @@ export function Board() {
   const applyImageSelection = useUiStore((s) => s.applyImageSelection);
   const selectEdge = useUiStore((s) => s.selectEdge);
   const selectGroup = useUiStore((s) => s.selectGroup);
+  const selectNode = useUiStore((s) => s.selectNode);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const setDragPos = useUiStore((s) => s.setDragPos);
   const focusRequest = useUiStore((s) => s.focusRequest);
@@ -161,6 +163,14 @@ export function Board() {
   // 代码侧请求居中时用 nonce 去重：文档后续变化不该把视口抢回去
   const lastFocusNonce = useRef(0);
   const [pending, setPending] = useState<Connection | null>(null);
+  /** M17：右键菜单（clientX/Y 定位，flowX/Y 决定新节点落点） */
+  const [ctxMenu, setCtxMenu] = useState<{
+    clientX: number;
+    clientY: number;
+    flowX: number;
+    flowY: number;
+    nodeId: string | null;
+  } | null>(null);
   // M11（J6）：卡片拖动时吸附在它上面的图片实时跟随（松手再落库，拖动过程中不再「等一等」
   const [dockPreview, setDockPreview] = useState<Record<string, { x: number; y: number }>>({});
   const themeMode = useThemeStore((s) => s.mode);
@@ -343,14 +353,20 @@ export function Board() {
   const autoAnchors = useMemo(() => {
     const rects = new Map(doc.nodes.map((node) => [node.id, { x: node.x, y: node.y, w: node.w, h: node.h }]));
     const out = new Map<string, { source: EdgeAnchor; target: EdgeAnchor }>();
+    const obstacles = Array.from(rects.values());
     for (const edge of model.edges) {
       const source = rects.get(edge.source);
       const target = rects.get(edge.target);
       if (!source || !target) continue;
-      out.set(edge.id, bestAnchors(source, target));
+      // M17：把其他卡片当障碍，避免「自动布局之后线还是穿过卡片」
+      const others = obstacles.filter((rect) => rect !== source && rect !== target);
+      out.set(edge.id, others.length > 0 ? pickAnchorPair(source, target, others) : bestAnchors(source, target));
     }
     return out;
   }, [doc.nodes, model.edges]);
+
+  /** M17：同一对实体之间的多条关系线错开，避免「线叠在一起」 */
+  const spreadByEdge = useMemo(() => parallelSpreads(model.edges), [model.edges]);
 
   /** S3 标签避让：曲线中点落在同一格的标签按序号向下错开 */
   const labelDys = useMemo(() => {
@@ -388,7 +404,13 @@ export function Board() {
           target: edge.target,
           sourceHandle: edge.sourceHandle ?? auto?.source ?? 'right',
           targetHandle: edge.targetHandle ?? auto?.target ?? 'left',
-          data: { edge, dimmed, highlighted: highlight.edges.has(edge.id), labelDy: labelDys.get(edge.id) ?? 0 },
+          data: {
+            edge,
+            dimmed,
+            highlighted: highlight.edges.has(edge.id),
+            labelDy: labelDys.get(edge.id) ?? 0,
+            spread: spreadByEdge.get(edge.id) ?? 0,
+          },
           selected: edge.id === selectedEdgeId,
           markerEnd: edge.directed ? { type: MarkerType.ArrowClosed, width: 16, height: 16 } : undefined,
         };
@@ -668,6 +690,102 @@ export function Board() {
     setPending(connection);
   }, []);
 
+  /**
+   * M17：右键新建。
+   * 空白处右键 → 新建节点对话框 / 关系气泡；
+   * 卡片上右键 → 直接建一个关系气泡并连到这张卡片（复合关系最常用的入口）。
+   */
+  const openContextMenu = useCallback(
+    (clientX: number, clientY: number, nodeId: string | null) => {
+      const position = screenToFlowPosition({ x: clientX, y: clientY });
+      setCtxMenu({
+        clientX,
+        clientY,
+        flowX: Math.round(position.x),
+        flowY: Math.round(position.y),
+        nodeId,
+      });
+    },
+    [screenToFlowPosition],
+  );
+
+  const onPaneContextMenu = useCallback(
+    (event: React.MouseEvent | MouseEvent) => {
+      event.preventDefault();
+      openContextMenu(event.clientX, event.clientY, null);
+    },
+    [openContextMenu],
+  );
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: { id: string; type?: string }) => {
+      event.preventDefault();
+      // 组矩形/超级节点/图片节点不提供「建关系气泡」入口，避免连出无意义的关系
+      const usable = node.type === 'base';
+      openContextMenu(event.clientX, event.clientY, usable ? node.id : null);
+    },
+    [openContextMenu],
+  );
+
+  const closeContextMenu = useCallback(() => setCtxMenu(null), []);
+
+  /**
+   * 容器级右键兜底：与双击一样，React Flow 的 onPaneContextMenu 依赖完整的指针序列，
+   * 自动化环境或部分输入设备只给到 contextmenu 事件，这里在画布容器上再判一次。
+   */
+  const onCanvasContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.react-flow__node, .react-flow__edge')) return;
+      event.preventDefault();
+      openContextMenu(event.clientX, event.clientY, null);
+    },
+    [openContextMenu],
+  );
+
+  const addRelationBubble = useCallback(
+    (fromNodeId: string | null) => {
+      if (!ctxMenu) return;
+      const id = newId('relation');
+      const box = { w: 168, h: 64 };
+      const nodeCmd = addNode({
+        id,
+        type: 'relation',
+        title: '关系气泡',
+        x: ctxMenu.flowX - Math.round(box.w / 2),
+        y: ctxMenu.flowY - Math.round(box.h / 2),
+        w: box.w,
+        h: box.h,
+        status: 'checking',
+        confidence: 40,
+      });
+      if (fromNodeId) {
+        const source = doc.nodes.find((item) => item.id === fromNodeId);
+        const edgeCmd = addEdge({
+          source: fromNodeId,
+          target: id,
+          relType: 'related',
+          label: '多方关系',
+          directed: false,
+          style: 'dotted',
+          confidence: 40,
+        });
+        dispatch(composeCommands(`新建关系气泡并连到「${source?.title ?? '实体'}」`, [nodeCmd, edgeCmd]));
+      } else {
+        dispatch(nodeCmd);
+      }
+      selectNode(id);
+      setCtxMenu(null);
+    },
+    [ctxMenu, dispatch, doc.nodes, selectNode],
+  );
+
+  const createPlainNode = useCallback(() => {
+    if (!ctxMenu) return;
+    requestNewNode({ x: ctxMenu.flowX, y: ctxMenu.flowY });
+    setCtxMenu(null);
+  }, [ctxMenu, requestNewNode]);
+
   // 素材库拖入画布 → 在落点中心生成自由图片节点
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -814,6 +932,7 @@ export function Board() {
       onDrop={onDrop}
       onDragOver={onDragOver}
       onDoubleClick={onCanvasDoubleClick}
+      onContextMenu={onCanvasContextMenu}
     >
       {canvasBgUrl ? (
         <img
@@ -845,6 +964,8 @@ export function Board() {
           selectEdge(edge.id);
         }}
         onPaneClick={onPaneClick}
+        onPaneContextMenu={onPaneContextMenu}
+        onNodeContextMenu={onNodeContextMenu}
         onConnect={onConnect}
         connectionMode={ConnectionMode.Loose}
         // A5：双击缩放交给我们自己的「新建节点」对话框，画布双击不再变焦
@@ -904,6 +1025,41 @@ export function Board() {
       ) : null}
 
       {pending ? <ConnectDialog connection={pending} onClose={() => setPending(null)} /> : null}
+
+      {ctxMenu ? (
+        <>
+          <div className="cb-ctxmenu__mask" onPointerDown={closeContextMenu} onContextMenu={(event) => event.preventDefault()} />
+          <div
+            className="cb-ctxmenu"
+            role="menu"
+            aria-label="画布右键菜单"
+            style={{ left: ctxMenu.clientX, top: ctxMenu.clientY }}
+          >
+            <button type="button" className="cb-ctxmenu__item" role="menuitem" onClick={createPlainNode}>
+              新建节点…
+            </button>
+            <button
+              type="button"
+              className="cb-ctxmenu__item"
+              role="menuitem"
+              onClick={() => addRelationBubble(null)}
+            >
+              新建关系气泡
+            </button>
+            {ctxMenu.nodeId ? (
+              <button
+                type="button"
+                className="cb-ctxmenu__item"
+                role="menuitem"
+                onClick={() => addRelationBubble(ctxMenu.nodeId)}
+              >
+                新建关系气泡并连到此实体
+              </button>
+            ) : null}
+            <div className="cb-ctxmenu__hint">关系气泡是圆角矩形，可以把多条关系线汇到它上面</div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

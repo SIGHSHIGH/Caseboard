@@ -2,6 +2,21 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.17.0 · M17 关系气泡与线宽
+
+### M17 整体验收通过（2026-10-20，tag ms/M17）
+
+- **关系线在八个锚点上自由流转**：新增 `pickAnchorPair(source, target, obstacles)`，在 8×8 锚点组合里按「线段长度 + 背面出入线惩罚 + 穿过障碍惩罚」算代价挑最优对；`applyLayout` 布局后**无条件覆盖**每条边的 `sourceHandle`/`targetHandle`，画布自动锚点也走同一函数。连线不再穿卡片、不再从背面绕出来。
+- **平行关系线错开**：`parallelSpreads` 把同一对实体之间的多条关系线按 34px 间距均匀错开（单条偏移 0），画布与 DSL 都按 `edge.id` 稳定取偏移。
+- **关系线可调粗细**：`CaseEdge.thickness`（1–8，缺省按 `weight` 推导）走类型 / 迁移夹取 / 命令 / DSL 解析与序列化 / 空行渲染全链路；右栏关系属性新增「线宽」滑杆（0.5 步进），渲染时选中与高亮各加 1px / 1.8px。
+- **新增第 9 类节点「关系气泡」**：圆角胶囊外形（隐藏卡片栏、字段区与脚注），用来把多条关系线汇到同一个节点上表达「一对多」「多方共同」；模板自带「关系类型 / 强度 / 说明」三字段，默认尺寸 168×64。
+- **右键新建菜单**：画布空白右键 → 「新建节点…」「新建关系气泡」；卡片右键额外提供「新建关系气泡并连到此实体」（一条 `composeCommands` 同时建节点与虚线关系）。
+- **仓库卫生与开源规范**：`release/` 与 `*.mp4` 移出索引并写进 `.gitignore`（安装包与录屏都是产物，不入库），发布记录迁到 `docs/RELEASES.md`；新增 `CONTRIBUTING.md`、`SECURITY.md`；隐私扫描确认仓库内无本机绝对路径、无 token / 私钥、无真实口令。
+- **README 重写**：中英双语保留，新增 4 张真实截图（`docs/screenshots/`）、能力表补「关系气泡」与「八方向连线、可调线宽、布局后按障碍自动换锚点」，安装包说明指向 `docs/RELEASES.md`。
+- **验收**：`pnpm typecheck` 0 error；`pnpm smoke` **855 PASS**（新增 [78] 段 20 条，并修「9 类节点模板」「DSL 字段白名单」两处旧断言）；`pnpm ui-smoke` **411 PASS / 0 FAIL**（新增 M17 段 14 条、改 4 处 8→9 类节点断言）；`pnpm bench` 1000 节点解析链 **74.1 ms**（阈值 300）；`pnpm build` 成功。
+- **打包**：版本三处升 **0.17.0**；`tauri build --no-bundle` 重建 `caseboard.exe`（19,159,040 字节），`node scripts/run-selftest.cjs` 两轮 PASS（`phase1=PASS phase2=PASS`，含 OCR 内置引擎与零外呼两项）；NSIS 安装包归档到本地 `release\CaseBoard_0.17.0_x64-setup.exe`（**12,205,592 字节**，SHA-256 `8E9AB2D542BF65DE5358DE3E21AF74816B436D388E778873AEEB59C5679EF9C7`，未签名；`release/` 已不在版本控制内，文件只留在本机，记录见 `docs/RELEASES.md`）。
+- **文档**：`docs/MILESTONES.md` 写入 M17 三表与 D94–D97，`docs/MANUAL-ACCEPTANCE.md` 新增 Q 节，`AGENTS.md` 里程碑范围改「M1–M17 / D1–D97」。
+
 ## [未发布] v0.16.0 · M16 许可与示范案卷
 
 ### M16 整体验收通过（2026-10-20，tag ms/M16）

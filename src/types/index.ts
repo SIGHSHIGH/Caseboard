@@ -3,7 +3,7 @@
  * 允许新增字段，不得删除核心字段。
  */
 
-export type NodeType = 'person' | 'org' | 'place' | 'item' | 'event' | 'evidence' | 'time' | 'note';
+export type NodeType = 'person' | 'org' | 'place' | 'item' | 'event' | 'evidence' | 'time' | 'note' | 'relation';
 
 export type Status = 'todo' | 'checking' | 'confirmed' | 'ruledout';
 
@@ -77,6 +77,8 @@ export interface CaseEdge {
   color?: string;
   /** 视觉重量：金额 / 频次 */
   weight?: number;
+  /** 线宽像素（M17）：1–8，缺省时按 weight 推导 */
+  thickness?: number;
   time?: TimeRange;
   confidence: number;
   evidenceIds: string[];

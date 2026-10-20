@@ -12,7 +12,7 @@ const MODES: Array<{ id: 'dim' | 'show' | 'hide'; label: string; hint: string }>
   { id: 'hide', label: '隐藏命中', hint: '用排除法看图：把满足条件的先藏起来' },
 ];
 
-const NODE_TYPES: NodeType[] = ['person', 'org', 'place', 'item', 'event', 'evidence', 'time', 'note'];
+const NODE_TYPES: NodeType[] = ['person', 'org', 'place', 'item', 'event', 'evidence', 'time', 'note', 'relation'];
 const STATUSES: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
 
 /** 左栏「分析」页签：过滤条件 + 聚焦（M5-2）。命中数实时来自 src/lib/filter.ts */

@@ -55,6 +55,7 @@
 | M14 | 画布底衬与顶栏折叠 | 1 周 | 右栏「发生时刻/地点」各占整行（M5）、顶栏按宽度自动收进「⋯」菜单（M8）、软木板/黑板底衬与背景图导入（`settings.canvas` + `setCanvasSkin`/`setCanvasImage`）、结构分析与若干自我优化 | M5/M8 通过；`smoke` 800 / `ui-smoke` 362 全绿；底衬三档可循环切换 | ✅ 2026-10-20 |
 | M15 | 顶栏重排与背景图修复 | 1 周 | 「⋯」菜单改 portal + fixed 真正能打开（N3/N4）、背景图改走原件地址（N7/N8/N12）、去掉背景点阵、撤销重做只留图标、顶栏实测宽度 + 自动检测遮挡、顶栏新增「背景图…」入口（N5） | `smoke` 806 / `ui-smoke` 374 全绿 | ✅ 2026-10-20 |
 | M16 | 许可与示范案卷 | 1 周 | 非商业许可（PolyForm Noncommercial 1.0.0 全文 + 中英双语许可章节）、自动布局带走吸附图片（产出位移表复用 `applyDockedMoves`）、AI 助手「操作方式」与「自动检验」（12 项只读结构体检，问题可跳转画布）、内置《ABC 谋杀案》示范案卷与顶栏「示例案卷」载入面板 | `smoke` 845 / `ui-smoke` 399 全绿、桌面自检两轮 PASS | ✅ 2026-10-20 |
+| M17 | 关系气泡与线宽 | 1 周 | 八锚点连线与障碍代价模型 `pickAnchorPair`、`applyLayout` 无条件覆盖 handle、线宽 `thickness` 全链路（右栏滑杆 + DSL 往返）、第 9 类节点「关系气泡」与右键新建菜单、平行关系线 `parallelSpreads` 错开、仓库卫生（release / 录屏不入库、发布记录迁 `docs/RELEASES.md`）、`CONTRIBUTING.md` / `SECURITY.md`、README 双语 + 4 张截图 | `smoke` 855 / `ui-smoke` 411 / `bench` 74.1 ms 全绿；桌面自检两轮 PASS；安装包归档本地 `release\` | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -1245,6 +1246,66 @@
 | tag 候选数按「每个 tag 都成对」估算 | 已有关系的实体对被跳过，实际 15 条 | 断言改成 15 并单列「被害者 6 对」 |
 
 
+### M17 · 关系气泡与线宽（1 周）
+
+**目标**：把「关系」做成可编辑的一等对象——锚点能自由流转且布局后自动重选、线宽可调、同一对实体间的多条关系线不再叠在一起；同时把仓库整理到可以公开托管的程度。
+
+**范围**
+
+1. 八锚点连线 + 布局后按相对位置与障碍自动重选（`pickAnchorPair`）。
+2. 关系线线宽 `thickness` 全链路（类型 / 迁移 / 命令 / DSL / 渲染 / 右栏）。
+3. 第 9 类节点「关系气泡」与右键新建菜单。
+4. 平行关系线错开（`parallelSpreads`）。
+5. 仓库卫生（`release/`、`*.mp4` 移出索引，发布记录迁 `docs/RELEASES.md`）、开源社区文件、README 截图与双语维护。
+
+**验收标准**
+
+1. 自动布局后每条边的 `sourceHandle` / `targetHandle` 按相对位置与障碍重算，连线不穿卡片、不从背面绕出。
+2. 同一对实体之间的多条关系线互相错开，不再重叠成一根。
+3. 线宽可从右栏调整、随项目保存、经 DSL 往返不丢。
+4. 右键空白与右键卡片都能新建关系气泡，卡片入口同时建立一条关系。
+5. 关系气泡外形为圆角胶囊，不渲染卡片栏、字段区与脚注。
+6. `pnpm smoke` / `pnpm ui-smoke` 全绿，且新增断言覆盖上述行为。
+7. `release/` 与 `*.mp4` 不在索引中；仓库内无本机绝对路径、无 token / 私钥、无真实口令。
+8. 版本三处 0.17.0，桌面自检两轮 PASS，安装包归档本地 `release\`。
+
+#### M17 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 |
+|---|---|---|
+| M17-1 线宽进模型 | `CaseEdge.thickness`（1–8）+ `normalizeEdge` 夹取一位小数；`AddEdgeInput` 支持写入 | smoke [78] 迁移 12→8 / 0.4→1 / 2.55→2.6 |
+| M17-2 线宽进 DSL | `dsl/parse.ts` 的 `case 'thickness'`、`dsl/serialize.ts` 输出、`DSL_EDGE_KEYS` 加键 | smoke [78] DSL 往返 `thickness: 3.5` |
+| M17-3 线宽渲染 | `strokeWidthOf(edge)`：有 `thickness` 用夹取值，否则回退 `weightToWidth(weight)` | ui-smoke 样式与渲染断言 |
+| M17-4 线宽 UI | 右栏 `EdgeForm` 的「线宽」滑杆（1–8、步进 0.5）+ `commitThickness()` | ui-smoke `RightPanel` 含「线宽」与 `commitThickness` |
+| M17-5 锚点代价模型 | `segmentHitsRect`（Liang–Barsky）+ `ANCHOR_BLOCK_PENALTY` / `ANCHOR_BACK_PENALTY` + `pickAnchorPair` | smoke [78] 障碍下换锚点、`cost < ANCHOR_BLOCK_PENALTY` |
+| M17-6 布局重选锚点 | `applyLayout` 每边带 obstacles 调 `pickAnchorPair`，**无条件覆盖** handle | smoke [78]、ui-smoke layoutCommands 断言 |
+| M17-7 平行线错开 | `PARALLEL_EDGE_GAP=34` + `parallelSpreads`，Board 以 `data.spread` 传给边 | smoke [78] 三线对 `[-34, 0, 34]` |
+| M17-8 关系气泡 | `NodeType` 加 `relation`、模板 / 元数据 / 过滤 / 报告 / 自然语言标签同步、`addNode` 支持自定义宽高 | smoke [78] 9 类节点、`w:168/h:64` |
+| M17-9 右键新建 | `onPaneContextMenu` / `onNodeContextMenu` + 容器兜底 `onContextMenu`；`.cb-ctxmenu` 菜单 | ui-smoke 右键后菜单出现、建气泡后菜单收起 |
+| M17-10 仓库与文档 | `.gitignore` 加 `release/`、`*.mp4`；`git rm -r --cached release`；`docs/RELEASES.md`；`CONTRIBUTING.md`；`SECURITY.md`；README 截图与双语 | `git grep` 无本机路径/密钥；README 截图可渲染 |
+
+#### M17 验收记录（2026-10-20，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| `pnpm typecheck` | ✅ 0 error |
+| `pnpm smoke` | ✅ 855 PASS / 0 FAIL（新增 [78] 段 20 条） |
+| `pnpm ui-smoke` | ✅ 411 PASS / 0 FAIL（新增 M17 段 14 条） |
+| `pnpm bench` | ✅ 1000 节点解析链 74.1 ms（阈值 300） |
+| `pnpm build` | ✅ 成功 |
+| 桌面自检 | ✅ phase1 PASS / phase2 PASS |
+| NSIS 安装包 | ✅ 归档本地 `release\CaseBoard_0.17.0_x64-setup.exe`（不入库） |
+| 隐私扫描 | ✅ 无本机绝对路径 / token / 私钥 / 真实口令 |
+
+#### M17 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 「关系节点」可能要新增一种边类型 | 边类型无法承载「汇多条线」的语义 | 做成第 9 类**节点**（D94） |
+| 锚点只按相对位置选 | 仍会穿卡片 | 加障碍代价（D95），布局后无条件覆盖 handle |
+| 线宽复用 `weight` | `weight` 参与布局与统计，改它会动语义 | 独立 `thickness` 字段（D96） |
+| 安装包继续进仓库 | 仓库被 9 个 exe 撑大 | 移出索引 + 发布记录迁 `docs/RELEASES.md`（D97） |
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -1436,6 +1497,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D91 | **自动布局复用 `applyDockedMoves`** | 布局只是一次批量位移，用户要的「图片跟着卡片走」与拖动、方向键是同一条规则。`applyLayout` 先算每条 placement 的 dx/dy 汇总成 deltas，交给命令层统一的随动逻辑，避免在布局命令里复制一份吸附代码。 |
 | D92 | **自动检验是只读纯函数** | `runSelfCheck(doc)` 只读文档并返回报告，不改 Model、不进撤销栈。体检是「看」不是「改」，写回会把用户的操作历史弄脏；需要修的地方由用户点回画布自己改。 |
 | D93 | **示范案卷走 `replaceDocument`** | 载入示例等价于「换成另一份文档」，因此复用打开文档的命令并前置二次确认；不把示例内容混进当前撤销链，避免「撤销到一半半新半旧」。 |
+| D94 | **关系气泡是第 9 类节点，不是新的边类型** | 用户要的是「可以建立多个节点的关系线」，语义落在「一个可以连很多条线的对象」上；边类型无法承载「汇合点」本身还有标题、状态、字段。做成 `NodeType='relation'` 后，右键即可新建、可选中、可写字段、可再连线，并且天然复用既有的节点命令、过滤、报告与撤销栈。 |
+| D95 | **锚点用「长度 + 背面 + 穿越障碍」代价模型，布局后无条件覆盖** | 只按相对位置选锚点仍会从卡片中间穿过。`pickAnchorPair` 在 8×8 组合里加权求和：线段长度 + 从背面出/进线惩罚 + 穿过其它节点矩形惩罚（`ANCHOR_BLOCK_PENALTY`），并给几何最优对一点偏好。布局命令里**不判断**已有 handle 是否为空——用户明确要求「自动布局自动更改使用哪个节点」，手调锚点会被下一次布局覆盖，这是可预期的行为。 |
+| D96 | **线宽独立成 `thickness` 字段** | `weight` 已参与层级、统计与筛选语义，直接改它会连带改变图语义与报表数字。新增 `thickness`（1–8，缺省按 `weight` 推导）专管视觉粗细，迁移、DSL、命令三处同步，避免「typecheck 过了但 DSL 往返丢字段」。 |
+| D97 | **安装包与录屏不入库，发布记录进 `docs/RELEASES.md`** | 9 个安装包 + 123 MB 宣传片会把仓库撑到几百 MB 且永久留在历史里。`release/` 与 `*.mp4` 写进 `.gitignore` 并 `git rm --cached`，仓库只留源码与文档；版本、字节数、SHA-256、重建与签名命令全部记在 `docs/RELEASES.md`，发行物走 GitHub Releases。 |
 
 ---
 
@@ -1469,3 +1534,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | **M14 整体验收通过**（✅ 打 tag `ms/M14`）：按用户 M1–M8 回执与新需求落地——右栏「发生时刻」「地点」各占整行（`field.wide \|\| field.kind === 'datetime'`，M5）；顶栏改为按真实宽度折叠，放不下的按钮收进「⋯」菜单且宽度未知时不折叠（`src/lib/topbarOverflow.ts`，M8/D83）；新增**画布底衬**（纸张 / 软木板 / 黑板，`src/lib/canvasSkin.ts` + `canvasGrid`）与**背景图**（导入后 `object-fit: cover` 铺底、不透明度 10–100%、可清除），存储进 `settings.canvas` 并随项目保存（`normalizeCanvas` 容错，D82/D84），顶栏「背景·XX」一键循环切换，右栏「案件概览」新增 `CanvasBackdropForm` 块；结构分析做了三处自我优化——合并完全重复的 `.cb-group__header` CSS、把画布块从 1400 多行的 `RightPanel.tsx` 抽成独立组件、删掉顶栏重复的隐藏文件选择框（D85）。机器验收：`typecheck` 0 error、`smoke` **800**（新增 [73] 段 22 条）、`ui-smoke` **362**（新增 M14 段 20 条）、`bench` 1000 节点解析链 **80.9 ms**、`pnpm build` 成功；版本三处升 **0.14.0**；§3 写入 M14 拆步/验收/偏离三表、§6 新增 D82–D85、`docs/MANUAL-ACCEPTANCE.md` 新增 N 节。 |
 | 2026-10-20 | M15 整体验收通过（v0.15.0）：`smoke` 806 / `ui-smoke` 374 / `bench` 76.6 ms 全绿；桌面自检两轮 PASS；安装包 `release\CaseBoard_0.15.0_x64-setup.exe`（12,197,737 字节，SHA-256 `F4E710FF8CDC4884B26EEF590A777BE93313D1A06B25E425FD5BBAF0712A9BB5`）；tag `ms/M15` |
 | 2026-10-20 | **M16 整体验收通过**（✅ 打 tag `ms/M16`）：非商业许可（PolyForm Noncommercial 1.0.0）+ 中英双语许可章节；自动布局带走吸附图片（产出位移表复用 `applyDockedMoves`，一次撤销整体还原）；AI 助手新增「操作方式」与「自动检验」（12 项只读结构体检，问题可跳回画布）；内置《ABC 谋杀案》示范案卷 + 顶栏「示例案卷」载入面板；`smoke` 845 / `ui-smoke` 399 / `bench` 102.1 ms |
+| 2026-10-20 | **M17 整体验收通过**（✅ 打 tag `ms/M17`）：关系线可在八个锚点自由流转且布局后自动重选——`pickAnchorPair` 用「线段长度 + 背面出入线 + 穿越障碍」代价模型选点，`applyLayout` 无条件覆盖 handle（D95）；`thickness` 线宽独立于 `weight` 全链路贯通，右栏滑杆 0.5 步进（D96）；新增第 9 类节点「关系气泡」（圆角胶囊、隐藏卡片栏与字段区、168×64），右键空白与右键卡片都能新建、卡片入口一条命令同时建关系（D94）；同一对实体的平行关系线按 `parallelSpreads` 错开 34px；仓库卫生——`release/` 与 `*.mp4` 移出索引、发布记录迁 `docs/RELEASES.md`、新增 `CONTRIBUTING.md` / `SECURITY.md`、隐私扫描无本机路径与密钥（D97）；README 重写为中英双语 + 4 张真实截图（`docs/screenshots/`）。机器验收：`typecheck` 0 error、`smoke` **855**（新增 [78] 段 20 条）、`ui-smoke` **411**（新增 M17 段 14 条）、`bench` **74.1 ms**、`pnpm build` 成功、桌面自检两轮 PASS；版本三处升 **0.17.0**；§3 写入 M17 拆步/验收/偏离三表，§6 新增 D94–D97，`docs/MANUAL-ACCEPTANCE.md` 新增 Q 节。 |

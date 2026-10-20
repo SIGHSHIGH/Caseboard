@@ -142,7 +142,7 @@ check('缺字段 JSON 会被拒绝', (() => {
 })());
 
 console.log('[8] M2-1 节点模板');
-check('8 类节点模板齐全', NODE_TYPE_ORDER.length === 8 && NODE_TYPE_ORDER.every((t) => !!NODE_TEMPLATES[t]), NODE_TYPE_ORDER);
+check('9 类节点模板齐全（M17 加关系气泡）', NODE_TYPE_ORDER.length === 9 && NODE_TYPE_ORDER.every((t) => !!NODE_TEMPLATES[t]), NODE_TYPE_ORDER);
 check('每类模板至少 3 个字段', NODE_TYPE_ORDER.every((t) => NODE_TEMPLATES[t].fields.length >= 3), NODE_TYPE_ORDER.map((t) => NODE_TEMPLATES[t].fields.length));
 check('证据模板含「证据种类」下拉', (NODE_TEMPLATES.evidence.fields.find((f) => f.key === '证据种类') || {}).kind === 'select');
 check('人物模板含前科长文本', (NODE_TEMPLATES.person.fields.find((f) => f.key === '前科记录') || {}).kind === 'textarea');
@@ -1078,8 +1078,8 @@ check(
 );
 check('合并是纯函数（不修改入参 base）', JSON.stringify(baseParsed) === baseParsedSnapshot);
 check(
-  '字段白名单覆盖 8 类节点与关系字段',
-  DSL_NODE_KEYS.includes('photo') && DSL_NODE_KEYS.includes('fields') && DSL_EDGE_KEYS.includes('scenario') && DSL_EDGE_KEYS.includes('evidenceIds'),
+  '字段白名单覆盖 9 类节点与关系字段',
+  DSL_NODE_KEYS.includes('photo') && DSL_NODE_KEYS.includes('fields') && DSL_EDGE_KEYS.includes('scenario') && DSL_EDGE_KEYS.includes('evidenceIds') && DSL_EDGE_KEYS.includes('thickness'),
 );
 
 // 命令层：一批改动 = 一条 Command = 一次撤销
@@ -3822,6 +3822,124 @@ async function main() {
     state().dispatch(imageCmds.attachImageNode('img-layout', null));
     state().dispatch(require(path.join(out, 'commands', 'imageNodeCommands.js')).deleteImageNode('img-layout'));
   }
+
+// [78] M17：线宽、锚点避障、关系气泡节点
+const {
+  pickAnchorPair,
+  pickAnchorPairWithCost,
+  segmentHitsRect,
+  ANCHOR_BLOCK_PENALTY,
+} = require(path.join(out, 'lib', 'edgeCurve.js'));
+const { addEdge: addEdgeCmd } = require(path.join(out, 'commands', 'edgeCommands.js'));
+const { addNode: addNodeCmd } = require(path.join(out, 'commands', 'nodeCommands.js'));
+const { NODE_TYPE_META } = require(path.join(out, 'lib', 'theme.js'));
+
+const lineBox = (x, y) => ({ x, y, w: 100, h: 60 });
+check(
+  '线段穿矩形判定（横穿 / 掠过 / 完全在外）',
+  segmentHitsRect({ x: -20, y: 30 }, { x: 120, y: 30 }, lineBox(0, 0)) &&
+    !segmentHitsRect({ x: -20, y: 200 }, { x: 120, y: 200 }, lineBox(0, 0)) &&
+    segmentHitsRect({ x: 50, y: -20 }, { x: 50, y: 80 }, lineBox(0, 0)),
+);
+check(
+  '取点：没有障碍时贴近几何最优解',
+  (() => {
+    const pair = pickAnchorPair(lineBox(0, 0), lineBox(400, 0));
+    return pair.source === 'right' && pair.target === 'left';
+  })(),
+);
+check(
+  '取点：中间挡一张卡片时换成不穿卡的锚点',
+  (() => {
+    const { anchorPoint } = require(path.join(out, 'lib', 'edgeCurve.js'));
+    // 障碍只占中间那一条带（外扩 10px 后仍不及卡片上下边缘），
+    // 所以「right→left」会被挡，「top→top」之类的贴边路线不会
+    const blocker = { x: 200, y: 12, w: 100, h: 36 };
+    const source = lineBox(0, 0);
+    const target = lineBox(400, 0);
+    const pair = pickAnchorPair(source, target, [blocker]);
+    const from = anchorPoint(source, pair.source);
+    const to = anchorPoint(target, pair.target);
+    return !segmentHitsRect(from, to, blocker, 10);
+  })(),
+);
+check(
+  '取点代价：绕开障碍的代价低于硬穿',
+  (() => {
+    const blocker = { x: 200, y: 12, w: 100, h: 36 };
+    const avoided = pickAnchorPairWithCost(lineBox(0, 0), lineBox(400, 0), [blocker]);
+    return avoided.cost < ANCHOR_BLOCK_PENALTY;
+  })(),
+);
+check(
+  '线宽独立于 weight：迁移夹到 1–8 并保留一位小数',
+  (() => {
+    const raw = JSON.parse(JSON.stringify(doc()));
+    raw.edges[0].thickness = 12;
+    raw.edges[1].thickness = 0.4;
+    raw.edges[2].thickness = 2.55;
+    const parsed = normalizeDoc(raw);
+    return (
+      parsed.edges[0].thickness === 8 &&
+      parsed.edges[1].thickness === 1 &&
+      parsed.edges[2].thickness === 2.6 &&
+      parsed.edges[3].thickness === undefined
+    );
+  })(),
+);
+check(
+  '线宽进 DSL：序列化有 thickness、再解析回来一致',
+  (() => {
+    const base = clone(doc());
+    base.edges[0].thickness = 3.5;
+    const text = serializeDoc(base);
+    const back = parseDsl(text);
+    return text.includes('thickness: 3.5') && back.doc.edges.find((e) => e.id === base.edges[0].id)?.thickness === 3.5;
+  })(),
+);
+check(
+  '新增关系可以带线宽',
+  (() => {
+    const before = doc().edges.length;
+    state().dispatch(addEdgeCmd({ source: doc().nodes[0].id, target: doc().nodes[1].id, thickness: 5 }));
+    const created = doc().edges[doc().edges.length - 1];
+    state().undo();
+    return doc().edges.length === before && created.thickness === 5;
+  })(),
+);
+check(
+  '关系气泡是可建的第 9 类节点',
+  NODE_TYPE_ORDER.includes('relation') &&
+    NODE_TEMPLATES.relation.fields.length >= 3 &&
+    NODE_TYPE_META.relation.label === '关系',
+  NODE_TEMPLATES.relation.fields.map((f) => f.key),
+);
+check(
+  '关系气泡可以指定小尺寸，不合其他卡片的默认宽高',
+  (() => {
+    state().dispatch(addNodeCmd({ id: 'bubble-1', type: 'relation', title: '关系气泡', x: 40, y: 40, w: 168, h: 64 }));
+    const bubble = doc().nodes.find((n) => n.id === 'bubble-1');
+    state().undo();
+    return bubble?.w === 168 && bubble?.h === 64 && bubble?.type === 'relation';
+  })(),
+);
+check(
+  '同一对实体之间的平行关系线互相错开（M17）',
+  (() => {
+    const { parallelSpreads, PARALLEL_EDGE_GAP } = require(path.join(out, 'lib', 'edgeCurve.js'));
+    const spreads = parallelSpreads([
+      { id: 'e1', source: 'a', target: 'b' },
+      { id: 'e2', source: 'b', target: 'a' },
+      { id: 'e3', source: 'a', target: 'b' },
+      { id: 'e4', source: 'b', target: 'c' },
+    ]);
+    const pair = [spreads.get('e1'), spreads.get('e2'), spreads.get('e3')];
+    return (
+      spreads.get('e4') === 0 &&
+      pair.join(',') === [-PARALLEL_EDGE_GAP, 0, PARALLEL_EDGE_GAP].join(',')
+    );
+  })(),
+);
 
   console.log('');
   if (failures > 0) {

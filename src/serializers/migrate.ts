@@ -195,6 +195,9 @@ function normalizeEdge(raw: unknown, index: number): CaseEdge | null {
   if (color.length > 0) edge.color = color;
   const weight = num(raw.weight, Number.NaN);
   if (Number.isFinite(weight)) edge.weight = weight;
+  // M17：线宽独立于 weight（weight 是金额/频次这类视觉重量，线宽是纯排版参数）
+  const thickness = num(raw.thickness, Number.NaN);
+  if (Number.isFinite(thickness)) edge.thickness = Math.min(8, Math.max(1, Math.round(thickness * 10) / 10));
   const time = timeOf(raw.time);
   if (time) edge.time = time;
   const notes = str(raw.notes);

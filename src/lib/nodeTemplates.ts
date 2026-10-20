@@ -138,6 +138,21 @@ export const NODE_TEMPLATES: Record<NodeType, NodeTemplate> = {
       { key: '来源', label: '来源', kind: 'text', placeholder: '如 走访、举报、内部研判' },
     ],
   },
+  relation: {
+    type: 'relation',
+    label: '关系气泡',
+    hint: '把多条关系线汇到一个圆角气泡上，用它表达「一对多」「多方共同」的复合关系',
+    fields: [
+      {
+        key: '关系类型',
+        label: '关系类型',
+        kind: 'select',
+        options: ['共同资金', '共同通信', '共同场所', '共同行为', '其它'],
+      },
+      { key: '强度', label: '强度', kind: 'select', options: ['弱', '中', '强'] },
+      { key: '说明', label: '说明', kind: 'textarea', wide: true, placeholder: '这个气泡代表哪一重关系，涉及哪些实体' },
+    ],
+  },
 };
 
 export const NODE_TYPE_ORDER: NodeType[] = [
@@ -149,6 +164,7 @@ export const NODE_TYPE_ORDER: NodeType[] = [
   'evidence',
   'time',
   'note',
+  'relation',
 ];
 
 export function templateOf(type: NodeType): NodeTemplate {

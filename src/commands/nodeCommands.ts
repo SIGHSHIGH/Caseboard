@@ -40,6 +40,9 @@ export interface AddNodeInput {
   notes?: string;
   fields?: Record<string, string | number | boolean>;
   time?: { start: string; end?: string };
+  /** M17：关系气泡这类小尺寸节点需要自定义宽高 */
+  w?: number;
+  h?: number;
   id?: string;
 }
 
@@ -57,8 +60,8 @@ export function addNode(input: AddNodeInput): Command {
         title: input.title ?? `新${meta.label}`,
         x: input.x,
         y: input.y,
-        w: DEFAULT_W,
-        h: 96,
+        w: input.w ?? DEFAULT_W,
+        h: input.h ?? 96,
         fields: input.fields ?? {},
         tags: input.tags ?? [],
         status: input.status ?? 'todo',
