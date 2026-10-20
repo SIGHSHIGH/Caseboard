@@ -50,6 +50,20 @@ powershell -ExecutionPolicy Bypass -File scripts/sign-installer.ps1 -Installer r
 
 `-SelfSignedTest` 只用于演练签名流程（自签证书不能消除 SmartScreen 提示）。
 
+## 发布到 GitHub
+
+仓库 `https://github.com/SIGHSHIGH/Caseboard.git`。本机直连 github.com:443 会被重置，必须走系统里那个本地代理
+（IE 设置里 `127.0.0.1:10808`，SOCKS5）。已写进 `.git/config`：
+
+```powershell
+git config --local http.proxy socks5h://127.0.0.1:10808
+git push origin main
+git push origin ms/M18 ms/M18.1 v1.0.0-beta.1
+```
+
+标签约定：每个里程碑 `ms/M<n>`；跨里程碑的正式版本另打语义化 tag（`v1.0.0-beta.1`）。
+发布用 GitHub 网页建 Release 并上传 `release\` 里的 `.exe`（本机没有 `gh` CLI）。
+
 ## 数据位置
 
 安装后用户数据在 `%APPDATA%\app.caseboard.desktop`（普通 `caseboard.db` + `assets\`）。
