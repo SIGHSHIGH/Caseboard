@@ -3554,6 +3554,115 @@ async function main() {
       check('空白地点不产生目标', place.planPlaceRelink(doc(), evNode, '   ').addTarget === null);
     }
 
+    console.log('[73] 画布底衬 / 背景图 / 顶栏溢出菜单（M14）');
+    {
+      const skin = require(path.join(out, 'lib', 'canvasSkin.js'));
+      const overflow = require(path.join(out, 'lib', 'topbarOverflow.js'));
+
+      check('三种底衬固定为 纸张 / 软木板 / 黑板', skin.CANVAS_SKINS.join(',') === 'paper,cork,chalk', skin.CANVAS_SKINS.join(','));
+      check(
+        '底衬元数据都有中文名与提示',
+        skin.CANVAS_SKINS.every((id) => Boolean(skin.CANVAS_SKIN_META[id].label) && Boolean(skin.CANVAS_SKIN_META[id].hint)),
+        skin.CANVAS_SKIN_META.cork.label,
+      );
+      check('默认底衬是纸张', skin.DEFAULT_CANVAS.skin === 'paper');
+      check('底衬白名单拒绝乱写', skin.isCanvasSkin('cork') && !skin.isCanvasSkin('marble') && skin.normalizeCanvasSkin('marble') === 'paper');
+      check(
+        '底衬按 纸张→软木板→黑板→纸张 循环',
+        skin.nextCanvasSkin('paper') === 'cork' && skin.nextCanvasSkin('cork') === 'chalk' && skin.nextCanvasSkin('chalk') === 'paper',
+      );
+      check(
+        '背景不透明度夹在 0.1~1',
+        skin.clampCanvasOpacity(0) === 0.1 && skin.clampCanvasOpacity(9) === 1 && skin.clampCanvasOpacity(0.42) === 0.42,
+        String(skin.clampCanvasOpacity(0)) + '/' + String(skin.clampCanvasOpacity(9)),
+      );
+      const withImage = skin.withCanvasImage(undefined, 'a-bg');
+      check(
+        '挂背景图时补上默认不透明度',
+        withImage.assetId === 'a-bg' && withImage.opacity === 0.35 && withImage.skin === 'paper',
+        JSON.stringify(withImage),
+      );
+      const keptSkin = skin.withCanvasSkin(withImage, 'cork');
+      check('换底衬保留已导入的背景图', keptSkin.skin === 'cork' && keptSkin.assetId === 'a-bg' && keptSkin.opacity === 0.35);
+      const clearedCanvas = skin.withCanvasImage(keptSkin, null);
+      check(
+        '摘掉背景图时连不透明度一起清掉、底衬保留',
+        clearedCanvas.assetId === undefined && clearedCanvas.opacity === undefined && clearedCanvas.skin === 'cork',
+        JSON.stringify(clearedCanvas),
+      );
+      check('顶栏背景按钮文案带「+图」', skin.canvasLabel(keptSkin) === '软木板+图', skin.canvasLabel(keptSkin));
+      check(
+        '纸张网格跟随主题、软木板与黑板自带配色',
+        skin.canvasGrid('paper', 'dark').dot === skin.THEME_GRID.dark.dot && skin.canvasGrid('cork', 'dark').dot === skin.SKIN_GRID.cork.dot,
+      );
+
+      check('按钮宽度按中英文估算', overflow.estimateLabelWidth('假设') === 52, String(overflow.estimateLabelWidth('假设')));
+      const items = [
+        { key: 'a', width: 100, priority: 0 },
+        { key: 'b', width: 100, priority: 1 },
+        { key: 'c', width: 100, priority: 2 },
+        { key: 'd', width: 100, priority: 3 },
+      ];
+      const wide = overflow.planTopbarOverflow(items, 9999);
+      check('窗口够宽时全部留在顶栏', wide.inline.length === 4 && wide.overflow.length === 0);
+      const narrow = overflow.planTopbarOverflow(items, 250);
+      check('窗口变窄时把放不下的收进「⋯」', narrow.overflow.length === 3, narrow.overflow.join(','));
+      check('顶栏留下的是最高优先级', narrow.inline.join(',') === 'a', narrow.inline.join(','));
+      check('收起的按钮保持原有顺序', narrow.overflow.join(',') === 'b,c,d', narrow.overflow.join(','));
+      const greedy = overflow.planTopbarOverflow(
+        [
+          { key: 'low', width: 90, priority: 9 },
+          { key: 'high', width: 90, priority: 0 },
+        ],
+        150,
+      );
+      check(
+        '优先级决定谁进菜单而不是位置',
+        greedy.inline.join(',') === 'high' && greedy.overflow.join(',') === 'low',
+        greedy.inline.join(',') + '|' + greedy.overflow.join(','),
+      );
+
+      const source = JSON.parse(JSON.stringify(doc()));
+      const assetId = source.assets.length > 0 ? source.assets[0].id : 'a-none';
+      source.settings = { ...(source.settings || {}), canvas: { skin: 'chalk', assetId, opacity: 0.2 } };
+      const normalized = normalizeDoc(source);
+      check(
+        '迁移保留画布底衬与背景图',
+        Boolean(normalized.settings.canvas) &&
+          normalized.settings.canvas.skin === 'chalk' &&
+          normalized.settings.canvas.assetId === assetId &&
+          normalized.settings.canvas.opacity === 0.2,
+        JSON.stringify(normalized.settings.canvas),
+      );
+      const badSkin = JSON.parse(JSON.stringify(source));
+      badSkin.settings.canvas = { skin: 'marble', assetId, opacity: 9 };
+      const normalizedBad = normalizeDoc(badSkin);
+      check(
+        '未知底衬回落到纸张、不透明度被夹住',
+        Boolean(normalizedBad.settings.canvas) && normalizedBad.settings.canvas.skin === 'paper' && normalizedBad.settings.canvas.opacity === 1,
+        JSON.stringify(normalizedBad.settings.canvas),
+      );
+      const danglingCanvas = JSON.parse(JSON.stringify(source));
+      danglingCanvas.settings.canvas = { skin: 'cork', assetId: 'a-missing' };
+      const normalizedDangling = normalizeDoc(danglingCanvas);
+      check(
+        '背景图素材不存在时只摘掉图、底衬保留',
+        Boolean(normalizedDangling.settings.canvas) &&
+          normalizedDangling.settings.canvas.assetId === undefined &&
+          normalizedDangling.settings.canvas.skin === 'cork',
+        JSON.stringify(normalizedDangling.settings.canvas),
+      );
+      const emptyPaper = JSON.parse(JSON.stringify(source));
+      emptyPaper.settings.canvas = { skin: 'paper', assetId: 'a-missing' };
+      check('纸张底衬又没有图时整块丢弃', normalizeDoc(emptyPaper).settings.canvas === undefined);
+
+      const eventFields = NODE_TEMPLATES.event.fields;
+      const moment = eventFields.find((field) => field.key === '发生时刻');
+      const placeField = eventFields.find((field) => field.key === '地点');
+      check('事件「发生时刻」用日期时间控件', Boolean(moment) && moment.kind === 'datetime', moment && moment.kind);
+      check('事件「地点」整行显示（M14 / M5）', Boolean(placeField) && placeField.wide === true, placeField && String(placeField.wide));
+    }
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

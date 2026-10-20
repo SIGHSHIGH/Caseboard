@@ -52,7 +52,7 @@ import {
   snapImageRect,
   type AlignGuide,
 } from '../../lib/imageNode';
-import { BOARD_GRID } from '../../lib/themeMode';
+import { canvasGrid, DEFAULT_CANVAS, normalizeCanvasSkin } from '../../lib/canvasSkin';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodeStore } from '../../store/codeStore';
@@ -61,6 +61,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
 import { useViewStore } from '../../store/viewStore';
 import type { CaseNode, Group, ImageNode, XY } from '../../types';
+import { useAssetThumb } from '../hooks/useAssetThumb';
 import { ConnectDialog } from '../panels/ConnectDialog';
 import { BaseNode, type BaseFlowNode } from './BaseNode';
 import { BezierEdge, type CaseFlowEdge } from './BezierEdge';
@@ -162,7 +163,13 @@ export function Board() {
   // M11（J6）：卡片拖动时吸附在它上面的图片实时跟随（松手再落库，拖动过程中不再「等一等」
   const [dockPreview, setDockPreview] = useState<Record<string, { x: number; y: number }>>({});
   const themeMode = useThemeStore((s) => s.mode);
-  const grid = BOARD_GRID[themeMode] ?? BOARD_GRID.board;
+  // M14：画布底衬可切纸张 / 软木板 / 黑板，纸张跟随界面主题
+  const canvasConfig = doc.settings.canvas ?? DEFAULT_CANVAS;
+  const canvasSkin = normalizeCanvasSkin(canvasConfig.skin);
+  const grid = canvasGrid(canvasSkin, themeMode);
+  const canvasBg = canvasConfig.assetId ? doc.assets.find((item) => item.id === canvasConfig.assetId) : undefined;
+  // 背景图走缩略图管线（objectURL 由 hook 管生命周期），找不到原件时自然为 null
+  const canvasBgUrl = useAssetThumb(canvasBg?.id, 1600);
 
   const filter = useViewStore((s) => s.filter);
   const focus = useViewStore((s) => s.focus);
@@ -798,12 +805,22 @@ export function Board() {
 
   return (
     <div
-      className="cb-canvas"
+      className={'cb-canvas cb-canvas--' + canvasSkin}
       ref={wrapperRef}
       onDrop={onDrop}
       onDragOver={onDragOver}
       onDoubleClick={onCanvasDoubleClick}
     >
+      {canvasBgUrl ? (
+        <img
+          className="cb-canvas__bg"
+          src={canvasBgUrl}
+          alt=""
+          aria-hidden="true"
+          style={{ opacity: canvasConfig.opacity ?? 0.35 }}
+          draggable={false}
+        />
+      ) : null}
       <ReactFlow<BoardFlowNode, CaseFlowEdge>
         nodes={nodes}
         edges={edges}

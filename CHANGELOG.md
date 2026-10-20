@@ -2,6 +2,23 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.14.0 · M14 画布底衬与顶栏折叠
+
+### M14 整体验收通过（2026-10-20，tag ms/M14）
+
+- **右栏「发生时刻 / 地点」各占一行（M5）**：`TemplateField` 里 `field.wide || field.kind === 'datetime'` 一律用整行样式——日期时间控件以前塞在半列里，浏览器默认外观被压得放不下；event 模板的「地点」也标 `wide: true`，两行等长，不再一长一短。
+- **顶栏按钮不再重叠（M8）**：窗口变窄时以前靠 `overflow: hidden` 硬裁，右边的按钮互相盖住。新增纯函数 `src/lib/topbarOverflow.ts`（`estimateLabelWidth` 估算中文/西文宽度、`planTopbarOverflow` 按优先级贪心保留，装不下的收进菜单），顶栏用 `ResizeObserver` 量真实可用宽度，放不下的按钮收进 `⋯`：点开是一列菜单项，点外部或 Esc 关闭。**宽度还没量到时（`ioWidth <= 0`）不折叠**——否则 jsdom 里 `clientWidth` 恒为 0 会把所有按钮塞进菜单。搜索/打开/保存/导出/代码视图优先级最高，历史/安全/导入最低。
+- **软木板 / 黑板底衬与背景图（新需求）**：
+  - 新增 `src/lib/canvasSkin.ts`：`paper`（纸张，跟随深浅色主题）/ `cork`（软木板，木屑点 + 木纹）/ `chalk`（黑板，椭圆高光 + 斜纹）三档，`SKIN_GRID` 自带网点与叠色，`canvasGrid(skin, theme)` 决定 React Flow 的网格颜色。
+  - 底衬与背景图存进 `settings.canvas`（`CanvasConfig{skin, assetId?, opacity?}`），迁移 `normalizeCanvas` 做皮肤白名单、素材 id 存在性校验（素材没了只摘图、保留底衬；纸张且无图时整块丢弃）、不透明度夹到 0.1–1。
+  - 两条命令：`setCanvasSkin(skin)` 与 `setCanvasImage(assetId | null, opacity?)`；顶栏新增「背景·纸张 / 背景·软木板 / 背景·黑板（+图）」按钮循环切换。
+  - 背景图导入复用素材库同一条链路：`fileService.pickFiles` → `imageService.prepare/save` → `importAssets` → `setCanvasImage`，抽出 `src/components/hooks/useCanvasImage.ts` 供顶栏与右栏共用。图片以 `object-fit: cover`、`pointer-events: none` 铺在 React Flow 之下。
+  - 右栏「案件概览」新增「画布底衬与背景图」块（`src/components/panels/CanvasBackdropForm.tsx`）：底衬下拉、导入 / 清除背景图、不透明度 10–100%。
+- **结构分析与自我优化（用户要求）**：盘点发现 `src/index.css` 5183 行、16 组重复选择器（多数是后续里程碑的有意覆盖，如 `.cb-btn` / `.cb-tab` / `.cb-input` / `.cb-timeline__lanes`），只合并了**完全重复**的 `.cb-group__header` 一对；把右栏画布块从 1400 多行的 `RightPanel.tsx` 抽成独立组件 `CanvasBackdropForm.tsx`（RightPanel 不再直接依赖 canvasSkin 库、导入钩子与两条画布命令）；顶栏重写时顺手删掉重复的隐藏文件选择框。最大源文件仍是 `RightPanel.tsx`（≈1355 行）、`src/dsl/parse.ts`（903 行），后续可继续按面板拆分。
+- **验收**：`pnpm typecheck` 0 error；`pnpm smoke` **800**（新增 [73] 段 22 条：底衬三档与循环切换、不透明度夹取、`withCanvasImage`/`withCanvasSkin`、`canvasLabel`、`canvasGrid`、`estimateLabelWidth('假设')===52`、窄窗收起顺序与优先级、迁移四种画布场景、「发生时刻」`datetime` + 「地点」整行）、`pnpm ui-smoke` **362**（新增 M14 段 20 条，实测点「背景」按钮三类底衬依次切换）、`pnpm bench` 1000 节点解析链 **80.9 ms**（阈值 300）、`pnpm build` 成功（`index-BiPoxijM.js` 973.64 kB / gzip 332.01、CSS 101.57 kB）。
+- **打包**：版本三处升 **0.14.0**（`package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`）；`tauri build --no-bundle` 3m03s → `caseboard.exe` **19,148,288 字节**，桌面自检两轮 **PASS**（第 2 轮 18 项，含「OCR 字段抽取 — 内置 Tesseract（WASM）」「零外呼」）；`--bundles nsis` 2m47s → `CaseBoard_0.14.0_x64-setup.exe`（11.63 MiB），归档到 `release\CaseBoard_0.14.0_x64-setup.exe`，**12,195,548 字节**，SHA-256 `63C946010C092490CD6CAC5E18D6C5EECCCD9F964C90151A7FC7F3E56275869F`，未签名。
+- **文档**：`docs/MILESTONES.md` §1 M14 置 ✅、§3 写入 M14 拆步/验收/偏离三表、§6 新增 D82–D85、§7 追加验收行；`docs/MANUAL-ACCEPTANCE.md` 新增 N 节；`AGENTS.md` / `README.md` 里程碑范围改 M1–M14 与 D1–D85。
+
 ## [未发布] v0.13.0 · M13 复验收尾（L 反馈）
 
 ### M13 整体验收通过（2026-10-20，tag ms/M13）

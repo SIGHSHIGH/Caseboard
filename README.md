@@ -23,7 +23,7 @@ Windows 优先、本地优先、离线可用；图形视图与代码视图是**�
 | 文档 | 作用 |
 |---|---|
 | [docs/CaseBoard-SPEC.md](docs/CaseBoard-SPEC.md) | 产品构思与 AI 提示词库（规格原文） |
-| [docs/MILESTONES.md](docs/MILESTONES.md) | **里程碑契约**：M1–M13 范围、验收记录、环境实测、决策记录 D1–D81 |
+| [docs/MILESTONES.md](docs/MILESTONES.md) | **里程碑契约**：M1–M14 范围、验收记录、环境实测、决策记录 D1–D85 |
 | [docs/MANUAL-ACCEPTANCE.md](docs/MANUAL-ACCEPTANCE.md) | 必须人工复验的清单（真机手感、安装、打印） |
 | [AGENTS.md](AGENTS.md) | 工程约定：技术栈锁定、硬约束 Gate 0、命令、目录与代码风格 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本与里程碑变更 |

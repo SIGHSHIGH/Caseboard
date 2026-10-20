@@ -41,6 +41,7 @@ import { TagEditor } from './TagEditor';
 import { maskAccount, parseOcrText } from '../../lib/ocr';
 import { ocrEngineStatus, recognizeAssetText, warmOcrEngine, type OcrEngineStatus } from '../../services/ocr';
 import type { Asset, CaseEdge, CaseNode, Group, ImageNode, LineStyle, NodeType, Status } from '../../types';
+import { CanvasBackdropForm } from './CanvasBackdropForm';
 
 const BORDER_LABELS: Array<{ value: NonNullable<ImageNode['borderStyle']>; label: string }> = [
   { value: 'photo', label: '照片白边' },
@@ -75,7 +76,8 @@ function TemplateField({
   useEffect(() => setDraft(value), [value, field.key]);
 
   const commit = () => onCommit(field.key, draft);
-  const className = field.wide ? 'cb-field cb-field--wide' : 'cb-field';
+  // M14（M5）：日期时间控件一律整行，避免与右侧字段挤成半列
+  const className = field.wide || field.kind === 'datetime' ? 'cb-field cb-field--wide' : 'cb-field';
 
   if (field.kind === 'select') {
     const options = field.options ?? [];
@@ -1401,6 +1403,7 @@ export function RightPanel() {
               <dd>{new Date(doc.meta.updatedAt).toLocaleString('zh-CN')}</dd>
             </div>
           </dl>
+          <CanvasBackdropForm />
           <p className="cb-panel__hint">
             选中画布上的节点或关系后，在此编辑属性。所有修改都会进入撤销栈并可自动保存。
           </p>

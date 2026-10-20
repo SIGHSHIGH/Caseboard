@@ -1,4 +1,11 @@
-import type { CaseDoc, Settings } from '../types';
+import type { CanvasSkin, CaseDoc, Settings } from '../types';
+import {
+  CANVAS_SKIN_META,
+  clampCanvasOpacity,
+  normalizeCanvasSkin,
+  withCanvasImage,
+  withCanvasSkin,
+} from '../lib/canvasSkin';
 import type { Command } from './types';
 
 /** 导入 JSON 也是 Command：可撤销，且不会绕开单一数据源。 */
@@ -43,6 +50,29 @@ export function setMapBackground(next: Settings['mapBackground'] | null): Comman
       if (next) settings.mapBackground = next;
       else delete settings.mapBackground;
       draft.settings = settings;
+    },
+  };
+}
+
+/** 只换画布底衬：单独一条命令，撤销文案更准确（M14） */
+export function setCanvasSkin(skin: CanvasSkin): Command {
+  return {
+    label: `画布底衬改为${CANVAS_SKIN_META[normalizeCanvasSkin(skin)].label}`,
+    apply(draft) {
+      draft.settings = { ...draft.settings, canvas: withCanvasSkin(draft.settings.canvas, skin) };
+    },
+  };
+}
+
+/** 挂 / 摘画布背景图（M14）：assetId 为 null 时只摘图，保留底衬 */
+export function setCanvasImage(assetId: string | null, opacity?: number): Command {
+  return {
+    label: assetId ? '设置画布背景图' : '移除画布背景图',
+    apply(draft) {
+      const current = draft.settings.canvas;
+      const next = withCanvasImage(current, assetId);
+      if (assetId && typeof opacity === 'number') next.opacity = clampCanvasOpacity(opacity);
+      draft.settings = { ...draft.settings, canvas: next };
     },
   };
 }

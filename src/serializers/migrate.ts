@@ -3,6 +3,7 @@ import type {
   AnnotationGeom,
   Asset,
   AssetFolder,
+  CanvasConfig,
   CaseDoc,
   ChainDef,
   CaseEdge,
@@ -28,6 +29,7 @@ import type {
 } from '../types';
 import { ANNOTATION_SHAPES, DEFAULT_ANNOTATION_COLOR, normalizeGeom } from '../lib/annotation';
 import { isChainStageId } from '../lib/chains';
+import { CANVAS_OPACITY_DEFAULT, clampCanvasOpacity, normalizeCanvasSkin } from '../lib/canvasSkin';
 import { normalizeControlPoints } from '../lib/edgeCurve';
 import { NODE_TYPE_ORDER } from '../lib/nodeTemplates';
 
@@ -497,6 +499,19 @@ function normalizeChain(raw: unknown, index: number, nodeIds: ReadonlySet<string
   return chain;
 }
 
+/** 画布底衬与背景图（M14）：皮肤取白名单，素材 id 必须存在（由调用方用 assetIds 过滤） */
+function normalizeCanvas(raw: unknown, assetIds: ReadonlySet<string>): CanvasConfig | null {
+  if (!isRecord(raw)) return null;
+  const canvas: CanvasConfig = { skin: normalizeCanvasSkin(raw.skin) };
+  const assetId = str(raw.assetId);
+  if (assetId.length > 0 && assetIds.has(assetId)) {
+    canvas.assetId = assetId;
+    canvas.opacity = clampCanvasOpacity(num(raw.opacity, CANVAS_OPACITY_DEFAULT));
+  }
+  if (canvas.skin === 'paper' && !canvas.assetId) return null;
+  return canvas;
+}
+
 /** 地图底图（M10）：素材 id 必须存在（由调用方用 assetIds 过滤） */
 function normalizeMapBackground(raw: unknown, assetIds: ReadonlySet<string>): MapBackground | null {
   if (!isRecord(raw)) return null;
@@ -607,6 +622,7 @@ export function normalizeDoc(input: unknown): CaseDoc {
   const settings = isRecord(input.settings) ? input.settings : null;
   const lineLegend = settings && isRecord(settings.lineLegend) ? settings.lineLegend : null;
   const mapBackground = settings ? normalizeMapBackground(settings.mapBackground, assetIds) : null;
+  const canvas = settings ? normalizeCanvas(settings.canvas, assetIds) : null;
 
   return {
     meta: {
@@ -632,6 +648,7 @@ export function normalizeDoc(input: unknown): CaseDoc {
         ? (lineLegend as unknown as Settings['lineLegend'])
         : DEFAULT_SETTINGS.lineLegend,
       ...(mapBackground ? { mapBackground } : {}),
+      ...(canvas ? { canvas } : {}),
     },
   };
 }

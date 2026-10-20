@@ -807,6 +807,70 @@ function check(name, condition, detail) {
     check('语义上只有「地点」标签的线才被当成自动线', /isPlaceLinkEdge/.test(placeSrc) && placeSrc.includes("edge.label === PLACE_LINK_EDGE.label"));
     check('右栏提交地点时会删旧线再连新线（L9）', rightSrc.includes('deleteEdge(edgeId)') && rightSrc.includes('清空「地点」时会自动断开'));
   }
+  console.log('[UI] M14 画布底衬 / 背景图 / 顶栏「⋯」溢出菜单');
+  check('样式表有软木板与黑板底衬', srcCss.includes('.cb-canvas--cork') && srcCss.includes('.cb-canvas--chalk'));
+  check('导入的背景图铺在画布底层且不接指针', /\.cb-canvas__bg\s*\{[^}]*pointer-events:\s*none/.test(srcCss));
+  check(
+    '顶栏溢出菜单样式齐全',
+    ['.cb-topbar__morebtn', '.cb-topbar__morepanel', '.cb-topbar__moreitem'].every((sel) => srcCss.includes(sel)),
+    ['.cb-topbar__morebtn', '.cb-topbar__morepanel', '.cb-topbar__moreitem'].filter((sel) => !srcCss.includes(sel)),
+  );
+  check('右栏画布背景块样式存在', srcCss.includes('.cb-canvasopt'));
+  {
+    const topSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'panels', 'TopBar.tsx'), 'utf8');
+    const rightSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'panels', 'RightPanel.tsx'), 'utf8');
+    check('顶栏用纯函数按宽度规划按钮（M14 / M8）', topSrc.includes('planTopbarOverflow') && topSrc.includes('estimateLabelWidth'));
+    check('顶栏溢出按钮是三个点', topSrc.includes('⋯'));
+    check('顶栏有「背景·XX」切换按钮', topSrc.includes('canvasLabel') && topSrc.includes('nextCanvasSkin'));
+    const backdropSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'components', 'panels', 'CanvasBackdropForm.tsx'),
+      'utf8',
+    );
+    check(
+      '右栏案件概览有画布底衬与背景图块',
+      rightSrc.includes('<CanvasBackdropForm />') &&
+        backdropSrc.includes('画布底衬与背景图') &&
+        backdropSrc.includes('setCanvasSkin'),
+      '右栏未挂载画布背景组件',
+    );
+    check('日期时间字段强制整行（M14 / M5）', /field\.wide \|\| field\.kind === 'datetime'/.test(rightSrc), '未命中整行判定');
+  }
+  {
+    const canvasClass = () => doc.querySelector('.cb-canvas')?.className || '';
+    check('默认底衬是纸张', canvasClass().includes('cb-canvas--paper'), canvasClass());
+    const findTopBtn = (needle) => [...doc.querySelectorAll('.cb-topbar__io .cb-btn')].find((el) => (el.textContent || '').includes(needle));
+    const canvasBtn = findTopBtn('背景');
+    check('顶栏渲染出「背景·纸张」按钮', Boolean(canvasBtn), doc.querySelector('.cb-topbar__io')?.textContent);
+    if (canvasBtn) {
+      canvasBtn.click();
+      await sleep(150);
+      check('点一次切到软木板', canvasClass().includes('cb-canvas--cork'), canvasClass());
+      const second = findTopBtn('背景');
+      if (second) {
+        second.click();
+        await sleep(150);
+        check('再点切到黑板', canvasClass().includes('cb-canvas--chalk'), canvasClass());
+        const third = findTopBtn('背景');
+        if (third) {
+          third.click();
+          await sleep(150);
+          check('第三次切回纸张', canvasClass().includes('cb-canvas--paper'), canvasClass());
+        }
+      }
+    }
+  }
+  {
+    const eventNode = [...doc.querySelectorAll('.cb-node')].find((el) => (el.textContent || '').includes('首次接触'));
+    check('找到演示事件节点', Boolean(eventNode));
+    if (eventNode) {
+      eventNode.click();
+      await sleep(200);
+      const wide = [...doc.querySelectorAll('.cb-fields .cb-field--wide')].map((el) => el.textContent || '');
+      check('发生时刻整行显示', wide.some((labelText) => labelText.includes('发生时刻')), wide.join(' | '));
+      check('地点整行显示', wide.some((labelText) => labelText.includes('地点')), wide.join(' | '));
+      check('发生时刻是日期时间控件', doc.querySelector('.cb-fields input[type="datetime-local"]') !== null);
+    }
+  }
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

@@ -52,6 +52,7 @@
 | M11 | 用户复验修订（I/J 反馈） | 1 周 | 左右栏折叠箭头、连接点常驻隐藏、组标题栏可拖动 + 左栏组树、图片小圆点与拖动实时跟随、时间线手工挑选条目 + 公用指针 + 缩放移到底部、地图双击手填经纬度、导入直接进当前文件夹、证据链人工归类、地点字段关联已有对象、素材拖拽不再误触导入、安全面板删本机存储段 | I1–I15 / J1–J15 逐条通过；`smoke` 729 / `ui-smoke` 314 全绿 | ✅ 2026-10-20 |
 | M12 | 复验修订（K 反馈） | 1 周 | 圈选框改容器相对坐标、框选改 Partial、时间线满宽 + 时间片错行、假设面板出框修复、按关系与 tag 自动构建假设草案、自定义证据链与链选择条、地点字段自动成虚线关系 | K1/K8/K13/K14/K15 通过；`smoke` 770 / `ui-smoke` 354 全绿 | ✅ 2026-10-20 |
 | M13 | 复验收尾（L 反馈） | 1 周 | 改地点时自动断开指向旧地点的关系线（一条 `composeCommands` 删旧连新，只认「地点」标签的自动线，人工线不动）、建立统一控件尺寸令牌（按钮/单行输入框/下拉 28px、标签页 22px、圆角 6px）并把此前无样式的 `datetime-local`/`date`/`search` 纳入 | L9 通过、全局控件对齐；`smoke` 777 / `ui-smoke` 344 全绿 | ✅ 2026-10-20 |
+| M14 | 画布底衬与顶栏折叠 | 1 周 | 右栏「发生时刻/地点」各占整行（M5）、顶栏按宽度自动收进「⋯」菜单（M8）、软木板/黑板底衬与背景图导入（`settings.canvas` + `setCanvasSkin`/`setCanvasImage`）、结构分析与若干自我优化 | M5/M8 通过；`smoke` 800 / `ui-smoke` 362 全绿；底衬三档可循环切换 | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -1059,6 +1060,67 @@
 | 输入框高度 | 输入框原本 29.6px、按钮 27.6px | 统一到 28px 令牌，两者同高（D81） |
 | 计数口径 | 脚本不打印总数，靠 `Select-String '^\s*PASS'` 统计；M12 文档写的 770/354 与本次口径不同 | M13 只写绝对数（777 / 344），不再做基线对比 |
 
+### M14 · 画布底衬与顶栏折叠（1 周）
+
+**目标**：把用户 M1–M8 回执里剩下的两处问题（右栏日期时间字段被半列挤压、窄窗顶栏按钮互相盖住）修干净，并落地新需求「软木板 / 黑板底衬与背景图切换」，最后按要求做一次项目结构分析与自我优化。
+
+**范围**
+
+1. 右栏「发生时刻」与「地点」各占一行、长度一致（M5）。
+2. 顶栏窄窗时把放不下的按钮收进「⋯」菜单，不再互相重叠（M8）。
+3. 画布底衬三档：纸张 / 软木板 / 黑板，顶栏一键循环切换。
+4. 画布背景图：导入图片铺底、可调不透明度、可清除；底衬与背景图都进 `settings.canvas`。
+5. 结构分析：重复 CSS 选择器、无用导入、最大源文件，做安全的小重构。
+
+**验收标准**
+
+| # | 标准 |
+|---|---|
+| 1 | 选中事件节点后「发生时刻」是整行日期时间控件，「地点」也是整行，两者等宽 |
+| 2 | 窗口收窄到按钮放不下时出现「⋯」，点开能看到被收起的按钮且能点 |
+| 3 | 「背景」按钮依次在纸张 / 软木板 / 黑板之间切换，画布底色与网格一起变 |
+| 4 | 导入背景图后铺满画布且不挡鼠标；可调不透明度、可清除 |
+| 5 | 底衬与背景图随项目保存/打开恢复；素材被删时只摘图、保留底衬 |
+| 6 | 迁移不接受未知底衬名与越界不透明度 |
+| 7 | 宽度未知（首帧 / jsdom）时不折叠，避免整排按钮闪进菜单 |
+| 8 | `typecheck` / `smoke` / `ui-smoke` / `bench` / `build` 全绿 |
+
+**拆步与实现**
+
+| 步骤 | 实现 | 验收抓手 |
+|---|---|---|
+| M14-1 | `TemplateField` 的 `field.wide \|\| field.kind === 'datetime'` 一律整行；event 模板「地点」标 `wide: true` | ui-smoke 断言两条整行 + `datetime-local` |
+| M14-2 | `src/lib/topbarOverflow.ts`：`estimateLabelWidth` + `planTopbarOverflow`（按优先级贪心，装不下进菜单） | smoke [73] 宽度估算与收起顺序 |
+| M14-3 | TopBar 重写：`ResizeObserver` 量宽、`⋯` 按钮 + 菜单、点外部/Esc 关闭、`ioWidth <= 0` 不折叠 | ui-smoke M14 段 |
+| M14-4 | `src/lib/canvasSkin.ts`：三档底衬、`SKIN_GRID`、`canvasGrid(skin, theme)`、`withCanvasSkin`/`withCanvasImage` | smoke [73] 底衬与网格 |
+| M14-5 | `settings.canvas` 类型 + `normalizeCanvas` 迁移 + `setCanvasSkin`/`setCanvasImage` 命令 | smoke 迁移四场景 |
+| M14-6 | Board 根节点加 `cb-canvas--{skin}`、背景图 `<img class="cb-canvas__bg">` 铺底层 | ui-smoke 循环切换 |
+| M14-7 | `useCanvasImagePicker`：素材库同一条导入链路（prepare → save → importAssets → setCanvasImage） | 手工：导入背景图 |
+| M14-8 | 右栏 `CanvasBackdropForm`：底衬下拉、导入/清除、不透明度 | ui-smoke 块存在 + 文案 |
+| M14-9 | 结构分析：合并完全重复的 CSS、抽出画布块、删除重复隐藏选择框 | typecheck 0 + 全绿 |
+
+**验收记录（2026-10-20，✅ 通过）**
+
+| 检查项 | 结果 |
+|---|---|
+| `pnpm typecheck` | ✅ 0 error |
+| `pnpm smoke` | ✅ 800 项全绿（新增 [73] 段 22 条） |
+| `pnpm ui-smoke` | ✅ 362 项全绿（新增 M14 段 20 条） |
+| `pnpm bench` | ✅ 1000 节点解析链 80.9 ms（阈值 300） |
+| `pnpm build` | ✅ 成功（`index-BiPoxijM.js` 973.64 kB / gzip 332.01、CSS 101.57 kB） |
+| 桌面自检 | ✅ 两轮 PASS（第 2 轮 18 项，含「OCR 字段抽取 — 内置 Tesseract（WASM）」「零外呼」） |
+| 安装包 | ✅ `CaseBoard_0.14.0_x64-setup.exe`（12,195,548 字节，SHA-256 `63C94601…5869F`，未签名）归档到 `release\` |
+
+**与计划的偏离**
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 顶栏溢出用「可用宽度 = 窗口宽 - 固定量」估算 | 首帧量不到真实宽度，jsdom 里 `clientWidth` 恒为 0，估算值 424px 把绝大多数按钮塞进菜单，`ui-smoke` 大面积失败 | 改成「宽度未知时不折叠」，由 `ResizeObserver` 拿到真实宽度后再折叠（D83） |
+| 底衬与背景图是否放 `settings` | 曾是独立 store，但底衬属于「这份案卷的样子」，换项目就应跟着换 | 进 `settings.canvas`，随项目保存/打开/导出（D82） |
+| 背景图导入是否单独做文件选择 | 单独做要再写一遍读取/校验/去重 | 复用素材库导入链路，图同时进素材库，删素材只摘图（D84） |
+| 重复 CSS 选择器 16 组 | 多数是后续里程碑对早期规则的有意覆盖，合并会改观感 | 只合并完全重复的 `.cb-group__header` 一对，其余保留（D85） |
+| 「视觉对齐」的实际观感 | 会话内无桌面可截图 | 仍由 CSS 令牌 + `ui-smoke` 正则守住结构，手感留给人工复验 |
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -1238,6 +1300,10 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D79 | **自定义证据链独立成 `doc.chains`**：`ChainDef{id,title,entries[{nodeId,stageId}]}`，阶段 id 定义在 `src/types/index.ts`（`lib/evidenceChain` 改为 re-export 避免循环依赖）；自动链（`链条阶段` 字段 + 关键词）仍是默认，选自定义链时六阶段按 entries 独立展示 | 用户 K14 要「新建证据链 + 单独证据链独立展示」；阶段集合必须共享，否则「六阶段」概念会分裂 | smoke [70]、ui-smoke 新建/删除链 || D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
 | D80 | **改地点走 `planPlaceRelink` 一条命令**：只把 `label === '地点'`、另一端为 place/org 的边当成自动线；目标变了就 `deleteEdge` 旧线 + `addEdge` 新线（一次 `composeCommands`，撤销一步回退），目标未变则不产生命令，清空地点只断开不新增。人工关系线一根不动——系统无法区分「这条地点线被手工改过」，宁可不删也不能毁掉手工判断。 | M13 / L9 | ✅ 采纳 |
 | D81 | **控件尺寸用令牌 + 排除式选择器**：`:root` 定义 `--cb-control-h: 28px` / `--cb-control-h-sm: 22px` / `--cb-control-r: 6px` / `--cb-control-pad: 8px`；按钮改 `inline-flex` + `min-height`，输入框用 `:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color'])` 一次性覆盖而不是逐类枚举（滑杆、复选、颜色选择不受影响，`datetime-local`/`date`/`search` 顺带纳入）。 | M13 / 视觉对齐 | ✅ 采纳 |
+| D82 | **画布底衬与背景图进 `settings.canvas`**：`CanvasConfig{skin, assetId?, opacity?}`，三档 `paper`/`cork`/`chalk` + 可选背景图与不透明度；`normalizeCanvas` 做白名单、素材存在性与夹取校验 | 底衬是「这份案卷的样子」，换项目就该跟着换；放独立 store 会让项目切换后底衬串味 | smoke [73] 迁移四场景、ui-smoke 循环切换 |
+| D83 | **顶栏溢出用纯函数 + 宽度未知不折叠**：`planTopbarOverflow` 按优先级贪心保留，`ioWidth <= 0` 时全部 inline，由 `ResizeObserver` 拿到真实宽度后再折叠 | 折叠必须基于真实测量；用「窗口宽 - 固定量」的估算会在首帧与测试环境里把整排按钮塞进菜单 | smoke [73]、ui-smoke M14 段 |
+| D84 | **背景图复用素材库导入链路**：`pickFiles → prepare → save → importAssets → setCanvasImage`，图同时进素材库；素材被删时只摘图保留底衬 | 单独写一条文件读取会把校验/去重/缩略图再造一遍；背景图本质也是素材 | smoke「dangling assetId 只摘图」 |
+| D85 | **重复 CSS 只合并完全重复的**：盘点 16 组重复选择器，只清理 `.cb-group__header` 一对，其余（`.cb-btn`/`.cb-tab`/`.cb-input`/`.cb-timeline__lanes` 等）是后续里程碑的有意覆盖，保留并按里程碑分段注释 | 合并「后覆盖前」的规则会静默改观感，属于为了整洁制造回归 | `pnpm ui-smoke` 全绿 |
 
 ---
 
@@ -1267,4 +1333,6 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | **M10 整体验收通过**（✅ 打 tag `ms/M10`）：交互打磨与内置能力——顶栏删「案情板」logo 与常驻线型图例、图例收进右下角可折叠「图示」（D66），案件编号 `A-2026-1018` 不再被挤压竖排（`.cb-topbar__brand` nowrap），MiniMap 150×100 半透明并让位；关系线连接点 14px→18px 且常驻可见，锚点扩到**八端口**（四边 + 四角，D64）；卡片与图片共用层级空间（卡片固定 100、图片分带 1–199，图片「上移/下移」首次真正生效，D62），吸附判定改卡片外扩 140px 角落区、记录角标记与偏移，卡片移动时吸附图片在**命令层**随动（`applyDockedMoves`，D63）；时间线支持多轨并行 + 比例滑杆 + 新建/删除轨道（偏好进 `doc.timeline`，D67），修掉时间滑杆贴右被裁；地图可导入底图（`settings.mapBackground`）并拖图钉直接改经纬度；素材库新增**文件夹**树形分组（新建/重命名/删除、环检测、删文件夹不删素材，D68），右栏可改所属文件夹；假设面板「证据链」页签从只读改为可编辑（改标题/改状态/画布定位，D65），演示页联动编辑补 tag；**内置 OCR 引擎随包分发**——`tesseract.js` WASM worker + 三档 SIMD 内核 + 中英语言包入 `public/ocr`（15.7 MB），探测顺序「系统 Tesseract → 内置 WASM」，右栏显示就绪状态与识别进度（D61）。数据迁移 v9（`zIndex` / `dockCorner` / `dockOffset` / `assetFolders` / `timeline` / `settings.mapBackground`）由 `migrate.ts` 兜住脏数据。版本三处升 **0.10.0**，NSIS 归档 `release\CaseBoard_0.10.0_x64-setup.exe`。机器验收：`typecheck` 0 error、`smoke` **713**、`ui-smoke` **298**、`bench` 1000 节点解析链 **75.5 ms**、`pnpm build` 成功且 `dist/ocr` 随包、桌面自检两轮 PASS。 |
 | 2026-10-20 | **M11 整体验收通过**（✅ 打 tag `ms/M11`）：按用户 I1–I15 / J1–J15 逐条复验回执落地——左右栏可点小箭头收起/展开（J2）、八个连接点常驻 `opacity: 0` hover 才显形（J4）、组标题栏去 `nodrag` 后整组可拖并加 `⠿` 抓手、左栏新增 `GroupTree` 树形总览（组 → 子组 → 成员，点条目 `focusEntity` 跳转，I3/D69）、`Board.nodes` 按 `zIndex` 排序让「上移/下移/置顶/置底」立刻生效（I1/D70）、图片 `dotMode` 小圆点（右上 `⤢` 或双击展开，I6/D71）、拖动卡片时吸附图片用 `dockPreview` **实时跟随**而非松手才动（J6）、时间线轨道条目可用 `nodeIds` 手工挑选 + 「恢复自动归集」、缩放滑条移到最下方与游标同区（10–100）、数轴收窄到 1180px、贯穿所有泳道的公用游标指针（I9/J8/D72）、地图图钉双击弹面板手填经纬度（`-90~90` / `-180~180` 校验，J9）、素材拖入画布不再误唤起导入向导（I13）、导入图片直接进当前文件夹（J10/D74）、证据链新增「链条阶段」人工归类下拉与「移出阶段」（人工优先、关键词兜底，I5/J11/D73）、假设面板字体出框修复（I5）、模板「地点」字段可选已有 place/org（`datalist`，I11）、地图视图也挂右栏（I7）、布局面板补「分层」标签（I8）、安全面板删掉「本机存储」整段（I14）。机器验收：`typecheck` 0 error、`smoke` **729**（新增 [64]–[67] 四段）、`ui-smoke` **314**（新增 M11 段 16 条）、`bench` **74.3 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 归档 `release\CaseBoard_0.11.0_x64-setup.exe`；版本三处升 **0.11.0**；§3 写入 M11 拆步/验收/偏离三表，§6 新增 D69–D74。 |
 | 2026-10-20 | **M12 整体验收通过**（✅ 打 tag `ms/M12`）：按用户 K1–K18 复验回执落地——圈选框改容器相对坐标、整框不再被左栏与顶栏偏移（K1/D75）、框选改 `SelectionMode.Partial` 只需框到一部分（K13/D76）、时间线满宽 + `stackChips` 时间片错行 + 轨道高度跟随 + 右端 `.cb-timeline__chip.is-end` 左展开（K8/D77）、假设面板「新增假设输入框 + 分数」出框修复（K14a）、按关系线与 tag 自动构建假设的草案勾选确认面板（确认后一次 `composeCommands` 落库，K14b/D78）、自定义证据链进 `doc.chains` 并在证据链页签独立展示（新建/删除/归入/移出，迁移丢脏，K14c/D79）、「地点」命中已有地点或单位时一条命令写字段 + 虚线推测关系（K15）；`pnpm smoke` **770**（新增 [68]–[71] 四段）、`pnpm ui-smoke` **354**（新增 M12 段 40 条）、`pnpm bench` 1000 节点解析链 **110.8 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 安装包归档 `release\CaseBoard_0.12.0_x64-setup.exe`；版本三处升 **0.12.0**；§1 M12 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D75–D79、`docs/MANUAL-ACCEPTANCE.md` 新增 L 节。 |
+| 2026-10-20 | **M13 整体验收通过**（✅ 打 tag `ms/M13`）：按用户 L1–L10 复验回执收尾——改「地点」时自动断开指向旧地点的关系线（`planPlaceRelink` 挑出 `label === '地点'` 且另一端为 place/org 的自动线，目标变了就 `deleteEdge` 旧线 + `addEdge` 新线，一次 `composeCommands` 撤销一步回退；目标未变不产生命令，清空只断开，人工线不动，D80 / L9）；全局控件视觉对齐——`--cb-control-h(28px)` / `--cb-control-h-sm(22px)` / `--cb-control-r(6px)` / `--cb-control-pad(8px)` 四个令牌统一按钮与单行输入框（此前按钮 27.6px、输入框 29.6px 相差 2px），输入框用排除式 `:not([type=…])` 一次性覆盖并把此前完全没有样式的 `datetime-local` / `date` / `search` 纳入（「发生时刻」不再是浏览器默认外观），`.cb-geo__ops` 等混排行容器统一 `align-items: center`（D81）；`pnpm smoke` **777**（新增 [72] 段 12 条）、`pnpm ui-smoke` **344**（新增 M13 段 8 条）、`pnpm bench` 1000 节点解析链 **74.6–74.6–116.4 ms**（两次实测抖动）、`pnpm build` 成功、桌面自检两轮 PASS、`tauri build --no-bundle` 4m24s（`caseboard.exe` 19,145,728 字节）、NSIS 安装包归档 `release\CaseBoard_0.13.0_x64-setup.exe`（12,192,983 字节，SHA-256 `D7DD6C6E…8E5E`，未签名）；版本三处升 **0.13.0**；§1 M13 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D80–D81、`docs/MANUAL-ACCEPTANCE.md` 新增 M 节；本轮唯一未能机器验证的是「视觉对齐」的实际观感——会话内没有可用桌面，截图核验失败，改由 CSS 令牌 + `ui-smoke` 正则断言守住结构，手感留给 M5–M8 人工复验。 |
+| 2026-10-20 | **M14 整体验收通过**（✅ 打 tag `ms/M14`）：按用户 M1–M8 回执与新需求落地——右栏「发生时刻」「地点」各占整行（`field.wide \|\| field.kind === 'datetime'`，M5）；顶栏改为按真实宽度折叠，放不下的按钮收进「⋯」菜单且宽度未知时不折叠（`src/lib/topbarOverflow.ts`，M8/D83）；新增**画布底衬**（纸张 / 软木板 / 黑板，`src/lib/canvasSkin.ts` + `canvasGrid`）与**背景图**（导入后 `object-fit: cover` 铺底、不透明度 10–100%、可清除），存储进 `settings.canvas` 并随项目保存（`normalizeCanvas` 容错，D82/D84），顶栏「背景·XX」一键循环切换，右栏「案件概览」新增 `CanvasBackdropForm` 块；结构分析做了三处自我优化——合并完全重复的 `.cb-group__header` CSS、把画布块从 1400 多行的 `RightPanel.tsx` 抽成独立组件、删掉顶栏重复的隐藏文件选择框（D85）。机器验收：`typecheck` 0 error、`smoke` **800**（新增 [73] 段 22 条）、`ui-smoke` **362**（新增 M14 段 20 条）、`bench` 1000 节点解析链 **80.9 ms**、`pnpm build` 成功；版本三处升 **0.14.0**；§3 写入 M14 拆步/验收/偏离三表、§6 新增 D82–D85、`docs/MANUAL-ACCEPTANCE.md` 新增 N 节。 |
 | 2026-10-20 | **M13 整体验收通过**（✅ 打 tag `ms/M13`）：按用户 L1–L10 复验回执收尾——改「地点」时自动断开指向旧地点的关系线（`planPlaceRelink` 挑出 `label === '地点'` 且另一端为 place/org 的自动线，目标变了就 `deleteEdge` 旧线 + `addEdge` 新线，一次 `composeCommands` 撤销一步回退；目标未变不产生命令，清空只断开，人工线不动，D80 / L9）；全局控件视觉对齐——`--cb-control-h(28px)` / `--cb-control-h-sm(22px)` / `--cb-control-r(6px)` / `--cb-control-pad(8px)` 四个令牌统一按钮与单行输入框（此前按钮 27.6px、输入框 29.6px 相差 2px），输入框用排除式 `:not([type=…])` 一次性覆盖并把此前完全没有样式的 `datetime-local` / `date` / `search` 纳入（「发生时刻」不再是浏览器默认外观），`.cb-geo__ops` 等混排行容器统一 `align-items: center`（D81）；`pnpm smoke` **777**（新增 [72] 段 12 条）、`pnpm ui-smoke` **344**（新增 M13 段 8 条）、`pnpm bench` 1000 节点解析链 **74.6–74.6–116.4 ms**（两次实测抖动）、`pnpm build` 成功、桌面自检两轮 PASS、`tauri build --no-bundle` 4m24s（`caseboard.exe` 19,145,728 字节）、NSIS 安装包归档 `release\CaseBoard_0.13.0_x64-setup.exe`（12,192,983 字节，SHA-256 `D7DD6C6E…8E5E`，未签名）；版本三处升 **0.13.0**；§1 M13 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D80–D81、`docs/MANUAL-ACCEPTANCE.md` 新增 M 节；本轮唯一未能机器验证的是「视觉对齐」的实际观感——会话内没有可用桌面，截图核验失败，改由 CSS 令牌 + `ui-smoke` 正则断言守住结构，手感留给 M5–M8 人工复验。 |

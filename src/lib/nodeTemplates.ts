@@ -90,7 +90,8 @@ export const NODE_TEMPLATES: Record<NodeType, NodeTemplate> = {
     hint: '有明确时间点或时间段的关键行为',
     fields: [
       { key: '发生时刻', label: '发生时刻', kind: 'datetime', placeholder: '选日期与时间，写回时间线' },
-      { key: '地点', label: '地点', kind: 'text' },
+      // M14（M5）：发生时刻与地点各占一行、长度一致，不再挤成半列
+      { key: '地点', label: '地点', kind: 'text', wide: true },
       { key: '经手人', label: '经手人', kind: 'text' },
       { key: '经过', label: '经过', kind: 'textarea', wide: true },
       { key: '结果', label: '结果', kind: 'text', wide: true },

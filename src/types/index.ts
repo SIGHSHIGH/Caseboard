@@ -273,11 +273,24 @@ export interface TimelineConfig {
   prefs: TimelinePrefs;
 }
 
+/** 画布底衬（M14）：纸张 / 软木板 / 黑板，可再叠一张导入的背景图 */
+export type CanvasSkin = 'paper' | 'cork' | 'chalk';
+
+export interface CanvasConfig {
+  skin: CanvasSkin;
+  /** 导入的背景图（素材 id）；有值时叠在底衬之上 */
+  assetId?: string;
+  /** 背景图不透明度，默认 0.35 */
+  opacity?: number;
+}
+
 export interface Settings {
   theme: string;
   lineLegend: Record<string, { label: string; style: LineStyle; color: string }>;
   /** 地图底图（M10） */
   mapBackground?: MapBackground;
+  /** 画布底衬与背景图（M14） */
+  canvas?: CanvasConfig;
 }
 
 /** 多假设里的证据立场（M7）：同一证据在不同假设中可支持或反驳 */
