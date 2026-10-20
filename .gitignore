@@ -7,23 +7,25 @@ dist/
 dist-smoke/
 build/
 src-tauri/target/
+src-tauri/gen/
 
 # 日志与临时文件
 *.log
 .probe-*.txt
 .tmp-esbuild/
-.DS  Store
 .DS_Store
 
 # 编辑器
 .vscode/
 .idea/
 
-# 本地数据
+# 本地数据与工具链
 *.caseboard
 *.cbd.bak
 .rust/
-src-tauri/gen/
 
-# �û��ֹ����ս�ͼ������ֿ�ַ���
+# 录屏与浏览器配置缓存（WebView2 profile，体积大）
+.video/
+
+# 用户手工验收截图（不随仓库分发）
 test project/

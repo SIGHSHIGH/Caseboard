@@ -1,0 +1,38 @@
+# 换行归一：仓库内一律 LF，Windows 脚本检出为 CRLF
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.sln text eol=crlf
+
+# 锁文件不参与换行转换
+pnpm-lock.yaml text eol=lf
+
+# 二进制：不做换行转换、不参与 diff/merge
+*.ico binary
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.bmp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.exe binary
+*.dll binary
+*.lib binary
+*.pdb binary
+*.wasm binary
+*.gz binary
+*.zip binary
+*.7z binary
+*.pdf binary
+*.db binary
+*.caseboard binary
+
+# 内置 OCR 资源（worker / 内核 / 语言包，约 15.7 MB）按二进制对待，避免无意义 diff
+public/ocr/** binary
