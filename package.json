@@ -1,7 +1,7 @@
 {
   "name": "caseboard",
   "private": true,
-  "version": "0.12.0",
+  "version": "0.13.0",
   "type": "module",
   "description": "案情板 CaseBoard — 数字时代的刑侦白板",
   "scripts": {

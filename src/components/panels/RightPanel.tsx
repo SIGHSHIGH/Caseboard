@@ -10,6 +10,7 @@ import {
   composeCommands,
   deleteAsset,
   deleteComment,
+  deleteEdge,
   deleteGroup,
   deleteImageNode,
   setImageLayer,
@@ -23,7 +24,7 @@ import {
 } from '../../commands';
 import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } from '../../lib/theme';
 import { memberNodeIds } from '../../lib/groups';
-import { PLACE_LINK_EDGE, matchPlaceForNode } from '../../lib/placeLink';
+import { PLACE_LINK_EDGE, planPlaceRelink } from '../../lib/placeLink';
 import { NODE_TYPE_ORDER, NODE_TEMPLATES, templateOf, type NodeFieldDef } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
 import { useUiStore } from '../../store/uiStore';
@@ -248,8 +249,9 @@ function NodeForm({ node }: { node: CaseNode }) {
     dispatch(updateNode(node.id, { fields: applyGeoFields(node.fields, lat, lng) }));
   };
 
-  /** M12（K15）：地点字段命中已有 place/org 且两者还没关系时返回该实体（判定在 lib/placeLink.ts） */
-  const placeMatchOf = (text: string) => matchPlaceForNode(useDocStore.getState().doc, node.id, text);
+  /** M12（K15）/ M13（L9）：改「地点」时该断开哪条旧线、该连到哪个已有地点（判定在 lib/placeLink.ts） */
+  const placeRelinkOf = (text: string) =>
+    planPlaceRelink(useDocStore.getState().doc, node.id, text);
 
   /** 字段提交：数字字段优先存 number，空字符串视为删除该字段。 */
   const commitField = (key: string, raw: string) => {
@@ -274,21 +276,28 @@ function NodeForm({ node }: { node: CaseNode }) {
       return;
     }
     const fieldChanged = JSON.stringify(next) !== JSON.stringify(node.fields);
-    // M12（K15）：填的地点正好是已有地点/单位 → 顺手连一条「推测」关系（虚线 + 置信度 50）
-    const placeHit = key === '地点' ? placeMatchOf(trimmed) : null;
-    if (!fieldChanged && !placeHit) return;
+    // M13（L9）：改地点时先断开旧地点的自动关系线，再按新值连；清空则只断开
+    const relink = key === '地点' ? placeRelinkOf(trimmed) : null;
+    const relinkChanged =
+      Boolean(relink) && (relink!.removeEdgeIds.length > 0 || relink!.addTarget !== null);
+    if (!fieldChanged && !relinkChanged) return;
     const fieldCmd = updateNode(node.id, { fields: next });
-    if (!placeHit) {
+    if (!relink || !relinkChanged) {
       dispatch(fieldCmd);
       return;
     }
-    dispatch(
-      composeCommands('填写地点并连线到「' + placeHit.title + '」', [
-        fieldCmd,
-        addEdge({ source: node.id, target: placeHit.id, ...PLACE_LINK_EDGE }),
-      ]),
-    );
-    setPlaceLinked(placeHit.title);
+    const commands = [fieldCmd];
+    for (const edgeId of relink.removeEdgeIds) commands.push(deleteEdge(edgeId));
+    if (relink.addTarget) {
+      commands.push(addEdge({ source: node.id, target: relink.addTarget.id, ...PLACE_LINK_EDGE }));
+    }
+    const label = relink.addTarget
+      ? relink.removeEdgeIds.length > 0
+        ? '改地点：断开旧关系并连到「' + relink.addTarget.title + '」'
+        : '填写地点并连线到「' + relink.addTarget.title + '」'
+      : '清除地点并断开关系线';
+    dispatch(composeCommands(label, commands));
+    setPlaceLinked(relink.addTarget ? relink.addTarget.title : '');
   };
 
   const addOneComment = () => {
@@ -472,7 +481,8 @@ function NodeForm({ node }: { node: CaseNode }) {
         </div>
         {placeLinked ? (
           <p className="cb-form__subtle">
-            已按「地点」自动连到已有对象「{placeLinked}」（虚线 · 推测 · 置信度 50，可在关系里改）
+            已按「地点」自动连到已有对象「{placeLinked}」（虚线 · 推测 · 置信度 50，可在关系里改）；
+            改填别的地点或清空「地点」时会自动断开这条线
           </p>
         ) : null}
         {Object.keys(node.fields).some((key) => !template.fields.some((field) => field.key === key)) ? (

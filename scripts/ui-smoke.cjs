@@ -789,7 +789,25 @@ function check(name, condition, detail) {
     }
     check('关闭假设面板', await clickByText('.cb-hyp__head .cb-btn', '关闭'));
     await sleep(150);
-  }  console.log('');
+  }
+  console.log('[UI] M13 控件视觉对齐 + 改地点断旧线');
+  check('样式表有统一控件高度令牌', /--cb-control-h:\s*28px/.test(srcCss));
+  check('按钮用统一控件高度', /\.cb-btn\s*\{[^}]*min-height:\s*var\(--cb-control-h\)/.test(srcCss));
+  check('单行输入框与下拉用统一控件高度', /\.cb-input\s*\{[^}]*height:\s*var\(--cb-control-h\)/.test(srcCss));
+  check('标签页按钮用统一小号高度', /\.cb-tab\s*\{[^}]*min-height:\s*var\(--cb-control-h-sm\)/.test(srcCss));
+  check(
+    '行容器垂直居中（按钮与输入框不再一高一低）',
+    ['.cb-geo__ops', '.cb-ocr__ops', '.cb-timeline__zoombar', '.cb-hyp__add'].every((sel) => srcCss.includes(sel)),
+    ['.cb-geo__ops', '.cb-ocr__ops', '.cb-timeline__zoombar', '.cb-hyp__add'].filter((sel) => !srcCss.includes(sel)),
+  );
+  {
+    const placeSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'placeLink.ts'), 'utf8');
+    const rightSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'panels', 'RightPanel.tsx'), 'utf8');
+    check('改地点会断开旧关系线的判定已导出（L9）', /export function planPlaceRelink/.test(placeSrc));
+    check('语义上只有「地点」标签的线才被当成自动线', /isPlaceLinkEdge/.test(placeSrc) && placeSrc.includes("edge.label === PLACE_LINK_EDGE.label"));
+    check('右栏提交地点时会删旧线再连新线（L9）', rightSrc.includes('deleteEdge(edgeId)') && rightSrc.includes('清空「地点」时会自动断开'));
+  }
+  console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');
     process.exit(1);

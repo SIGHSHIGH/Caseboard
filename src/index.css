@@ -4958,3 +4958,117 @@ button.cb-members__title--link:hover {
   font: inherit;
   font-size: 12px;
 }
+
+/* ==========================================================================
+   M13：控件视觉对齐
+   用户要求「所有控件视觉对齐」。此前按钮是 5px 上下内边距（约 27.6px 高），
+   输入框是 6px 内边距（约 29.6px 高），同排摆在一起就错开 2px；
+   `datetime-local` / `date` / `search` 这类输入框更是完全没进过样式表，
+   走浏览器默认外观。这一段把「按钮 / 输入框 / 下拉 / 多行文本 / 标签页」
+   收拢到同一套尺寸令牌上，并让它们的行容器统一垂直居中。
+   ========================================================================== */
+
+:root {
+  --cb-control-h: 28px;      /* 标准控件高度（按钮与输入框一致） */
+  --cb-control-h-sm: 22px;   /* 小号控件（标签页、面板内小按钮） */
+  --cb-control-r: 6px;       /* 控件圆角 */
+  --cb-control-pad: 8px;     /* 控件左右内边距 */
+}
+
+/* ---- 按钮 ---- */
+.cb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--cb-control-h);
+  padding: 0 11px;
+  border-radius: var(--cb-control-r);
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.cb-btn--sm {
+  min-height: var(--cb-control-h-sm);
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+/* ---- 标签页按钮 ---- */
+.cb-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--cb-control-h-sm);
+  padding: 0 10px;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.cb-assets__groupby .cb-tab,
+.cb-timeline__modes .cb-tab {
+  min-height: 20px;
+  padding: 0 7px;
+}
+
+/* ---- 单行输入框与下拉：全部等高（含此前没有样式的 datetime-local / date / search） ---- */
+.cb-field input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+.cb-field select,
+.cb-form input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+.cb-form select,
+.cb-panel input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+.cb-panel select,
+.cb-modal input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+.cb-modal select,
+.cb-input {
+  height: var(--cb-control-h);
+  min-height: var(--cb-control-h);
+  padding: 0 var(--cb-control-pad);
+  border-radius: var(--cb-control-r);
+  box-sizing: border-box;
+  line-height: 1.2;
+}
+
+/* ---- 多行文本：可换行，但内边距与圆角跟单行一致 ---- */
+.cb-field textarea,
+.cb-form textarea,
+.cb-modal textarea {
+  min-height: calc(var(--cb-control-h) * 2.6);
+  height: auto;
+  padding: 6px var(--cb-control-pad);
+  border-radius: var(--cb-control-r);
+  box-sizing: border-box;
+}
+
+/* ---- 标签文字与复选框对齐 ---- */
+.cb-field > span,
+.cb-field--inline > span {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.cb-field input[type='checkbox'],
+.cb-field input[type='radio'] {
+  margin: 0;
+}
+
+/* ---- 行容器一律垂直居中（按钮与输入框混排时不再一高一低） ---- */
+.cb-geo,
+.cb-geo__ops,
+.cb-ocr__ops,
+.cb-ai__actions,
+.cb-aiimg__ops,
+.cb-security__ops,
+.cb-taglink__ops,
+.cb-assets__actions,
+.cb-assets__folderops,
+.cb-hyp__ops,
+.cb-hyp__propose-ops,
+.cb-hyp__add,
+.cb-timeline__zoombar,
+.cb-map__opacity,
+.cb-filter__row,
+.cb-extract__row,
+.cb-field--inline {
+  align-items: center;
+}

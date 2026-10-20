@@ -3501,6 +3501,59 @@ async function main() {
       );
       check('地点关系是虚线 + 置信度 50', place.PLACE_LINK_EDGE.style === 'dashed' && place.PLACE_LINK_EDGE.confidence === 50);
     }
+    console.log('[72] 改地点自动断开旧关系线（M13 / L9）');
+    {
+      const place = require(path.join(out, 'lib', 'placeLink.js'));
+      const cmds = require(path.join(out, 'commands', 'index.js'));
+      const placeA = 'node-place-a';
+      const placeB = 'node-place-b';
+      const evNode = 'node-place-ev';
+      state().dispatch(cmds.addNode({ id: placeA, type: 'place', title: '测试地点A', x: 20, y: 20 }));
+      state().dispatch(cmds.addNode({ id: placeB, type: 'place', title: '测试地点B', x: 260, y: 20 }));
+      state().dispatch(cmds.addNode({ id: evNode, type: 'event', title: '测试事件', x: 20, y: 260 }));
+      const firstPlan = place.planPlaceRelink(doc(), evNode, '测试地点A');
+      check('命中已有地点时给出连线目标', Boolean(firstPlan.addTarget) && firstPlan.addTarget.id === placeA, firstPlan.addTarget && firstPlan.addTarget.id);
+      check('第一次连线没有要断开的旧线', firstPlan.removeEdgeIds.length === 0);
+      state().dispatch(
+        cmds.composeCommands('填写地点并连线', [
+          cmds.updateNode(evNode, { fields: { 地点: '测试地点A' } }),
+          cmds.addEdge({ source: evNode, target: placeA, ...place.PLACE_LINK_EDGE }),
+        ]),
+      );
+      const autoEdge = doc().edges.find((edge) => edge.label === '地点');
+      check('地点关系线落库且是虚线推测', Boolean(autoEdge) && autoEdge.style === 'dashed' && autoEdge.confidence === 50, autoEdge && autoEdge.style + '/' + autoEdge.confidence);
+      const samePlan = place.planPlaceRelink(doc(), evNode, '测试地点A');
+      check('目标没变时不删也不加', samePlan.removeEdgeIds.length === 0 && samePlan.addTarget === null);
+      const movePlan = place.planPlaceRelink(doc(), evNode, '测试地点B');
+      check('改地点会断开旧线并指向新地点', movePlan.removeEdgeIds.length === 1 && Boolean(movePlan.addTarget) && movePlan.addTarget.id === placeB, movePlan.removeEdgeIds.length + '|' + (movePlan.addTarget && movePlan.addTarget.id));
+      state().dispatch(
+        cmds.composeCommands('改地点：断开旧关系并连到新地点', [
+          cmds.updateNode(evNode, { fields: { 地点: '测试地点B' } }),
+          ...movePlan.removeEdgeIds.map((edgeId) => cmds.deleteEdge(edgeId)),
+          cmds.addEdge({ source: evNode, target: placeB, ...place.PLACE_LINK_EDGE }),
+        ]),
+      );
+      const afterMove = doc().edges.filter((edge) => edge.label === '地点');
+      check('改地点后只剩一条新线', afterMove.length === 1 && afterMove[0].target === placeB, afterMove.length + '|' + (afterMove[0] && afterMove[0].target));
+      const clearPlan = place.planPlaceRelink(doc(), evNode, '');
+      check('清空地点只断开不新增', clearPlan.removeEdgeIds.length === 1 && clearPlan.addTarget === null);
+      state().dispatch(
+        cmds.composeCommands('清除地点并断开关系线', [
+          cmds.updateNode(evNode, { fields: {} }),
+          ...clearPlan.removeEdgeIds.map((edgeId) => cmds.deleteEdge(edgeId)),
+        ]),
+      );
+      check('清空后没有自动线', doc().edges.filter((edge) => edge.label === '地点').length === 0);
+      state().dispatch(
+        cmds.addEdge({ source: evNode, target: placeA, relType: 'related', label: '同行', directed: false, style: 'solid', confidence: 80 }),
+      );
+      const blockedPlan = place.planPlaceRelink(doc(), evNode, '测试地点A');
+      check('人工已有关系时不再自动新增', blockedPlan.addTarget === null && blockedPlan.removeEdgeIds.length === 0);
+      check('只把「地点」标签的线当成自动线', place.placeLinkEdges(doc(), evNode).length === 0);
+      check('非地点类型不参与自动连线', place.planPlaceRelink(doc(), evNode, '张建国').addTarget === null);
+      check('空白地点不产生目标', place.planPlaceRelink(doc(), evNode, '   ').addTarget === null);
+    }
+
   console.log('');
   if (failures > 0) {
     console.log('结果：' + failures + ' 项失败');

@@ -2,6 +2,16 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] v0.13.0 · M13 复验收尾（L 反馈）
+
+### M13 整体验收通过（2026-10-20，tag ms/M13）
+
+- **改地点自动断开旧线（L9）**：此前「地点」只会往里加线——把地点改到别处、或把地点清空，原来那条线还留在画布上，得手动删。新增纯函数 `planPlaceRelink(doc, nodeId, text)`（`src/lib/placeLink.ts`）：只认 `label === '地点'`、另一端是 place/org 的**自动线**，目标没变就既不删也不加；改到新地点就断开旧线再连新线；清空地点则只断开。右栏提交地点时改成一条 `composeCommands`（`updateNode` + 若干 `deleteEdge` + 命中时 `addEdge`），撤销一次整体回退。人工建的其它关系线一根不动，两端已有其它关系时也不重复连。
+- **控件视觉对齐**：新增尺寸令牌 `--cb-control-h: 28px` / `--cb-control-h-sm: 22px` / `--cb-control-r: 6px` / `--cb-control-pad: 8px`。按钮由 `padding: 5px 11px`（约 27.6px 高）改为 `min-height: 28px` + `inline-flex` 居中，与输入框（`height: 28px`）等高；标签页按钮统一到 22px 小号高度；单行输入框与下拉用 `:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color'])` 排除后统一高度与内边距——顺带把此前完全没有样式的 `datetime-local` / `date` / `search` 输入框纳入（「发生时刻」以前是浏览器默认外观）；多行文本保留可换行但圆角与内边距统一；`.cb-geo__ops` / `.cb-ocr__ops` / `.cb-timeline__zoombar` / `.cb-hyp__add` 等混排行容器统一 `align-items: center`，按钮与输入框不再一高一低。
+- **验收**：`pnpm typecheck` 0 error；`pnpm smoke` **777**（新增 [72] 段 12 条，含「只把『地点』标签的线当成自动线」）、`pnpm ui-smoke` **344**（新增 M13 段 8 条）、`pnpm bench` 1000 节点解析链 **74.6–74.6–116.4 ms**（两次实测抖动）（阈值 300）、`pnpm build` 成功（`index-H1HYGgr0.js` 966.90 kB / gzip 329.29）、桌面自检两轮 PASS。
+- **打包**：版本三处升 **0.13.0**（`package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`）；`tauri build --no-bundle` 4m24s → `caseboard.exe` 19,145,728 字节；`--bundles nsis` → `CaseBoard_0.13.0_x64-setup.exe`（11.63 MiB），归档到仓库根 `release\CaseBoard_0.13.0_x64-setup.exe`，**12,192,983 字节**，SHA-256 `D7DD6C6EA53236C72282AAA58D759B2C63093D68B774378A29605E5DAA408E5E`，未签名。
+- **文档**：`docs/MILESTONES.md` §1 M13 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D80–D81、§7 追加验收行；`docs/MANUAL-ACCEPTANCE.md` 新增 M 节（M1–M8）；`AGENTS.md` / `README.md` 里程碑范围改 M1–M13 与 D1–D81。
+
 ## [未发布] v0.12.0 · M12 复验修订（K 反馈）
 
 ### M12 整体验收通过（2026-10-20，tag ms/M12）

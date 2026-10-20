@@ -51,6 +51,7 @@
 | M10 | 交互打磨与内置能力 | 1 周 | 顶栏删 logo 与常驻图例、八端口连线与连接点放大、图片层级与吸附随动、多轨时间线与比例、地图底图与拖动改坐标、素材文件夹、证据链可编辑、演示 tag 编辑、**内置 OCR 引擎随包分发**；NSIS 归档 `release\` | 十项验收全部通过；`smoke` 713 / `ui-smoke` 298 全绿；`dist/ocr` 随包 | ✅ 2026-10-20 |
 | M11 | 用户复验修订（I/J 反馈） | 1 周 | 左右栏折叠箭头、连接点常驻隐藏、组标题栏可拖动 + 左栏组树、图片小圆点与拖动实时跟随、时间线手工挑选条目 + 公用指针 + 缩放移到底部、地图双击手填经纬度、导入直接进当前文件夹、证据链人工归类、地点字段关联已有对象、素材拖拽不再误触导入、安全面板删本机存储段 | I1–I15 / J1–J15 逐条通过；`smoke` 729 / `ui-smoke` 314 全绿 | ✅ 2026-10-20 |
 | M12 | 复验修订（K 反馈） | 1 周 | 圈选框改容器相对坐标、框选改 Partial、时间线满宽 + 时间片错行、假设面板出框修复、按关系与 tag 自动构建假设草案、自定义证据链与链选择条、地点字段自动成虚线关系 | K1/K8/K13/K14/K15 通过；`smoke` 770 / `ui-smoke` 354 全绿 | ✅ 2026-10-20 |
+| M13 | 复验收尾（L 反馈） | 1 周 | 改地点时自动断开指向旧地点的关系线（一条 `composeCommands` 删旧连新，只认「地点」标签的自动线，人工线不动）、建立统一控件尺寸令牌（按钮/单行输入框/下拉 28px、标签页 22px、圆角 6px）并把此前无样式的 `datetime-local`/`date`/`search` 纳入 | L9 通过、全局控件对齐；`smoke` 777 / `ui-smoke` 344 全绿 | ✅ 2026-10-20 |
 
 > 规格 第 7 节要求：**每完成一个里程碑都应是「可运行、可演示、可打包」的状态**（M1–M3 为纯 Web 阶段，「可打包」解释为可构建产物，M4 起为安装包）。
 
@@ -1001,6 +1002,63 @@
 
 ---
 
+### M13 · 复验收尾（L 反馈）（1 周）
+
+**目标**：收掉 L1–L10 复验里剩下的两条实质问题——「改地点后旧关系线不消失」（L9）与全程观感上的「控件高低不齐」；不引入新功能，只把既有交互改到能用、耐看。
+
+**范围（2 项）**
+
+1. **改地点自动断旧线（L9）**：「地点」字段在 M12 只会往画布加线，改填或清空后旧线留在原处；要改成「目标变了就断旧连新、清空了就断开」，且只针对自动生成的地点线，人工关系线一根不动。
+2. **控件视觉对齐（全局）**：按钮、单行输入框、下拉、标签页按钮在混排时高度不一致（按钮约 27.6px、输入框 29.6px，相差约 2px），`datetime-local` / `date` / `search` 三类输入框此前完全没有样式；要建立统一的控件尺寸令牌并让混排行容器垂直居中。
+
+**验收标准**
+
+1. `planPlaceRelink` 是纯函数，判定「命中哪个地点、要断哪些旧线、是否要新连」全在 `src/lib/placeLink.ts`，UI 只负责 dispatch。
+2. 只认 `label === '地点'` 且另一端为 place/org 的边为「自动地点线」；人工线（如「同行」实线）既不断开也不阻止新线生成规则。
+3. 目标未变时**不产生命令**（不删不加），避免点一下字段就多一条撤销步。
+4. 改地点 = 一条 `composeCommands`（`updateNode` + `deleteEdge`×n + `addEdge`），撤销一次整体回退。
+5. 清空地点只断开、不新增。
+6. `:root` 出现控件令牌 `--cb-control-h` / `--cb-control-h-sm` / `--cb-control-r` / `--cb-control-pad`。
+7. `.cb-btn` 用 `min-height: var(--cb-control-h)` 且 `inline-flex` 居中；单行输入框与下拉用同一高度令牌。
+8. 排除式选择器（`:not([type='range'])` 等）保证滑杆、复选、颜色选择不被误伤。
+9. `.cb-geo__ops` / `.cb-ocr__ops` / `.cb-timeline__zoombar` / `.cb-hyp__add` 等混排行容器 `align-items: center`。
+10. `typecheck` / `smoke` / `ui-smoke` / `bench` / `build` 五关全绿，桌面自检两轮 PASS，NSIS 安装包归档到 `release\`。
+
+#### M13 拆步与实现
+
+| 步骤 | 实现 | 验收抓手 |
+|---|---|---|
+| M13-1 | `isPlaceLinkEdge` + `placeLinkEdges`：按标签与目标类型挑出自有的自动地点线 | `smoke [72]`「只把『地点』标签的线当成自动线」 |
+| M13-2 | `planPlaceRelink(doc, nodeId, text)` 纯函数返回 `{removeEdgeIds, addTarget}` | `smoke [72]` 12 条（命中、无旧线、目标未变、改地点、清空、人工线） |
+| M13-3 | 右栏 `commitField` 的地点分支重写：`fieldChanged` 或 `relinkChanged` 才提交，一次 `composeCommands` | `ui-smoke`「右栏提交地点时会删旧线再连新线」 |
+| M13-4 | 字段下方提示补第二行「改填别的地点或清空『地点』时会自动断开这条线」 | 同上（断言含文案片段） |
+| M13-5 | `:root` 加四个控件令牌 | `ui-smoke` 正则 `--cb-control-h:\s*28px` |
+| M13-6 | `.cb-btn` 改 `inline-flex` + `min-height`，`.cb-btn--sm` 22px | `ui-smoke` `.cb-btn` 规则含 `min-height: var(--cb-control-h)` |
+| M13-7 | 输入框/下拉统一高度（排除式选择器），`.cb-tab` 用 22px 令牌 | `ui-smoke` `.cb-input` 规则、`.cb-tab` 规则 |
+| M13-8 | 混排行容器 `align-items: center` + 验收四件套 + 打包归档 | `smoke` 777 / `ui-smoke` 344 / `bench` 74.6–116.4 ms |
+
+#### M13 验收记录（2026-10-20，✅ 通过）
+
+| 检查项 | 结果 |
+|---|---|
+| `pnpm typecheck` | ✅ 0 error |
+| `pnpm smoke` | ✅ 777 项全绿（新增 [72] 段 12 条） |
+| `pnpm ui-smoke` | ✅ 344 项全绿（新增 M13 段 8 条） |
+| `pnpm bench` | ✅ 1000 节点解析链 74.6–116.4 ms（阈值 300） |
+| `pnpm build` | ✅ 成功（`index-H1HYGgr0.js` 966.90 kB / gzip 329.29） |
+| 桌面自检 | ✅ 两轮 PASS |
+| 安装包 | ✅ NSIS 归档到 `release\` |
+
+#### M13 与计划的偏离
+
+| 计划项 | 实际情况 | 处理 |
+|---|---|---|
+| 想用截屏逐像素核对对齐效果 | 本会话没有可用桌面（`Start-Process caseboard.exe` 后既无窗口也无截图，作业挂住被 kill） | 改为「CSS 令牌 + ui-smoke 正则断言」验证结构，手感留给 MANUAL-ACCEPTANCE 的 M5–M8 人工复验 |
+| 人工关系线是否也要跟着「地点」断开 | 断开人工线会毁掉用户的手工判断，且无法区分「地点线被手工改过」 | 只认 `label === '地点'` 的自动线，其余一律不动（D80） |
+| 是否逐类给 `datetime-local` / `date` / `search` 加样式 | 逐类枚举容易漏 | 用排除式 `:not([type=...])` 一次性覆盖，滑杆/复选/颜色不受影响（D81） |
+| 输入框高度 | 输入框原本 29.6px、按钮 27.6px | 统一到 28px 令牌，两者同高（D81） |
+| 计数口径 | 脚本不打印总数，靠 `Select-String '^\s*PASS'` 统计；M12 文档写的 770/354 与本次口径不同 | M13 只写绝对数（777 / 344），不再做基线对比 |
+
 ## 4. 推进规则
 
 1. **一次只推进一个里程碑**；当前里程碑验收通过后才开始下一个的「新功能」，期间只允许修缺陷。
@@ -1178,6 +1236,8 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | D77 | **时间片按行堆叠**：`stackChips` 把 ratio 相近（< `CHIP_MIN_GAP = 0.045`）的条目排到下一行，轨道高度 `chipTrackHeight(rowCount)` 跟着长；右端条目用 `.cb-timeline__chip.is-end` 向左展开 | 用户 K8「事件被遮挡」：单行摆不下，靠裁切隐藏是错的，宽度满了就该换行 | smoke [68]、ui-smoke `.is-end` |
 | D78 | **自动构建假设先出草案**：`proposeHypotheses` 只产出 `HypothesisProposal`（id/title/reason/nodeIds），面板勾选确认后由一次 `composeCommands` 逐条 `addHypothesis` 落库，草案本身绝不进 Model；为此 `AddHypothesisInput` 增 `id` 与初始 `stances` | 用户 K14 要「自动构建」；但 Gate 0-4 规定推断产物不得直接改 Model，草案 + 确认是同一套语义 | smoke [69]、ui-smoke 草案→落库 |
 | D79 | **自定义证据链独立成 `doc.chains`**：`ChainDef{id,title,entries[{nodeId,stageId}]}`，阶段 id 定义在 `src/types/index.ts`（`lib/evidenceChain` 改为 re-export 避免循环依赖）；自动链（`链条阶段` 字段 + 关键词）仍是默认，选自定义链时六阶段按 entries 独立展示 | 用户 K14 要「新建证据链 + 单独证据链独立展示」；阶段集合必须共享，否则「六阶段」概念会分裂 | smoke [70]、ui-smoke 新建/删除链 || D11 | 8 类节点模板**只存在于代码**（`src/lib/nodeTemplates.ts`），字段值统一存 `CaseNode.fields`（`Record<string, string\|number\|boolean>`）；模板变更不迁移数据，模板外自定义字段照常展示 | 规格要求「允许自定义字段」，若把模板写进文档结构会把每一次模板调整都变成数据迁移；字段即键值对也是 DSL（M3）最容易表达的形状 | 属性面板只渲染模板字段 + 提示自定义字段名；模板新增字段时旧节点为空值，不报错 |
+| D80 | **改地点走 `planPlaceRelink` 一条命令**：只把 `label === '地点'`、另一端为 place/org 的边当成自动线；目标变了就 `deleteEdge` 旧线 + `addEdge` 新线（一次 `composeCommands`，撤销一步回退），目标未变则不产生命令，清空地点只断开不新增。人工关系线一根不动——系统无法区分「这条地点线被手工改过」，宁可不删也不能毁掉手工判断。 | M13 / L9 | ✅ 采纳 |
+| D81 | **控件尺寸用令牌 + 排除式选择器**：`:root` 定义 `--cb-control-h: 28px` / `--cb-control-h-sm: 22px` / `--cb-control-r: 6px` / `--cb-control-pad: 8px`；按钮改 `inline-flex` + `min-height`，输入框用 `:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color'])` 一次性覆盖而不是逐类枚举（滑杆、复选、颜色选择不受影响，`datetime-local`/`date`/`search` 顺带纳入）。 | M13 / 视觉对齐 | ✅ 采纳 |
 
 ---
 
@@ -1207,3 +1267,4 @@ require('../node_modules/@tauri-apps/cli/tauri.js');
 | 2026-10-20 | **M10 整体验收通过**（✅ 打 tag `ms/M10`）：交互打磨与内置能力——顶栏删「案情板」logo 与常驻线型图例、图例收进右下角可折叠「图示」（D66），案件编号 `A-2026-1018` 不再被挤压竖排（`.cb-topbar__brand` nowrap），MiniMap 150×100 半透明并让位；关系线连接点 14px→18px 且常驻可见，锚点扩到**八端口**（四边 + 四角，D64）；卡片与图片共用层级空间（卡片固定 100、图片分带 1–199，图片「上移/下移」首次真正生效，D62），吸附判定改卡片外扩 140px 角落区、记录角标记与偏移，卡片移动时吸附图片在**命令层**随动（`applyDockedMoves`，D63）；时间线支持多轨并行 + 比例滑杆 + 新建/删除轨道（偏好进 `doc.timeline`，D67），修掉时间滑杆贴右被裁；地图可导入底图（`settings.mapBackground`）并拖图钉直接改经纬度；素材库新增**文件夹**树形分组（新建/重命名/删除、环检测、删文件夹不删素材，D68），右栏可改所属文件夹；假设面板「证据链」页签从只读改为可编辑（改标题/改状态/画布定位，D65），演示页联动编辑补 tag；**内置 OCR 引擎随包分发**——`tesseract.js` WASM worker + 三档 SIMD 内核 + 中英语言包入 `public/ocr`（15.7 MB），探测顺序「系统 Tesseract → 内置 WASM」，右栏显示就绪状态与识别进度（D61）。数据迁移 v9（`zIndex` / `dockCorner` / `dockOffset` / `assetFolders` / `timeline` / `settings.mapBackground`）由 `migrate.ts` 兜住脏数据。版本三处升 **0.10.0**，NSIS 归档 `release\CaseBoard_0.10.0_x64-setup.exe`。机器验收：`typecheck` 0 error、`smoke` **713**、`ui-smoke` **298**、`bench` 1000 节点解析链 **75.5 ms**、`pnpm build` 成功且 `dist/ocr` 随包、桌面自检两轮 PASS。 |
 | 2026-10-20 | **M11 整体验收通过**（✅ 打 tag `ms/M11`）：按用户 I1–I15 / J1–J15 逐条复验回执落地——左右栏可点小箭头收起/展开（J2）、八个连接点常驻 `opacity: 0` hover 才显形（J4）、组标题栏去 `nodrag` 后整组可拖并加 `⠿` 抓手、左栏新增 `GroupTree` 树形总览（组 → 子组 → 成员，点条目 `focusEntity` 跳转，I3/D69）、`Board.nodes` 按 `zIndex` 排序让「上移/下移/置顶/置底」立刻生效（I1/D70）、图片 `dotMode` 小圆点（右上 `⤢` 或双击展开，I6/D71）、拖动卡片时吸附图片用 `dockPreview` **实时跟随**而非松手才动（J6）、时间线轨道条目可用 `nodeIds` 手工挑选 + 「恢复自动归集」、缩放滑条移到最下方与游标同区（10–100）、数轴收窄到 1180px、贯穿所有泳道的公用游标指针（I9/J8/D72）、地图图钉双击弹面板手填经纬度（`-90~90` / `-180~180` 校验，J9）、素材拖入画布不再误唤起导入向导（I13）、导入图片直接进当前文件夹（J10/D74）、证据链新增「链条阶段」人工归类下拉与「移出阶段」（人工优先、关键词兜底，I5/J11/D73）、假设面板字体出框修复（I5）、模板「地点」字段可选已有 place/org（`datalist`，I11）、地图视图也挂右栏（I7）、布局面板补「分层」标签（I8）、安全面板删掉「本机存储」整段（I14）。机器验收：`typecheck` 0 error、`smoke` **729**（新增 [64]–[67] 四段）、`ui-smoke` **314**（新增 M11 段 16 条）、`bench` **74.3 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 归档 `release\CaseBoard_0.11.0_x64-setup.exe`；版本三处升 **0.11.0**；§3 写入 M11 拆步/验收/偏离三表，§6 新增 D69–D74。 |
 | 2026-10-20 | **M12 整体验收通过**（✅ 打 tag `ms/M12`）：按用户 K1–K18 复验回执落地——圈选框改容器相对坐标、整框不再被左栏与顶栏偏移（K1/D75）、框选改 `SelectionMode.Partial` 只需框到一部分（K13/D76）、时间线满宽 + `stackChips` 时间片错行 + 轨道高度跟随 + 右端 `.cb-timeline__chip.is-end` 左展开（K8/D77）、假设面板「新增假设输入框 + 分数」出框修复（K14a）、按关系线与 tag 自动构建假设的草案勾选确认面板（确认后一次 `composeCommands` 落库，K14b/D78）、自定义证据链进 `doc.chains` 并在证据链页签独立展示（新建/删除/归入/移出，迁移丢脏，K14c/D79）、「地点」命中已有地点或单位时一条命令写字段 + 虚线推测关系（K15）；`pnpm smoke` **770**（新增 [68]–[71] 四段）、`pnpm ui-smoke` **354**（新增 M12 段 40 条）、`pnpm bench` 1000 节点解析链 **110.8 ms**、`pnpm build` 成功、桌面自检两轮 PASS、NSIS 安装包归档 `release\CaseBoard_0.12.0_x64-setup.exe`；版本三处升 **0.12.0**；§1 M12 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D75–D79、`docs/MANUAL-ACCEPTANCE.md` 新增 L 节。 |
+| 2026-10-20 | **M13 整体验收通过**（✅ 打 tag `ms/M13`）：按用户 L1–L10 复验回执收尾——改「地点」时自动断开指向旧地点的关系线（`planPlaceRelink` 挑出 `label === '地点'` 且另一端为 place/org 的自动线，目标变了就 `deleteEdge` 旧线 + `addEdge` 新线，一次 `composeCommands` 撤销一步回退；目标未变不产生命令，清空只断开，人工线不动，D80 / L9）；全局控件视觉对齐——`--cb-control-h(28px)` / `--cb-control-h-sm(22px)` / `--cb-control-r(6px)` / `--cb-control-pad(8px)` 四个令牌统一按钮与单行输入框（此前按钮 27.6px、输入框 29.6px 相差 2px），输入框用排除式 `:not([type=…])` 一次性覆盖并把此前完全没有样式的 `datetime-local` / `date` / `search` 纳入（「发生时刻」不再是浏览器默认外观），`.cb-geo__ops` 等混排行容器统一 `align-items: center`（D81）；`pnpm smoke` **777**（新增 [72] 段 12 条）、`pnpm ui-smoke` **344**（新增 M13 段 8 条）、`pnpm bench` 1000 节点解析链 **74.6–74.6–116.4 ms**（两次实测抖动）、`pnpm build` 成功、桌面自检两轮 PASS、`tauri build --no-bundle` 4m24s（`caseboard.exe` 19,145,728 字节）、NSIS 安装包归档 `release\CaseBoard_0.13.0_x64-setup.exe`（12,192,983 字节，SHA-256 `D7DD6C6E…8E5E`，未签名）；版本三处升 **0.13.0**；§1 M13 置 ✅、§3 写入拆步/验收/偏离三表、§6 新增 D80–D81、`docs/MANUAL-ACCEPTANCE.md` 新增 M 节；本轮唯一未能机器验证的是「视觉对齐」的实际观感——会话内没有可用桌面，截图核验失败，改由 CSS 令牌 + `ui-smoke` 正则断言守住结构，手感留给 M5–M8 人工复验。 |
