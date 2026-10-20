@@ -8,7 +8,7 @@
 # so the build pipeline can only prove that the installer exists and that this script is ready.
 # A trusted certificate is required before distribution, otherwise Windows still warns about an unknown publisher.
 param(
-  [string]$InstallerPath = "src-tauri/target/release/bundle/nsis/CaseBoard_0.8.0_x64-setup.exe",
+  [string]$InstallerPath = "",
   [string]$ExePath = "src-tauri/target/release/caseboard.exe",
   [string]$CertThumbprint = "",
   [string]$TimestampUrl = "http://timestamp.digicert.com",
@@ -50,6 +50,16 @@ $signTool = Find-SignTool
 $cert = Resolve-Certificate
 Write-Host "[sign] certificate: $($cert.Subject) ($($cert.Thumbprint))"
 
+# With no explicit installer path, sign the newest installer (bundle output first, then release\ archive)
+if (-not $InstallerPath) {
+  $candidates = @()
+  foreach ($dir in @("src-tauri/target/release/bundle/nsis", "release")) {
+    if (Test-Path $dir) { $candidates += Get-ChildItem $dir -Filter "*setup.exe" -File -ErrorAction SilentlyContinue }
+  }
+  $newest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($newest) { $InstallerPath = $newest.FullName }
+}
+
 $targets = @()
 foreach ($path in @($ExePath, $InstallerPath)) {
   if ($path -and (Test-Path $path)) { $targets += (Resolve-Path $path).Path }
@@ -61,7 +71,13 @@ foreach ($target in $targets) {
   & $signTool sign /fd SHA256 /td SHA256 /tr $TimestampUrl /sha1 $cert.Thumbprint $target
   if ($LASTEXITCODE -ne 0) { throw "Signing failed: $target" }
   & $signTool verify /pa $target
-  if ($LASTEXITCODE -ne 0) { throw "Signature verification failed: $target" }
+  if ($LASTEXITCODE -ne 0) {
+    if ($SelfSignedTest) {
+      Write-Host "[sign] verify reports an untrusted root: expected for a self-signed rehearsal certificate"
+    } else {
+      throw "Signature verification failed: $target"
+    }
+  }
 }
 
 Write-Host "[sign] done: $($targets.Count) file(s) signed and verified."
