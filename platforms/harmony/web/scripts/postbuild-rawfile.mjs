@@ -12,6 +12,7 @@
  * 另外把产物清单写成 JSON，供 H0 验收 A1/A2 直接读取。
  */
 import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync } from 'node:fs';
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,6 +49,18 @@ if (!/src="\.\/assets\//.test(patched)) problems.push('index.html 的入口脚�
 if (/(?:src|href)=["']\/assets\//.test(patched)) problems.push('index.html 仍出现 /assets/ 绝对串');
 
 const files = walk(rawfileDir);
+
+// 测试夹具（H4 OCR 验收用）：把 <root>/test-fixtures 拷进 rawfile/test-fixtures。
+// 只有 CASEBOARD_TEST_FIXTURES=1 时才拷——发布包里不该带样图。
+const fixturesSrc = join(projectRoot, 'test-fixtures');
+if (process.env.CASEBOARD_TEST_FIXTURES === '1' && existsSync(fixturesSrc)) {
+  const dest = join(rawfileDir, 'test-fixtures');
+  mkdirSync(dest, { recursive: true });
+  for (const name of readdirSync(fixturesSrc)) {
+    const full = join(fixturesSrc, name);
+    if (statSync(full).isFile()) copyFileSync(full, join(dest, name));
+  }
+}
 const bundles = files.filter((file) => file.rel.startsWith('assets/') && file.rel.endsWith('.js'));
 if (bundles.length === 0) problems.push('rawfile 下没有 assets/*.js 产物');
 

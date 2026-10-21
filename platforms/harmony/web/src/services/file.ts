@@ -93,6 +93,43 @@ function webPick(accept: string, multiple: boolean): Promise<File[]> {
   });
 }
 
+/**
+ * 按扩展名推断 MIME。`FileService.saveBytes` 的签名没有 mime 参数，
+ * 但原生保存对话框要靠它决定默认类型：一律传 application/octet-stream 时，
+ * 系统面板会显示「未知类型」而不是「PNG 图片」。
+ */
+function mimeOfName(fileName: string): string {
+  const dot = fileName.lastIndexOf('.');
+  const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
+  switch (ext) {
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'webp':
+      return 'image/webp';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'pdf':
+      return 'application/pdf';
+    case 'json':
+      return 'application/json';
+    case 'csv':
+      return 'text/csv';
+    case 'md':
+      return 'text/markdown';
+    case 'txt':
+      return 'text/plain;charset=utf-8';
+    case 'caseboard':
+      return 'application/zip';
+    case 'zip':
+      return 'application/zip';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
 async function harmonySave(fileName: string, bytes: Uint8Array, mimeType: string, filters?: DialogFilter[]): Promise<string | null> {
   const uri = await callNative<string>('saveFile', fileName, mimeType, bytesToBase64(bytes), toSuffixChoices(filters));
   return typeof uri === 'string' && uri.length > 0 ? uri : null;
@@ -110,11 +147,12 @@ export const fileService: FileService = {
   },
 
   async saveBytes(fileName, bytes, filters) {
+    const mimeType = mimeOfName(fileName);
     if (isHarmony()) {
-      return harmonySave(fileName, bytes, 'application/octet-stream', filters);
+      return harmonySave(fileName, bytes, mimeType, filters);
     }
     if (!isTauri()) {
-      webDownload(fileName, new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' }));
+      webDownload(fileName, new Blob([new Uint8Array(bytes)], { type: mimeType }));
       return null;
     }
     const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');

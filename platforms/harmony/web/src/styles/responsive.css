@@ -68,7 +68,7 @@
 }
 
 :root[data-input='touch'] .cb-legend-fab {
-  min-height: 36px;
+  min-height: 40px;
   padding: 8px 14px;
   font-size: 12px;
 }
@@ -79,20 +79,27 @@
   height: 40px;
 }
 
+/*
+ * 关于连接点（`.react-flow__handle`）：实测 112 个全是 `isConnectable={false}` 的
+ * 装饰点（BaseNode.tsx:86/96），React Flow 给它们 `pointer-events: none`，本来就不该点。
+ * 所以这一层不需要放大命中区——真正需要「点得中」的是连线本身，见 BezierEdge 的
+ * `.cb-edge-hit`（触屏 34px 透明描边）。
+ */
+
 /* 分组节点标题栏的「折叠」「节点数」是画布里最小的两个可点元素 */
 :root[data-input='touch'] .cb-group__fold {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 3px 10px;
+  min-height: 32px;
+  padding: 4px 10px;
   font-size: 12px;
 }
 
 :root[data-input='touch'] .cb-group__count {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 3px 8px;
+  min-height: 32px;
+  padding: 4px 8px;
 }
 
 /* 触屏没有 hover 语义：别让按钮在「按下」瞬间变色又弹回，看着像故障 */

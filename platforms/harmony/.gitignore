@@ -36,3 +36,7 @@
 # 杂项
 .DS_Store
 Thumbs.db
+
+
+# test fixtures are copied into rawfile only when CASEBOARD_TEST_FIXTURES=1
+/entry/src/main/resources/rawfile/test-fixtures/

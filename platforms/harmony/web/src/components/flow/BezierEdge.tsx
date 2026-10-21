@@ -147,6 +147,13 @@ function BezierEdgeInner({
   const dash = lineStyle.dash;
   const highlighted = data?.highlighted === true;
   const width = strokeWidthOf(edge) + (selected ? 1 : 0) + (highlighted ? 1.8 : 0);
+  /**
+   * 手指命中带：线宽只有 1.6~4.5px，鼠标能凑合、手指绝对点不中。
+   * 透明宽描边不参与绘制，只扩大 hit test 面积（stroke 命中而非填充）。
+   * 触屏 34px（约 17 CSS px 半径，比指尖窄一点但足够稳），桌面临界值与原生一致仍旧 18px。
+   */
+  const touch = typeof document !== 'undefined' && document.documentElement.dataset.input === 'touch';
+  const hitWidth = touch ? 34 : 18;
 
   const commitLabel = () => {
     const label = draft.trim();
@@ -173,8 +180,8 @@ function BezierEdgeInner({
         d={path}
         fill="none"
         stroke="transparent"
-        strokeWidth={18}
-        style={{ cursor: 'pointer' }}
+        strokeWidth={hitWidth}
+        style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
         className="cb-edge-hit"
       />
       <EdgeLabelRenderer>
