@@ -1,5 +1,30 @@
 # 变更记录 · 鸿蒙移植
 
+## 仓库迁移 · 并入桌面仓库 `harmony` 分支（2026-10-21）
+
+鸿蒙工程从独立仓库 `masaike board hamonyos/` 迁到主仓库 `platforms/harmony/`，
+分支 `harmony`，H0–H2 的 4 个提交历史完整保留（`git read-tree --prefix` 嫁接，未改写任何提交）。
+
+迁移后做「干净 clone 复原验证」，暴露并修掉 4 个只在换路径/换机器时才会出现的问题：
+
+1. **脚本写死本机路径**（`D:\DevEco Studio`、某个 `pnpm.cjs` 绝对路径）→ 抽出 `scripts/_env.ps1`，
+   优先级：显式参数 > 环境变量（`DEVECO_HOME` / `NODE_HOME` / `HDC` / `PNPM_CLI` / `PNPM_STORE_DIR`）
+   > 常见安装位置 > `PATH`。换机器只需设一个 `DEVECO_HOME`。
+2. **`$home` 是 Windows PowerShell 只读自动变量**。`_env.ps1` 第一版 `$home = ...` 会抛
+   `Cannot overwrite variable HOME`，而 dot-source 的错误**不中断脚本**，只让后续路径全变 `$null`，
+   症状是一连串 `BadExpression: The expression after '&' ... was not valid`（看着像语法错，其实是变量没赋上）。
+   改名 `$devEcoRoot`。教训：改完 .ps1 必须真跑一遍验收，语法通过不算数。
+3. **全新 clone 时 `web/.tmp` 不存在**，pnpm 内部的 tempy 要求 TMP 目录已存在，否则
+   `ENOENT lstat '...\web\.tmp'` 直接打断构建 → `build-web.ps1` 先建目录再设 `TMP`。
+4. **`postbuild-rawfile.mjs` 写报告前没建目录**，`.tmp-esbuild/` 被 `.gitignore` 忽略，
+   全新 clone 里不存在 → `mkdirSync(recursive)` 后再写。
+
+验证结果：把 `harmony` 分支 clone 到工作区外，`build-web.ps1` 从零装依赖 → 产物 14 文件 3.49MB、
+`problems` 为空；`accept-h1.ps1 -SkipWeb` → **15/15 全 PASS**（H1-1/2/3 因跳过前端构建而不计）。
+主工作区 `platforms/harmony` 下另跑完整 `accept-h1.ps1` → **17/17 全 PASS**。
+
+新增 `platforms/harmony/README.md`（架构、三个必须知道的硬结论、构建验收、已知限制、与桌面版关系）。
+
 ## H2 · 顶栏收容（2026-10-21）
 
 **目标**：修掉 H1 遗留的「主题·默认」在 1440 被左边缘裁切，让顶栏收容对**所有**动作统一生效。
