@@ -2,6 +2,30 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] · 顶栏收容修正（从鸿蒙移植回填）
+
+### 症状
+窗口宽度不够时，顶栏最左边的按钮（如「主题·默认」）被裁掉一截，而顶栏看起来「没有溢出」——
+「⋯」菜单不会把它收进去，用户只能自己缩窗口试。
+
+### 根因（两条叠加）
+1. `.cb-topbar__io` 是 `justify-content: flex-end`，**溢出时内容往左跑**，而 `scrollWidth` 只统计
+   右侧溢出，于是 `scrollWidth == clientWidth` 恒成立，溢出检测永远判「没超」。
+2. `.cb-topbar__io` 里除了动作按钮，还常驻「⋯」按钮与「SQLite · 已保存 hh:mm」文字（约 150 px）。
+   它们**也吃宽度**，但不在 `planTopbarOverflow` 的账本里，预算因此虚高约 190 px。
+
+### 改了什么
+- `src/components/panels/TopBar.tsx`：新增 `staticWidth` 状态与 `saveRef`，`useLayoutEffect` 里用
+  `getBoundingClientRect().width + columnGap` 实测「⋯」按钮与保存文字的占位，从预算里扣掉；
+  溢出判定除 `scrollWidth` 外再判「首个子元素的左边界是否已跑到容器左边界之外」。
+- `src/index.css`：`.cb-btn` 补 `flex-shrink: 0`——原来顶栏挤不下时 flex 会把按钮压扁、文字裁掉，
+  而不是触发收进菜单。
+
+### 验收
+`typecheck` 0 error；`smoke` 全部通过（871 PASS）；`ui-smoke` 全部通过（430 PASS / 0 FAIL）；`build` 成功。
+本机桌面窗口 1440 宽时顶栏零裁切，「⋯」菜单内容与点击行为正常（同一份改动在鸿蒙平板 1440×893 上
+由 17 条上机验收覆盖）。
+
 ## [1.0.0-beta.1] · 首个 Beta（M1–M18 全部验收通过）
 
 ### 这个版本意味着什么
