@@ -1,5 +1,32 @@
 # 变更记录 · 鸿蒙移植
 
+## H3 · 触控手势层（2026-10-21）
+
+结论：长按菜单、双指缩放、单指平移**本来就通**（ArkWeb 把长按映射成 `contextmenu`，d3-zoom 接住双指），
+真正要写的只有「松手后继续滑一段」的手感。所以这一轮只加了一个功能、三条验收。
+
+### 鸿蒙侧
+
+- **`web/src/components/flow/Board.tsx`**：新增拖拽惯性。挂在 `<ReactFlow>` 的
+  `onMoveStart` / `onMove` / `onMoveEnd` 上，只在 `data-input='touch'` 时启用（鼠标保持原样）。
+  速度取最近 120ms 样本，上限 3.2 px/ms、下限 0.12 px/ms，衰减用指数积分
+  `位移 = v·τ·(1−e^(−Δt/τ))`（τ=190ms），帧率高低不影响滑行距离。
+  用 `appliedRef` 区分「用户划的」和「setViewport 自己推的」，否则第一帧就把惯性停掉。
+- **`entry/src/main/ets/pages/Index.ets`**：探针新增三个 phase 与两组打点——
+  `phase=5` 合成双指 `TouchEvent` 测缩放、`phase=6` 合成单指快划测惯性、`phase=8` 供真实长按用；
+  常驻 `MutationObserver` 打 `[ctx] open/close`，另加 `[rect]` 把节点屏幕矩形报给脚本（长按坐标不能写死）。
+  顶栏「⋯」那段的真点击收窄到 `phase=1/3`，否则弹出的「AI 生图」对话框会挡住长按。
+- **`scripts/accept-h1.ps1`**：新增 H1-19 双指缩放 / H1-20 拖拽惯性 / H1-21 长按菜单，
+  `Get-CbLog` 支持 `-MidAction`（启动后由脚本真去长按）。总检查数 18 → **21 条**，
+  实测 **21/21 全 PASS**，HAP `3,909,562B`，`consoleError=0 webError=0`。
+- 新增 `docs/H3-GESTURES.md`：实现要点、三条验收、踩过的三个坑（uitest 无 pinch / 坐标不能写死 / 对话框挡长按）。
+
+### 三个坑（留档）
+
+1. `uitest uiInput` 没有多指手势，双指只能靠 `runJavaScript` 合成 `TouchEvent`。
+2. 视图平移会被持久化，长按坐标必须按探针报的实时矩形算；第一个节点常是分组矩形，长按不弹节点菜单。
+3. 双指落点必须按 pane 自身矩形算——窄档下右栏是浮层，落在浮层上的那一指 d3-zoom 不认。
+
 ## H2.1 · 侧栏开关改圆形按钮 + 桌面版回填（2026-10-21）
 
 ### 鸿蒙侧

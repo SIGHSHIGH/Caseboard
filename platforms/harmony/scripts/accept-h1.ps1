@@ -33,7 +33,7 @@ function Add-Check([string]$id, [string]$name, [bool]$ok, [string]$detail) {
   $mark = if ($ok) { 'PASS' } else { 'FAIL' }
   Write-Host ("  [{0}] {1} {2}  {3}" -f $mark, $id, $name, $detail)
 }
-function Get-CbLog([string]$tmpName, [string]$phase, [int]$waitSec = 6) {
+function Get-CbLog([string]$tmpName, [string]$phase, [int]$waitSec = 6, [scriptblock]$MidAction = $null, [int]$MidDelay = 8) {
   & $hdc shell aa force-stop $BundleName 2>&1 | Out-Null
   & $hdc shell hilog -r 2>&1 | Out-Null
   $startOut = & $hdc shell aa start -a EntryAbility -b $BundleName --ps caseboardSelftest $phase 2>&1
@@ -41,9 +41,16 @@ function Get-CbLog([string]$tmpName, [string]$phase, [int]$waitSec = 6) {
     Write-Host ("  ! aa start 失败：{0}" -f ($startOut -join ' '))
   }
   $file = Join-Path $env:TEMP $tmpName
-  # 探针有一串延时打点：分档 1s 起稳定、[clip2] 2s、[more] 3s、[moreclick2] 4.2s。
-  # 所以第一次就等够 waitSec 秒再一次抓齐，别用「抓到了就返回」——那会漏掉后面的关键行。
-  Start-Sleep -Seconds $waitSec
+  # 先等页面稳定（分档 1s 收敛、[clip2] 2s、[more] 3s、[moreclick2] 4.2s），
+  # 需要「启动后由脚本真去点/划」的检查用 -MidAction 在中途插入动作。
+  if ($MidAction) {
+    Start-Sleep -Seconds $MidDelay
+    & $MidAction
+    Start-Sleep -Seconds ([Math]::Max(0, $waitSec - $MidDelay))
+  } else {
+    # 第一次就等够 waitSec 秒再一次抓齐，别用「抓到了就返回」——那会漏掉后面的关键行。
+    Start-Sleep -Seconds $waitSec
+  }
   & $hdc shell "hilog -x" 2>&1 | Out-File $file -Encoding utf8
   $hit = @((Get-Content $file) | Select-String -SimpleMatch '/CaseBoard' | ForEach-Object { $_.Line })
   if ($hit.Count -eq 0) {
@@ -257,6 +264,80 @@ if ($toggle) {
   $toggleDetail = "fixed=$isFixed size=$($size[0])x$($size[1]) leftX=$leftX rightGap=$($inner - $rightX) canvas=$canvas"
 }
 Add-Check 'H1-18' '侧栏开关为左右下角圆形按钮（44px、脱流、还回画布宽度）' $toggleOk $toggleDetail
+
+# ---------- H3 触控手势（双指缩放 / 拖拽惯性 / 长按菜单） ----------
+# 三条都要单独启动一轮：探针里各占一个 phase，普通启动不跑，避免干扰上面的稳态断言。
+$logPinch = Get-CbLog 'cb-h1-pinch.txt' '5' 14
+$pinchLine = @($logPinch | Select-String -Pattern '\[pinch\]' | Select-Object -Last 1)
+$pinchOk = $false
+$pinchDetail = 'no [pinch] line'
+if ($pinchLine) {
+  $pl = $pinchLine.Line
+  $pinchOk = $pl -match 'changed=true'
+  $zoomBefore = if ($pl -match 'before=matrix\(([\d.]+)') { [double]$Matches[1] } else { 0 }
+  $zoomAfter = if ($pl -match 'after=matrix\(([\d.]+)') { [double]$Matches[1] } else { 0 }
+  $pinchOk = $pinchOk -and ($zoomAfter -gt $zoomBefore)
+  $pinchDetail = "zoom $zoomBefore -> $zoomAfter"
+}
+Add-Check 'H1-19' '双指缩放生效（d3-zoom 在 ArkWeb 接住合成双指 TouchEvent）' $pinchOk $pinchDetail
+
+$logInertia = Get-CbLog 'cb-h1-inertia.txt' '6' 16
+$inertiaLine = @($logInertia | Select-String -Pattern '\[inertia\]' | Select-Object -Last 1)
+$inertiaOk = $false
+$inertiaDetail = 'no [inertia] line'
+if ($inertiaLine) {
+  $il = $inertiaLine.Line
+  # coasted=松手后仍在滑（惯性生效）；stopped=滑行会自己停下（不是无限漂移）
+  $inertiaOk = ($il -match 'coasted=true') -and ($il -match 'stopped=true')
+  $inertiaDetail = if ($il -match 'end=matrix\(([^)]+)\) at500=matrix\(([^)]+)\)') { "end=[$($Matches[1])] at500=[$($Matches[2])]" } else { $il.Substring(0, [Math]::Min(120, $il.Length)) }
+}
+Add-Check 'H1-20' '拖拽惯性：松手后继续滑行并衰减停下' $inertiaOk $inertiaDetail
+
+# 长按菜单用真机手势（uitest longClick）触发，验证「长按 → contextmenu → 节点菜单」整条链路。
+# 坐标不能写死：视图平移会被持久化，两次启动的坐标未必一样。所以先跑一轮读出节点屏幕矩形
+# （探针 [rect] 打点，CSS px），中心点 ×2（本机 dpr=2）换成 uitest 吃的物理像素，再长按。
+$logRect = Get-CbLog 'cb-h1-rect.txt' '8' 12
+$rectLine = @($logRect | Select-String -Pattern '\[rect\]' | Select-Object -Last 1)
+$tapX = 0
+$tapY = 0
+$rectDetail = 'no [rect] line'
+if ($rectLine) {
+  $rl = $rectLine.Line
+  # [rect] 里第一个往往是分组矩形（比卡片宽），长按它的空白处不会弹节点菜单；
+  # 挑第一个宽度 ≤ 140 的实体卡片当目标。
+  $allRects = [regex]::Matches($rl, '([A-Za-z0-9_\-:]+)@(\d+),(\d+),(\d+)x(\d+)')
+  $picked = $null
+  foreach ($m in $allRects) {
+    if ([int]$m.Groups[4].Value -le 140) { $picked = $m; break }
+  }
+  if (-not $picked -and $allRects.Count -gt 0) { $picked = $allRects[0] }
+  if ($picked) {
+    $nl = [int]$picked.Groups[2].Value
+    $nt = [int]$picked.Groups[3].Value
+    $nw = [int]$picked.Groups[4].Value
+    $nh = [int]$picked.Groups[5].Value
+    $tapX = ([int]($nl + [Math]::Round($nw / 2))) * 2
+    $tapY = ([int]($nt + [Math]::Round($nh / 2))) * 2
+    $rectDetail = "node=$($picked.Groups[1].Value) css=$nl,$nt ${nw}x${nh} phys=$tapX,$tapY"
+  }
+}
+$logCtx = @()
+$ctxLines = @()
+if ($tapX -gt 0) {
+  $logCtx = Get-CbLog 'cb-h1-ctx.txt' '8' 18 -MidAction {
+    & $hdc shell uitest uiInput longClick $tapX $tapY 2>&1 | Out-Null
+  } -MidDelay 9
+  $ctxLines = @($logCtx | Select-String -Pattern '\[ctx\] open')
+}
+$ctxOk = $false
+$ctxDetail = "no [ctx] open line; $rectDetail"
+if ($ctxLines) {
+  $cl = ($ctxLines | Select-Object -Last 1).Line
+  # 节点上的长按菜单比画布空白处多一条「新建关系气泡并连到此实体」
+  $ctxOk = ($cl -match '并连到此实体') -or ($cl -match '新建节点')
+  $ctxDetail = if ($cl -match 'text=(.*)$') { $Matches[1] } else { $cl }
+}
+Add-Check 'H1-21' '长按弹出上下文菜单（真机 longClick → contextmenu）' $ctxOk $ctxDetail
 
 # ---------- 控制台 ----------
 $allLog = $log1 + $log3 + $log4

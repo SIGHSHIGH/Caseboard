@@ -168,7 +168,7 @@ export function Board() {
   const setDragPos = useUiStore((s) => s.setDragPos);
   const focusRequest = useUiStore((s) => s.focusRequest);
   const graphLocked = useCodeStore((s) => s.state === 'error');
-  const { screenToFlowPosition, setCenter } = useReactFlow();
+  const { screenToFlowPosition, setCenter, setViewport, getViewport } = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
   // 代码侧请求居中时用 nonce 去重：文档后续变化不该把视口抢回去
   const lastFocusNonce = useRef(0);
@@ -762,6 +762,105 @@ export function Board() {
 
   const closeContextMenu = useCallback(() => setCtxMenu(null), []);
 
+  /* ---------------------------------------------------------------------------
+     H3：拖拽惯性。
+     平板上「一划到底就立刻停」很别扭——手指松开后视口应该按末段速度再滑一小段，
+     然后指数衰减停下（原生地图的手感）。只在触控模式下启用：
+     鼠标手势保持原样，桌面版不会出现「松手还在飘」的怪手感。
+
+     三个坑：
+       1) 惯性是靠 setViewport 驱动的，而 setViewport 又会回调 onMove，
+          所以必须能区分「用户划的」和「我们自己推的」，否则第一帧就把自己停掉；
+          这里用 appliedRef 记住上一帧推到的位置，位置对得上就跳过采样。
+       2) 速度只能用最近 120ms 的样本算：整段拖拽的平均速度会把末速算低，甩不起来。
+       3) τ 用指数衰减积分（v·τ·(1−e^{−Δt/τ})），这样帧率高低不影响滑行距离。
+     --------------------------------------------------------------------------- */
+  const inertiaRef = useRef<{ raf: number; vx: number; vy: number } | null>(null);
+  const panSamplesRef = useRef<Array<{ t: number; x: number; y: number }>>([]);
+  const appliedRef = useRef<{ x: number; y: number } | null>(null);
+
+  const stopInertia = useCallback(() => {
+    if (inertiaRef.current) {
+      cancelAnimationFrame(inertiaRef.current.raf);
+      inertiaRef.current = null;
+    }
+    appliedRef.current = null;
+  }, []);
+
+  useEffect(() => stopInertia, [stopInertia]);
+
+  const onBoardMoveStart = useCallback(() => {
+    panSamplesRef.current = [];
+    stopInertia();
+  }, [stopInertia]);
+
+  const onBoardMove = useCallback(
+    (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      const applied = appliedRef.current;
+      // 自己推的那一帧：位置对得上就当作噪声，别停惯性
+      if (applied && Math.abs(applied.x - viewport.x) < 0.6 && Math.abs(applied.y - viewport.y) < 0.6) return;
+      appliedRef.current = null;
+      if (inertiaRef.current) stopInertia();
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const samples = panSamplesRef.current;
+      samples.push({ t: now, x: viewport.x, y: viewport.y });
+      while (samples.length > 8) samples.shift();
+    },
+    [stopInertia],
+  );
+
+  const onBoardMoveEnd = useCallback(
+    (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      const samples = panSamplesRef.current;
+      panSamplesRef.current = [];
+      // 只给触控手势惯性；鼠标/触控笔保持桌面手感
+      if (typeof document !== 'undefined' && document.documentElement.dataset.input !== 'touch') return;
+      if (samples.length < 2) return;
+      const last = samples[samples.length - 1];
+      const recent = samples.filter((s) => last.t - s.t <= 120);
+      if (recent.length < 2) return;
+      const first = recent[0];
+      const dt = last.t - first.t;
+      if (dt <= 0) return;
+      let vx = (last.x - first.x) / dt;
+      let vy = (last.y - first.y) / dt;
+      const speed = Math.hypot(vx, vy);
+      const TAU = 190; // ms，速度衰减时间常数
+      if (speed < 0.12) return; // 慢慢挪一下不该起飞
+      if (speed > 3.2) {
+        // 超快多数是拖拽抖动或误触，压到上限，别让整块画布飞出去
+        const k = 3.2 / speed;
+        vx *= k;
+        vy *= k;
+      }
+      void viewport;
+      let prev = last.t;
+      const step = (now: number) => {
+        const cur = inertiaRef.current;
+        if (!cur) return;
+        const elapsed = Math.max(1, Math.min(48, now - prev));
+        prev = now;
+        const decay = Math.exp(-elapsed / TAU);
+        const dx = cur.vx * TAU * (1 - decay);
+        const dy = cur.vy * TAU * (1 - decay);
+        cur.vx *= decay;
+        cur.vy *= decay;
+        const current = getViewport();
+        const next = { x: current.x + dx, y: current.y + dy, zoom: current.zoom };
+        appliedRef.current = { x: next.x, y: next.y };
+        void setViewport(next, { duration: 0 });
+        if (Math.hypot(cur.vx, cur.vy) < 0.004) {
+          stopInertia();
+          return;
+        }
+        cur.raf = requestAnimationFrame(step);
+      };
+      inertiaRef.current = { raf: 0, vx, vy };
+      inertiaRef.current.raf = requestAnimationFrame(step);
+    },
+    [getViewport, setViewport, stopInertia],
+  );
+
   /**
    * 容器级右键兜底：与双击一样，React Flow 的 onPaneContextMenu 依赖完整的指针序列，
    * 自动化环境或部分输入设备只给到 contextmenu 事件，这里在画布容器上再判一次。
@@ -999,6 +1098,9 @@ export function Board() {
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
+        onMoveStart={onBoardMoveStart}
+        onMove={onBoardMove}
+        onMoveEnd={onBoardMoveEnd}
         onConnect={onConnect}
         connectionMode={ConnectionMode.Loose}
         // A5：双击缩放交给我们自己的「新建节点」对话框，画布双击不再变焦
