@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "案情板 CaseBoard 鸿蒙版"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "案情板主界面"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "案情板"
+    }
+  ]
+}

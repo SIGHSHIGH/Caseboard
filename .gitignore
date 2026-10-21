@@ -1,0 +1,38 @@
+# 鸿蒙工程
+/node_modules
+/oh_modules
+/entry/node_modules
+/entry/oh_modules
+/.hvigor
+/.idea
+*.iml
+/local.properties
+/build
+/entry/build
+/entry/.preview
+/entry/.cxx
+/oh-package-lock.json5
+
+# 桌面工程镜像（web/ 下）
+/web/node_modules
+/web/dist
+/web/.tmp
+
+# 临时/工具缓存
+/.tmp-esbuild
+/.dsh-hvigor-tmp
+/.cache
+/.dsh-hdc
+
+# 前端构建产物（由 scripts/build-web.ps1 生成，不入库）
+/entry/src/main/resources/rawfile/assets/
+/entry/src/main/resources/rawfile/index.html
+
+# 产物
+*.hap
+*.hsp
+*.app
+
+# 杂项
+.DS_Store
+Thumbs.db
