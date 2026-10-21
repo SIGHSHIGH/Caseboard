@@ -1,0 +1,225 @@
+/* ============================================================================
+   H1：平板与触控适配（在 index.css 之后加载，只做增量覆盖）
+
+   桌面版在 1280+ 的窗口里够用，搬到平板上暴露的是两类问题：
+     1) 控件太小 —— 全站控件的尺寸其实都挂在 --cb-control-* 三个令牌上，
+        所以按输入方式整体放大，不去逐个改选择器；
+     2) 侧栏占位 —— 右栏 312px + 左栏 208px 在 1440 的平板屏上吃掉 36% 宽度，
+        窄档改浮层抽屉（配 .cb-scrim 遮罩），画布立即变宽。
+
+   统一用 <html data-input="touch"> 作为唯一开关，由 main.tsx 打标：
+   实测 MatePad Pro 13 的 ArkWeb 报 `maxTouchPoints=0` 但 `(pointer: coarse)=true`
+   （把触摸当鼠标报），所以两个信号取「或」，不能只信其中一个。
+   ========================================================================== */
+
+:root[data-input='touch'] {
+  --cb-control-h: 40px;      /* 桌面 28px */
+  --cb-control-h-sm: 36px;   /* 桌面 22px */
+  --cb-control-pad: 12px;    /* 桌面 8px */
+}
+
+:root[data-input='touch'] .cb-topbar {
+  height: 56px;
+  gap: 8px;
+}
+
+/* 折叠箭头原本只有 16px 宽，手指按不住 */
+:root[data-input='touch'] .cb-collapse {
+  flex: 0 0 36px;
+  width: 36px;
+  font-size: 16px;
+}
+
+/* 视图切换（画布/时间线/演示/地图）原本只有 22px 高，平板上一按就错行 */
+:root[data-input='touch'] .cb-viewtabs {
+  padding: 4px;
+}
+
+:root[data-input='touch'] .cb-viewtab {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+:root[data-input='touch'] .cb-topbar__morebtn {
+  min-width: 40px;
+}
+
+:root[data-input='touch'] .cb-legend-fab {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+/* 画布左下角 React Flow 的缩放按钮默认 26×26 */
+:root[data-input='touch'] .react-flow__controls-button {
+  width: 40px;
+  height: 40px;
+}
+
+/* 分组节点标题栏的「折叠」「节点数」是画布里最小的两个可点元素 */
+:root[data-input='touch'] .cb-group__fold {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+:root[data-input='touch'] .cb-group__count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 8px;
+}
+
+/* 触屏没有 hover 语义：别让按钮在「按下」瞬间变色又弹回，看着像故障 */
+:root[data-input='touch'] .cb-btn:hover:not(:disabled) {
+  border-color: var(--cb-border-strong);
+  color: inherit;
+  background: var(--cb-surface);
+}
+
+:root[data-input='touch'] .cb-btn--primary:hover:not(:disabled) {
+  background: var(--cb-accent);
+  color: var(--cb-on-accent);
+}
+
+/* ---------- 顶栏：1440 档已经在往「⋯」里收，先让次要信息让位 ---------- */
+
+/* 工具栏（撤销/重做/主题/背景/搜索）不参与伸缩：它被挤到 61px 时内容会往左溢出并被裁，
+   而它没有「⋯」收容逻辑。让它吃自然宽度，把余量让给右侧有溢出算法的操作区。 */
+:root[data-input='touch'] .cb-topbar__tools {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+/* 顶栏按钮不许被压缩：`.cb-btn` 没写 flex-shrink，控件一放大就被压扁、文字被裁，
+   而溢出算法看的是 scrollWidth，被压扁时它并不超，「⋯」于是永远不接管。
+   这条是通用缺陷，应回填桌面版。 */
+.cb-topbar__tools > .cb-btn,
+.cb-topbar__io > .cb-btn,
+.cb-topbar__io > .cb-topbar__more {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1560px) {
+  .cb-topbar {
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .cb-topbar__case {
+    max-width: 18ch;
+  }
+
+  /* 「SQLite · 已保存 13:46」约占 150px。它是状态提示，不是操作：
+     右栏「案件概览 · 最后保存」里有完整时间，保存成功也会弹确认框。
+     1440 档把这段让给「AI 助手 / 生图」这类高频操作更值。 */
+  .cb-topbar__save {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  /* 案件编号在顶栏是纯展示，右栏「案件概览」里还看得到，窄档优先留给操作按钮 */
+  .cb-topbar__no {
+    display: none;
+  }
+}
+
+/* ---------- 侧栏抽屉 + 遮罩 ---------- */
+.cb-main {
+  position: relative;
+}
+
+.cb-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  padding: 0;
+  border: 0;
+  background: rgba(28, 27, 26, 0.34);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 1180px) {
+  .cb-panel--right {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 30;
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.16);
+  }
+}
+
+@media (max-width: 900px) {
+  .cb-panel--left {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.16);
+  }
+}
+
+/* ---------- 竖屏 / 小窗拦截层（本产品只做横屏） ---------- */
+
+.cb-gate {
+  position: fixed;
+  inset: 0;
+  /* 盖在打印层（9999）之外都没意义，但要压过抽屉（30）与「⋯」浮层（body 级 fixed） */
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  /* 不透明：底下界面保持挂载等横屏恢复，但必须完全挡住，避免半残界面被当成可用 */
+  background: var(--cb-bg);
+}
+
+.cb-gate__card {
+  max-width: 420px;
+  padding: 28px 26px 24px;
+  border: 1px solid var(--cb-border);
+  border-radius: 14px;
+  background: var(--cb-surface);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  text-align: center;
+}
+
+.cb-gate__face {
+  font-family: 'Cascadia Mono', 'Consolas', 'Microsoft YaHei', monospace;
+  font-size: 30px;
+  line-height: 1.25;
+  color: var(--cb-accent);
+  white-space: nowrap;
+}
+
+.cb-gate__title {
+  margin-top: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--cb-text);
+}
+
+.cb-gate__text {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--cb-muted);
+}
+
+.cb-gate__meta {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--cb-border);
+  font-size: 12px;
+  color: var(--cb-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cb-gate__hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--cb-accent);
+}
