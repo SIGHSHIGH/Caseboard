@@ -1,5 +1,45 @@
 # 变更记录 · 鸿蒙移植
 
+## H1 · 平板形态适配验收通过（2026-10-21）
+
+**目标**：同一套前端在 MatePad Pro 13（1440×893 CSS px / dpr=2）上手指可用，桌面功能不减，
+八条硬约束不动。`scripts/accept-h1.ps1` 10 条检查全 PASS。
+
+### 新增
+
+- **`web/src/lib/viewport.ts`**：纯逻辑分档（`classifyViewport` / `defaultPanelState` /
+  `panelIsDrawer` / `shouldResetPanels`），阈值 `wide ≥ 1180`、`medium ≥ 900`。
+- **`web/src/styles/responsive.css`**：在 `index.css` 之后加载的增量覆盖层（不动 5367 行大文件）。
+  触控令牌 `--cb-control-h` 28→40px、`--cb-control-h-sm` 22→36px、`--cb-control-pad` 8→12px；
+  折叠条 16→36px、视图页签 36px、画布缩放 26→40px；窄档右栏变贴边抽屉 + `.cb-scrim` 遮罩。
+- **`web/src/main.tsx`**：按 `matchMedia('(pointer: coarse)') || maxTouchPoints > 0` 打
+  `<html data-input="touch">`。
+- **`web/src/App.tsx`**：`tier` 状态 + `data-tier` 属性；抽屉模式与遮罩渲染；启动竞态修复
+  （两次同档确认 + 150/600ms 补测 + `window.resize`）。
+- **`scripts/accept-h1.ps1`**（H1-1…H1-10，输出 `.tmp-esbuild/accept-h1.json`）。
+- **`docs/H1-TABLET.md`**（分档模型、令牌表、上机手法、遗留）、**`docs/REPO-STRATEGY.md`**
+  （桌面版与鸿蒙版的仓库管理建议）。
+
+### 修改
+
+- **`web/src/components/panels/TopBar.tsx`**：`≤1560px` 收紧 gap 与案件名宽度，`≤1280px` 隐藏案件编号。
+
+### 关键结论
+
+1. **平板 ArkWeb 报 `maxTouchPoints === 0` 但 `(pointer: coarse) === true`** —— 只判断前者会让
+   整套触控样式静默失效（首版实测 `small=16`），必须用「或」。
+2. **启动竞态是真实回归**：用 `.cb-app` 的 `clientWidth` 分档会读到首帧中间值把右栏误收起，
+   且之后不会自动弹回。改用 `documentElement.clientWidth` + 两次同档确认。
+3. **模拟器无法改朝向**，窄档改用 ArkUI 侧 `.width('1000vp')` 得到真实视口变化来测。
+4. 命中区收敛 16 → 12 → 5 → 0；画布内被 React Flow 缩放的控件单列 `canvasMarks`，不计入。
+
+### 已知遗留
+
+- 触控放大后「主题·默认」按钮在 1440 被左边缘裁掉：`.cb-topbar__io` 用 `justify-content: flex-end`，
+  内容向左溢出而 `scrollWidth` 不统计左侧溢出，既有溢出算法因此不把按钮收进「⋯」。
+  修法＝把 撤销/重做/主题/背景/搜索 并入 `actions` 列表，排 H2/H3。
+- 见 `docs/H1-TABLET.md` §6 与 `docs/H0-ACCEPTANCE.md` §7。
+
 ## H0 · 环境与骨架验收通过（2026-10-21）
 
 **目标**：在这台机器上把桌面「案情板 CaseBoard」的前端跑进鸿蒙 ArkWeb，并证明

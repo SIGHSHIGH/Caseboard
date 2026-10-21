@@ -20,6 +20,13 @@ import { NewNodeDialog } from './components/panels/NewNodeDialog';
 import { TagLinkDialog } from './components/panels/TagLinkDialog';
 import { usePaletteStore } from './store/paletteStore';
 import { ASSET_DND_TYPE } from './lib/dnd';
+import {
+  classifyViewport,
+  defaultPanelState,
+  panelIsDrawer,
+  shouldResetPanels,
+  type ViewportTier,
+} from './lib/viewport';
 
 // 代码视图带着 CodeMirror 6，按需加载，避免拖慢画布首屏
 const CodePanel = lazy(() => import('./components/code/CodePanel').then((mod) => ({ default: mod.CodePanel })));
@@ -45,7 +52,50 @@ export default function App() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const workRef = useRef<HTMLDivElement>(null);
+  // H1：视口分档。桌面窗口够宽时永远落在 wide 档，行为与改造前完全一致；
+  // 平板或窄窗才进 medium/compact，右栏/左栏改浮层抽屉。
+  const [tier, setTier] = useState<ViewportTier>('wide');
+  const tierRef = useRef<ViewportTier>('wide');
   useCodeSyncBridge();
+
+  useEffect(() => {
+    // 用 <html> 的 clientWidth（等于窗口宽度）：.cb-app 在首帧可能还没被内容撑开，
+    // 拿它会读到 300 这类中间值，被误判成窄档后把右栏收起来——实测踩过这个坑。
+    const readWidth = () => document.documentElement.clientWidth || window.innerWidth || 0;
+    let pending: ViewportTier | null = null;
+    const measure = () => {
+      const next = classifyViewport(readWidth());
+      if (next === tierRef.current) {
+        pending = null;
+        return;
+      }
+      // 连续两次读到同一档才生效，避免布局过渡期的中间值把面板收起来
+      if (pending !== next) {
+        pending = next;
+        return;
+      }
+      pending = null;
+      const previous = tierRef.current;
+      tierRef.current = next;
+      setTier(next);
+      // 只在「变窄」时收起，变宽不自动弹开——免得用户刚收起又被窗口变化顶开
+      if (shouldResetPanels(previous, next)) {
+        const state = defaultPanelState(next);
+        setLeftOpen(state.left);
+        setRightOpen(state.right);
+      }
+    };
+    measure();
+    // 首帧、布局稳定后各补测一次；此后只靠窗口尺寸变化驱动
+    const t1 = window.setTimeout(measure, 150);
+    const t2 = window.setTimeout(measure, 600);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -113,8 +163,12 @@ export default function App() {
 
   // M9（H3）：启动密码已彻底移除，应用一起来就是普通界面，数据落在普通 SQLite
 
+  // H1：窄档下侧栏是浮层抽屉，需要一层遮罩——点遮罩即关，和手机上拉抽屉的手感一致
+  const leftDrawer = panelIsDrawer(tier, 'left') && leftOpen;
+  const rightDrawer = panelIsDrawer(tier, 'right') && rightOpen;
+
   return (
-    <div className="cb-app">
+    <div className="cb-app" data-tier={tier}>
       <div className="cb-print-head">
         <strong>{doc.meta.title}</strong>
         <span>{doc.meta.caseNo ? '案件编号 ' + doc.meta.caseNo : '未编号'}</span>
@@ -137,6 +191,17 @@ export default function App() {
         }}
         onDrop={onDrop}
       >
+        {leftDrawer || rightDrawer ? (
+          <button
+            type="button"
+            className="cb-scrim"
+            aria-label="关闭侧栏"
+            onClick={() => {
+              if (rightDrawer) setRightOpen(false);
+              if (leftDrawer) setLeftOpen(false);
+            }}
+          />
+        ) : null}
         {viewMode === 'board' && leftOpen ? <LeftPanel /> : null}
         {viewMode === 'board' ? (
           <button

@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@xyflow/react/dist/style.css';
 import './index.css';
+import './styles/responsive.css';
 import App from './App';
 import { debugLog, getAppInfo } from './services/platform';
 import { bootstrapDoc } from './store/docStore';
@@ -14,6 +15,19 @@ const root = ReactDOM.createRoot(container);
 
 // 首屏渲染前就把主题落到 <html data-theme>，避免闪一下默认浅色
 bootTheme();
+
+/**
+ * H1：输入方式探测。实测 MatePad Pro 13 的 ArkWeb 报 `maxTouchPoints=0`
+ * 但 `(pointer: coarse)=true`（把触摸当鼠标报），所以两个信号取「或」，
+ * 探到了就在 <html> 上打标，控件尺寸令牌据此放大（见 styles/responsive.css）。
+ */
+const coarsePointer =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(pointer: coarse)').matches;
+if (coarsePointer || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)) {
+  document.documentElement.dataset.input = 'touch';
+}
 
 /**
  * 启动顺序：立即挂载界面（先用演示数据 / 本机缓存），再异步水合 SQLite；
