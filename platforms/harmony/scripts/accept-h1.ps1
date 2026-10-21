@@ -239,6 +239,25 @@ if ($clip3) {
 }
 Add-Check 'H1-17' '窄档 1000 顶栏零裁切' $clip3Ok $clip3Detail
 
+# ---------- 侧栏开关：左右下角圆形按钮（H3 起取代 16px 竖向折叠条） ----------
+$toggle = $log1 | Select-String -Pattern '\[toggle\]' | Select-Object -First 1
+$toggleOk = $false
+$toggleDetail = 'no toggle line'
+if ($toggle) {
+  $line = $toggle.Line
+  $size = if ($line -match 'size=(\d+)x(\d+)') { @([int]$Matches[1], [int]$Matches[2]) } else { @(0, 0) }
+  $leftX = if ($line -match 'left=(\d+),') { [int]$Matches[1] } else { -1 }
+  $rightX = if ($line -match 'right=(\d+)') { [int]$Matches[1] } else { -1 }
+  $inner = if ($line -match 'inner=(\d+)') { [int]$Matches[1] } else { 0 }
+  $canvas = if ($line -match 'canvas=(\d+)') { [int]$Matches[1] } else { 0 }
+  $isFixed = $line -match 'fixed=true'
+  # 44×44 命中尺寸、贴左右下角（12px 边距）、脱流（fixed），且画布拿到 1440-208-312 = 920
+  $toggleOk = $isFixed -and ($size[0] -ge 40) -and ($size[1] -ge 40) -and
+    ([Math]::Abs($leftX - 12) -le 2) -and ([Math]::Abs(($inner - $rightX) - 12) -le 2) -and ($canvas -ge 916)
+  $toggleDetail = "fixed=$isFixed size=$($size[0])x$($size[1]) leftX=$leftX rightGap=$($inner - $rightX) canvas=$canvas"
+}
+Add-Check 'H1-18' '侧栏开关为左右下角圆形按钮（44px、脱流、还回画布宽度）' $toggleOk $toggleDetail
+
 # ---------- 控制台 ----------
 $allLog = $log1 + $log3 + $log4
 $consoleErrors = ($allLog | Select-String -SimpleMatch 'web-console' | Where-Object { $_.Line -match '\berror\b' }).Count

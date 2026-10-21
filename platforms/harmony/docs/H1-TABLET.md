@@ -148,3 +148,28 @@ Start-Process -FilePath 'D:\DevEco Studio\tools\emulator\Emulator.exe' -Argument
 - 键盘快捷键（Ctrl+K、Delete 等）：平板外接键盘未测。
 - 顶栏优先级仍是桌面版的口径：1440 档 `代码视图`(priority 4) 比 `AI 助手`(8) / `生图`(9) 更优先留下。移植版是否该把 AI 相关提上来，等真实使用反馈再定，不在 H2 擅改。
 - 超宽屏（≥1561，`SQLite · 已保存` 会重新出现）在模拟器上无法构造，未实测；该分支只影响状态提示的显示。
+
+## 九、侧栏开关：竖向折叠条 → 左右下角圆形按钮
+
+原设计里左栏与右栏之间各有一条 `.cb-collapse` 竖向折叠条（`index.css:4387`，桌面 16px 宽、触控模式放大到 36px），
+用于收起/展开面板。搬到平板上暴露两个问题：
+
+1. **按不准**：36px×整列高的细条，手指要精确落到 36px 宽的区域里；
+2. **白占宽度**：两条合起来吃掉 32–72px，而它们的唯一作用就是当开关。
+
+改成浮在窗口**左下角 / 右下角**的 44×44 圆形按钮（`styles/responsive.css` 里覆盖 `.cb-collapse`）：
+
+```css
+.cb-collapse { position: fixed; bottom: 12px; width: 44px; height: 44px; border-radius: 999px; z-index: 40; }
+.cb-collapse--left { left: 12px; }
+.cb-collapse--right { right: 12px; }
+```
+
+因为 `position: fixed` 脱了流，两条折叠条不再参与 flex 布局，**画布宽度从 888 变成 920**（1440 − 208 左栏 − 312 右栏）。
+`z-index: 40` 让按钮压在抽屉遮罩（25）与抽屉本体（30）之上，抽屉打开时仍能点它收起。
+
+一处需要留意的邻居：图例按钮 `.cb-legend-fab-root` 是 `bottom: 126px`，与 `bottom: 12px + 44px` 的圆形按钮不冲突（实测两轮截图确认）。
+
+上机断言（`accept-h1.ps1` H1-18，探针打点 `[toggle]`）：
+`fixed=True size=44x44 leftX=12 rightGap=12 canvas=920`。
+

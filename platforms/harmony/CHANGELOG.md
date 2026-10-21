@@ -1,5 +1,30 @@
 # 变更记录 · 鸿蒙移植
 
+## H2.1 · 侧栏开关改圆形按钮 + 桌面版回填（2026-10-21）
+
+### 鸿蒙侧
+
+- **`web/src/styles/responsive.css`**：`.cb-collapse` 从「两栏之间 16px 竖向折叠条（触控 36px）」
+  改成浮在窗口左右下角的 **44×44 圆形按钮**（`position: fixed; bottom: 12px`，左 `left: 12px` / 右 `right: 12px`，
+  `z-index: 40` 压在抽屉与遮罩之上）。脱流之后画布宽度 **888 → 920**（1440 − 208 左栏 − 312 右栏），
+  按钮本身也达到 44×44 的触控最小命中尺寸。
+- **`web/src/index.css`**：`.cb-btn` 补 `flex-shrink: 0`（与桌面版同步，见下）。
+- **`entry/src/main/ets/pages/Index.ets`**：探针新增 `[toggle]` 打点（`left`/`right` 坐标、`size`、`fixed`、`inner`、`canvas`）。
+- **`scripts/accept-h1.ps1`**：新增 H1-18「侧栏开关为左右下角圆形按钮（44px、脱流、还回画布宽度）」，
+  总检查数 17 → **18 条**。上机实测：`fixed=True size=44x44 leftX=12 rightGap=12 canvas=920`，**18/18 全 PASS**。
+- `docs/H1-TABLET.md` 新增 §九记录这次改动与「为什么不是 16px 长条」的理由。
+
+### 桌面侧（回填到 `main`，再 cherry-pick 回 `harmony`）
+
+同一轮对抗审查在桌面版发现两处同源缺陷，已在 `main` 上修复并推送（提交 `774fa62`）：
+
+1. `src/components/panels/TopBar.tsx`：预算扣除常驻元素（「⋯」按钮 + 保存状态文字）实测宽度；
+   溢出判定补「首个子元素左边界是否越界」——`.cb-topbar__io` 是 `justify-content: flex-end`，
+   溢出时内容往左跑，`scrollWidth` 只统计右侧，旧判定对它永远返回「没超」。
+2. `src/index.css`：`.cb-btn` 补 `flex-shrink: 0`，顶栏挤不下时把按钮收进「⋯」菜单而不是压扁裁字。
+
+桌面验收：`typecheck` 0 error、`smoke` 871 PASS、`ui-smoke` 430 PASS / 0 FAIL、`build` 成功。
+
 ## 仓库迁移 · 并入桌面仓库 `harmony` 分支（2026-10-21）
 
 鸿蒙工程从独立仓库 `masaike board hamonyos/` 迁到主仓库 `platforms/harmony/`，

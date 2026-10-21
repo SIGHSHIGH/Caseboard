@@ -313,6 +313,8 @@ button {
   cursor: pointer;
   transition: all 0.12s ease;
   white-space: nowrap;
+  /* 顶栏挤不下时宁可把它收进「⋯」菜单，也不要让 flex 把按钮压扁、文字裁掉 */
+  flex-shrink: 0;
 }
 
 .cb-btn:hover:not(:disabled) {

@@ -1,5 +1,20 @@
 # 案情板 CaseBoard · 鸿蒙移植：结构分析 / 可行性 / 需求流程 / 提示词
 
+> ⚠️ **已作废（2026-10-21）· 正确结论见 [platforms/harmony/README.md](../platforms/harmony/README.md)**
+>
+> 本文是移植**立项阶段的侦察稿**，保留它是因为路线判断（ArkWeb 混合先行）、三处平台缝的定位、
+> 里程碑切分这些主干结论经实践检验是对的，值得留存。
+>
+> 但**附录 §6 的「SDK 能力自查」有硬错误**：当时只搜了 `sdk/default/openharmony/ets/kits`（47 个 kit），
+> 没搜 `sdk/default/hms/ets/kits`（56 个 kit），因此得出「本机 SDK 无 OCR、无 PDF」的结论，
+> 并据此建议「OCR 用手工录入替代」。**实测相反**：hms 层有 `@kit.CoreVisionKit`（`@hms.ai.ocr.textRecognition`）
+> 与 `@kit.PDFKit`（`@hms.officeservice.pdfservice`），phone/tablet/2in1 三类设备的 syscap 都同时含这两项。
+> 实际实现已改用系统 Core Vision Kit 做 OCR、放弃打包 Tesseract（省 16MB）。
+>
+> 另一处偏差：文中把 `vite base` 未设列为头号硬伤——这条成立；但没预见到真正的拦路虎是
+> **`resource://` 协议下 ESM 脚本被 CORS 拦死**，最终改用自定义 scheme `caseboard://` 才跑通。
+> 上机踩过的 7 个坑见 `platforms/harmony/docs/H0-ACCEPTANCE.md` 与 `H1-TABLET.md`。
+
 > 目标：把 Windows 桌面版案情板（Tauri 2 + React 18）移植到 **HarmonyOS NEXT（ArkTS/ArkUI）**。
 > 本文是**移植立项文档**：先给实测结结构，再给可行性判断，再给里程碑，最后给可直接粘贴执行的提示词。
 > 编写时点：`1.0.0-beta.1`（M1–M18 全部验收通过）。所有数字都在本机实测，不引用 CHANGELOG 的旧值。

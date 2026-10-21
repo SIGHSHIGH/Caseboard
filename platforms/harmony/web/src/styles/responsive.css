@@ -23,11 +23,33 @@
   gap: 8px;
 }
 
-/* 折叠箭头原本只有 16px 宽，手指按不住 */
-:root[data-input='touch'] .cb-collapse {
-  flex: 0 0 36px;
-  width: 36px;
-  font-size: 16px;
+/* ---------- 侧栏开关：竖向折叠条 → 面板左右下角圆形按钮 ----------
+   原来两条 `.cb-collapse` 是 16px 宽的竖向长条（触控模式下放大到 36px），
+   横向一共吃掉 32–72px，而这一条在平板上几乎按不准。
+   改成浮在窗口左右下角的 44px 圆形按钮：不再参与 flex 布局（position: fixed），
+   画布直接多出 32–72px；按钮自身达到 44×44 的触控最小命中尺寸。
+   图例按钮在 bottom: 126px，与这里的 bottom: 12px + 44px 不冲突。 */
+.cb-collapse {
+  position: fixed;
+  bottom: 12px;
+  z-index: 40;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--cb-border-strong);
+  border-radius: 999px;
+  background: var(--cb-surface);
+  box-shadow: 0 3px 10px rgba(28, 27, 26, 0.18);
+  font-size: 18px;
+}
+
+.cb-collapse--left {
+  left: 12px;
+}
+
+.cb-collapse--right {
+  right: 12px;
 }
 
 /* 视图切换（画布/时间线/演示/地图）原本只有 22px 高，平板上一按就错行 */
