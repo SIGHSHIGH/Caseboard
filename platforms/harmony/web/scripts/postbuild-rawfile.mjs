@@ -12,7 +12,7 @@
  * 另外把产物清单写成 JSON，供 H0 验收 A1/A2 直接读取。
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -81,7 +81,11 @@ const report = {
   files: files.map((file) => ({ rel: file.rel, bytes: file.size })),
 };
 
-writeFileSync(join(projectRoot, '.tmp-esbuild', 'rawfile-report.json'), JSON.stringify(report, null, 2), 'utf8');
+// 报告目录可能不存在（全新 clone 时 .tmp-esbuild 被 .gitignore 忽略），必须先建再写，
+// 否则 writeFileSync 报 ENOENT 并让整条验收链在最后一步失败。
+const reportDir = join(projectRoot, '.tmp-esbuild');
+mkdirSync(reportDir, { recursive: true });
+writeFileSync(join(reportDir, 'rawfile-report.json'), JSON.stringify(report, null, 2), 'utf8');
 console.log(JSON.stringify({ ...report, files: undefined }, null, 2));
 if (!report.ok) {
   console.error('\n产物不合格，HAP 不应打包。请先修复上面的 problems。');
