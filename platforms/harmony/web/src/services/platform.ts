@@ -264,6 +264,30 @@ export async function readThumbBytes(assetId: string, size: number): Promise<Uin
   return base64ToBytes(base64);
 }
 
+/**
+ * 缩略图文件路径（缩略图直接给 `img/src` 用，不再把字节搬进 JS）。
+ * 桌面端 Rust 侧没有对应命令，返回 null 由 imageStore 退回字节流；鸿蒙端走沙箱文件名匹配。
+ */
+export async function thumbFilePath(assetId: string, size: number): Promise<string | null> {
+  if (!isHarmony()) return null;
+  const prefix = assetId + '_' + size;
+  if (!thumbNames) thumbNames = await listNames(THUMB_DIR);
+  const hit = thumbNames.find((name) => name === prefix || name.startsWith(prefix + '.'));
+  return hit ? toAbsPath(THUMB_DIR + '/' + hit) : null;
+}
+
+/**
+ * 素材二进制是否落在沙箱真实文件里。
+ * 桌面（Tauri 命令）与鸿蒙（原生桥 + 文件仓）都算；只有纯浏览器走 IndexedDB。
+ *
+ * H5 修正：此前 imageStore 只按 `isTauri()` 分支，鸿蒙被判进 IndexedDB，
+ * 于是 platform.ts 里已写好的 `isHarmony()` 文件分支成了死代码，
+ * 沙箱里从来没有 `assets/` 与 `thumbs/` 目录，`caseboard://rawfile/asset/…` 必然 404。
+ */
+export function usesNativeAssetStore(): boolean {
+  return isTauri() || isHarmony();
+}
+
 export async function removeAssetFiles(assetId: string): Promise<void> {
   if (!isHarmony()) {
     await invoke('remove_asset', { assetId });
@@ -287,17 +311,28 @@ export async function removeAssetFiles(assetId: string): Promise<void> {
 
 /**
  * 素材路径 → 可放进 img/src 的 URL。
- * 桌面端走 asset 自定义协议（convertFileSrc）；鸿蒙端 `file:` 由 Web 组件
- * 的 `fileAccess(true)` 放行，逐段 encode 以免中文/空格把 URL 截断。
+ * 桌面端走 asset 自定义协议（convertFileSrc）；鸿蒙端走原生 scheme handler 的
+ * asset 路由（`caseboard://rawfile/asset/<相对路径>`），由 ArkTS 侧读沙箱字节回给内核。
  */
 export function assetFileUrl(path: string): string {
   if (!isHarmony()) return convertFileSrc(path);
   const normalized = path.replace(/\\/g, '/');
-  const encoded = normalized
+  // H5 修正：此前先剥掉开头的斜杠、再拿 '/data/…/files/' 去比前缀，永远比不中，
+  // 于是把整条绝对路径塞进了 URL（asset/data/storage/el2/…/thumbs/x.jpg）→ 404、缩略图空白。
+  // 现在先把沙箱前缀切掉：优先用 getAppInfo 拿到的真实数据目录，其次退回到
+  // 「从最后一个 /assets/ 或 /thumbs/ 起算」——两者都只留下 assets/… 或 thumbs/…。
+  let rel = toRelPath(normalized);
+  const marker = /(?:^|\/)(assets|thumbs)\//.exec(normalized);
+  if (marker && !/^(assets|thumbs)\//.test(rel)) {
+    rel = normalized.slice(marker.index).replace(/^\/+/, '');
+  }
+  rel = rel.replace(/^\/+/, '');
+  // 页面跑在 caseboard:// 上，file:// 会被跨 scheme 拒掉（缩略图空白、背景图不显示）
+  const encoded = rel
     .split('/')
     .map((segment) => (segment ? encodeURIComponent(segment) : segment))
     .join('/');
-  return 'file://' + (encoded.startsWith('/') ? encoded : '/' + encoded);
+  return 'caseboard://rawfile/asset/' + encoded;
 }
 
 /** 验收自检结束：桌面端写报告并退出；鸿蒙端只回报结果，不退出应用。 */

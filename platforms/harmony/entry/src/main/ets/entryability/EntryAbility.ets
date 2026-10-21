@@ -34,7 +34,15 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    windowStage.loadContent('pages/Index', (err) => {
+        // 全屏：隐藏状态栏（时钟/电量）与底部手势条，避免压在顶栏按钮上
+    const win = windowStage.getMainWindowSync();
+    win.setWindowLayoutFullScreen(true).catch((e: Error) => {
+      hilog.warn(DOMAIN, TAG, '[ability] 全屏失败 %{public}s', e.message);
+    });
+    win.setWindowSystemBarEnable([]).catch((e: Error) => {
+      hilog.warn(DOMAIN, TAG, '[ability] 隐藏系统栏失败 %{public}s', e.message);
+    });
+windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, TAG, '[ability] loadContent 失败: %{public}s', JSON.stringify(err));
         return;

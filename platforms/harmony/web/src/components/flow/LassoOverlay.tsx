@@ -77,7 +77,11 @@ export function LassoOverlay({ onFinish, onCancel }: Props) {
         onCancel();
       }}
     >
-      <span className="cb-lasso__hint">按住左键拖动，框住要归入分组的对象（Esc 取消）</span>
+      <span className="cb-lasso__hint">
+        {typeof document !== 'undefined' && document.documentElement.dataset.input === 'touch'
+          ? '用手指按住画布拖动，框住要归入分组的对象'
+          : '按住左键拖动，框住要归入分组的对象（Esc 取消）'}
+      </span>
       {box ? <div className="cb-lasso__box" style={box} /> : null}
     </div>
   );

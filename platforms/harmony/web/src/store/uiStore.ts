@@ -61,6 +61,19 @@ interface UiStore {
   selectAsset: (id: string | null) => void;
   clearSelection: () => void;
   setDragPos: (id: string, pos: XY | null) => void;
+  /**
+   * 素材库 → 画布的触屏拖拽（H5）。HTML5 拖放不会由手指触发（Chromium 只从鼠标事件
+   * 起 dragstart），所以触屏下改走「长按起拖 + 跟手缩略图影 + 松手落点」，
+   * 拖影位置是客户端坐标（clientX/clientY），不进 doc。
+   */
+  assetDrag: { assetId: string; x: number; y: number } | null;
+  /** 松手落点请求：nonce 保证同一素材连续拖两次都能被 Board 各自消费 */
+  assetDrop: { assetId: string; clientX: number; clientY: number; nonce: number } | null;
+  startAssetDrag: (assetId: string, x: number, y: number) => void;
+  moveAssetDrag: (x: number, y: number) => void;
+  endAssetDrag: (clientX: number, clientY: number) => void;
+  cancelAssetDrag: () => void;
+  consumeAssetDrop: () => void;
 }
 
 const NO_SELECTION = {
@@ -138,4 +151,23 @@ export const useUiStore = create<UiStore>((set) => ({
       else next[id] = pos;
       return { dragPos: next };
     }),
+  assetDrag: null,
+  assetDrop: null,
+  startAssetDrag: (assetId, x, y) => set({ assetDrag: { assetId, x, y } }),
+  moveAssetDrag: (x, y) => set((state) => (state.assetDrag ? { assetDrag: { ...state.assetDrag, x, y } } : {})),
+  endAssetDrag: (clientX, clientY) =>
+    set((state) => {
+      if (!state.assetDrag) return {};
+      return {
+        assetDrag: null,
+        assetDrop: {
+          assetId: state.assetDrag.assetId,
+          clientX,
+          clientY,
+          nonce: (state.assetDrop?.nonce ?? 0) + 1,
+        },
+      };
+    }),
+  cancelAssetDrag: () => set({ assetDrag: null }),
+  consumeAssetDrop: () => set({ assetDrop: null }),
 }));

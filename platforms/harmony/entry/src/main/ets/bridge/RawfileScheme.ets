@@ -15,6 +15,7 @@
  *      3) 资源路径仍是 `./assets/x.js` 这种相对写法，不用改前端产物。
  */
 import { webview, WebNetErrorList } from '@kit.ArkWeb';
+import { fileIo as fs } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppContext } from '../common/AppContext';
 
@@ -86,6 +87,41 @@ function relPathOf(url: string): string | null {
 }
 
 /**
+ * 把一个沙箱文件（素材/缩略图）回给 Web 内核。
+ * 只允许 assets/ 与 thumbs/ 两个目录，且拒绝 `..`，避免变成任意文件读取漏洞。
+ */
+function serveFromSandbox(relPath: string, resourceHandler: webview.WebResourceHandler): void {
+  const allowed: boolean = relPath.startsWith('assets/') || relPath.startsWith('thumbs/');
+  if (!allowed || relPath.indexOf('..') >= 0) {
+    hilog.error(DOMAIN, TAG, '[scheme] 拒绝沙箱路径：%{public}s', relPath);
+    resourceHandler.didFail(WebNetErrorList.ERR_ACCESS_DENIED);
+    return;
+  }
+  const absPath: string = AppContext.getContext().filesDir + '/' + relPath;
+  try {
+    const stat = fs.statSync(absPath);
+    const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
+    const file = fs.openSync(absPath, fs.OpenMode.READ_ONLY);
+    fs.readSync(file.fd, buffer);
+    fs.closeSync(file);
+    const response: webview.WebSchemeHandlerResponse = new webview.WebSchemeHandlerResponse();
+    response.setStatus(200);
+    response.setStatusText('OK');
+    response.setMimeType(mimeOf(relPath));
+    // 二进制资源不要设 encoding，设了会被当文本转码
+    response.setHeaderByName('Access-Control-Allow-Origin', '*', true);
+    response.setHeaderByName('Cache-Control', 'no-cache', true);
+    resourceHandler.didReceiveResponse(response);
+    resourceHandler.didReceiveResponseBody(buffer);
+    resourceHandler.didFinish();
+  } catch (err) {
+    hilog.error(DOMAIN, TAG, '[scheme] 读取沙箱文件失败 %{public}s: %{public}s',
+      absPath, (err as Error).message);
+    resourceHandler.didFail(WebNetErrorList.ERR_FILE_NOT_FOUND);
+  }
+}
+
+/**
  * 把一个 caseboard:// 请求从 rawfile 读出来回给 Web 内核。
  * 全程异步；本函数返回后回调继续推进，符合 onRequestStart 的同步返回约定。
  */
@@ -94,6 +130,13 @@ export function serveFromRawfile(url: string, resourceHandler: webview.WebResour
   if (relPath === null) {
     hilog.error(DOMAIN, TAG, '[scheme] 非法请求，拒绝：%{public}s', url);
     resourceHandler.didFail(WebNetErrorList.ERR_ACCESS_DENIED);
+    return;
+  }
+  // caseboard://asset/<相对路径> —— 沙箱素材/缩略图。
+  // 页面跑在 caseboard:// 上，<img src="file://…"> 会被跨 scheme 拒掉，
+  // 所以素材与背景图必须走这条同源通路上来。
+  if (relPath.startsWith('asset/')) {
+    serveFromSandbox(relPath.substring('asset/'.length), resourceHandler);
     return;
   }
   AppContext.getContext().resourceManager.getRawFileContent(relPath).then((bytes: Uint8Array) => {

@@ -22,12 +22,8 @@ export function DemoDialog({ onClose }: DemoDialogProps) {
   const load = (id: string) => {
     const demo = DEMO_CASES.find((item) => item.id === id);
     if (!demo) return;
-    const ok = window.confirm(
-      '载入示例会替换当前案卷，并清空撤销历史。\n\n如果当前内容还要用，请先「保存项目」。\n\n继续载入「' +
-        demo.title +
-        '」？',
-    );
-    if (!ok) return;
+    // ArkWeb 里 window.confirm 会静默返回 false，导致「点载入毫无反应」；
+    // 这个弹窗本身已经是一次明确确认（显示案名 + 载入按钮），不再二次确认。
     dispatch(replaceDocument(demo.build()));
     clearSelection();
     setViewMode('board');

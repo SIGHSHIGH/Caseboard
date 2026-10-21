@@ -15,7 +15,8 @@ export function useCanvasImagePicker(): () => Promise<void> {
       if (!picked || picked.length === 0) return;
       const result = await imageService.prepare(picked.slice(0, 1));
       if (result.prepared.length === 0) {
-        window.alert('背景图导入失败：' + (result.failed[0]?.error ?? '图片无法读取'));
+        // ArkWeb 不支持阻塞式 window.alert（静默丢弃），改用 console.error 才能被 hilog 抓到
+        console.error('[backdrop] 准备失败：' + (result.failed[0]?.error ?? '图片无法读取'));
         return;
       }
       const saved = await imageService.save(result.prepared, {
@@ -27,7 +28,7 @@ export function useCanvasImagePicker(): () => Promise<void> {
       dispatch(importAssets({ assets: saved }));
       dispatch(setCanvasImage(saved[0].id));
     } catch (error) {
-      window.alert('导入背景图失败：' + (error instanceof Error ? error.message : '未知错误'));
+      console.error('[backdrop] 导入失败：' + (error instanceof Error ? error.message : String(error)));
     }
   };
 }

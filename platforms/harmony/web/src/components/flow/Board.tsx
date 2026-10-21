@@ -71,7 +71,7 @@ import { useDocStore } from '../../store/docStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
 import { useViewStore } from '../../store/viewStore';
-import { assetFileUrl, isTauri } from '../../services/platform';
+import { assetFileUrl, usesNativeAssetStore } from '../../services/platform';
 import type { CaseNode, Group, ImageNode, XY } from '../../types';
 import { useAssetThumb } from '../hooks/useAssetThumb';
 import { ConnectDialog } from '../panels/ConnectDialog';
@@ -157,6 +157,8 @@ export function Board() {
   const selectImage = useUiStore((s) => s.selectImage);
   const consumeAdd = useUiStore((s) => s.consumeAdd);
   const consumeGroup = useUiStore((s) => s.consumeGroup);
+  const assetDrop = useUiStore((s) => s.assetDrop);
+  const consumeAssetDrop = useUiStore((s) => s.consumeAssetDrop);
   const requestNewNode = useUiStore((s) => s.requestNewNode);
   const setMode = useUiStore((s) => s.setMode);
   const setNodeSelection = useUiStore((s) => s.setNodeSelection);
@@ -191,9 +193,14 @@ export function Board() {
   const canvasBg = canvasConfig.assetId ? doc.assets.find((item) => item.id === canvasConfig.assetId) : undefined;
   // M15（N7/N8/N12）：背景图以前用 useAssetThumb(id, 1600)，而缩略图只按 256/1024 两个
   // 固定尺寸生成，1600 永远查不到 ⇒ <img> 拿不到 src、背景图从不显示。
-  // 现在桌面端直接走原件 asset:// 地址，缩略图只在浏览器里兜底。
+  // 现在「素材落在沙箱文件里」的环境（桌面 Tauri / 鸿蒙 ArkWeb）直接走原件 URL，缩略图只在纯浏览器兜底。
+  // H5 修正：原来这里判 `isTauri()`，鸿蒙也跌进缩略图分支、assetFileUrl() 的鸿蒙实现从不执行。
+  // 现在改判 usesNativeAssetStore()（桌面 Tauri + 鸿蒙 ArkWeb 都算）。
+  // 注意：背景图空白**不是**自定义 scheme 的问题——scheme 里的图片能正常解码；
+  // 真凶是 Web 组件上的 .onlineImageAccess(false)，它把 ArkWeb 图片加载整体关掉
+  // （连 data: 图片都 complete=false）。该开关已在 Index.ets 摘除并写明原因。
   const canvasThumbUrl = useAssetThumb(canvasBg?.id, 1024);
-  const canvasBgUrl = canvasBg && isTauri() ? assetFileUrl(canvasBg.path) : canvasThumbUrl;
+  const canvasBgUrl = canvasBg && usesNativeAssetStore() ? assetFileUrl(canvasBg.path) : canvasThumbUrl;
 
   const filter = useViewStore((s) => s.filter);
   const focus = useViewStore((s) => s.focus);
@@ -918,16 +925,13 @@ export function Board() {
     setCtxMenu(null);
   }, [ctxMenu, requestNewNode]);
 
-  // 素材库拖入画布 → 在落点中心生成自由图片节点
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      const assetId = event.dataTransfer.getData(ASSET_DND_TYPE);
-      if (!assetId) return;
-      event.preventDefault();
+  // 素材落点 → 自由图片节点（桌面走 HTML5 拖放的 onDrop，触屏走 uiStore 的落点请求，共用此处）
+  const dropAssetOnCanvas = useCallback(
+    (assetId: string, clientX: number, clientY: number) => {
       const asset = doc.assets.find((item) => item.id === assetId);
       if (!asset) return;
       const size = fitImageSize(asset.width, asset.height);
-      const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const point = screenToFlowPosition({ x: clientX, y: clientY });
       const id = newId('img');
       dispatch(
         addImageNode({
@@ -944,6 +948,26 @@ export function Board() {
     },
     [dispatch, doc.assets, doc.imageNodes, screenToFlowPosition, selectImage],
   );
+
+  // 素材库拖入画布 → 在落点中心生成自由图片节点
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      const assetId = event.dataTransfer.getData(ASSET_DND_TYPE);
+      if (!assetId) return;
+      event.preventDefault();
+      dropAssetOnCanvas(assetId, event.clientX, event.clientY);
+    },
+    [dropAssetOnCanvas],
+  );
+
+  // H5：触屏长按起拖后的落点请求（手指不会产生 HTML5 dragstart，改由 AssetTile 上报坐标）
+  const handledAssetDropRef = useRef(0);
+  useEffect(() => {
+    if (!assetDrop || assetDrop.nonce === handledAssetDropRef.current) return;
+    handledAssetDropRef.current = assetDrop.nonce;
+    dropAssetOnCanvas(assetDrop.assetId, assetDrop.clientX, assetDrop.clientY);
+    consumeAssetDrop();
+  }, [assetDrop, consumeAssetDrop, dropAssetOnCanvas]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     if (event.dataTransfer.types.includes(ASSET_DND_TYPE)) {

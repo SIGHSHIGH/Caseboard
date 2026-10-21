@@ -168,7 +168,7 @@
   z-index: 25;
   padding: 0;
   border: 0;
-  background: rgba(28, 27, 26, 0.34);
+  background: transparent; /* 抽屉贴边即可关闭，不再压暗画布 */
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -251,4 +251,65 @@
   margin-top: 6px;
   font-size: 12px;
   color: var(--cb-accent);
+}
+
+/*
+ * 右栏抽屉的遮罩只负责「变暗」，不再拦截点击（cb-scrim--pass）。
+ * 起因（真机反馈）：平板竖窄档下右栏是抽屉，点节点先命中遮罩 → 右栏立刻收起，
+ * 于是「点节点看属性」变成「点一下就关」。现在点击穿透到画布，
+ * 选中新节点/组时右栏保持展开并切换内容；要收起走右下角圆形按钮。
+ */
+:root[data-input='touch'] .cb-scrim--pass {
+  pointer-events: none;
+  background: transparent;
+}
+/*
+ * 圈选成组在触屏上难用：`.cb-lasso` 是铺满画布的指针事件层，
+ * 但没声明 touch-action，ArkWeb 会把触摸拖动当成滚动/平移吞掉，
+ * pointermove 收不全、框画不出来。这里显式接管触摸手势。
+ */
+:root[data-input='touch'] .cb-lasso {
+  touch-action: none;
+  overscroll-behavior: contain;
+  cursor: crosshair;
+}
+
+/* 触屏没有「左键」，提示文案由组件按形态切换，这里只把提示放大到看得清 */
+:root[data-input='touch'] .cb-lasso__hint {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+/*
+ * H5：触屏拖拽素材的跟手影子（AssetDragGhost 用 portal 渲染在 body 上）。
+ * pointer-events: none 是硬要求——影子绝不能参与命中测试，
+ * 落点完全由 uiStore 记录的 clientX/clientY 换算。
+ */
+.cb-asset-drag {
+  position: fixed;
+  z-index: 90;
+  width: 96px;
+  height: 96px;
+  transform: translate(-50%, -62%);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 2px solid var(--cb-accent);
+  background: var(--cb-surface);
+  box-shadow: 0 10px 24px rgba(28, 27, 26, 0.28);
+}
+
+.cb-asset-drag img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cb-asset-drag__ph {
+  font-size: 12px;
+  color: var(--cb-muted);
 }

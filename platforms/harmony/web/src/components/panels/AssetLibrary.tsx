@@ -14,7 +14,7 @@ import type { Asset } from '../../types';
 
 type Zone = Asset['zone'];
 
-/** 缩略图按需从 IndexedDB 取 objectURL；取不到（旧文档 / 无 IndexedDB）时降级成占位块 */
+/** 缩略图按需解析：原生环境是沙箱文件 URL（caseboard://asset/…），浏览器是 IndexedDB objectURL；取不到时降级成占位块 */
 function useThumb(assetId: string, size: number = 256): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -33,13 +33,89 @@ function useThumb(assetId: string, size: number = 256): string | null {
   return url;
 }
 
+/** 长按起拖：450ms 内移动超过 8px 就当作滚动 / 点选，不再起拖（H5 触屏） */
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_SLOP = 8;
+
 function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: boolean; onSelect: () => void }) {
   const url = useThumb(asset.id);
+  const timerRef = useRef<number | null>(null);
+  const originRef = useRef({ x: 0, y: 0 });
+  const draggingRef = useRef(false);
+  const suppressClickRef = useRef(false);
+
+  const clearTimer = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  useEffect(() => clearTimer, []);
+
+  // H5：HTML5 拖放不会由手指触发（Chromium 只从鼠标事件起 dragstart），
+  // 所以触屏下改走「长按起拖 + 跟手缩略图影」，落点由 Board 换算成画布坐标。
+  const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'mouse') return;
+    originRef.current = { x: event.clientX, y: event.clientY };
+    const pointerId = event.pointerId;
+    const target = event.currentTarget;
+    clearTimer();
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      draggingRef.current = true;
+      suppressClickRef.current = true;
+      try {
+        target.setPointerCapture(pointerId);
+      } catch {
+        // 指针已经抬起：放弃捕获，后面的 pointerup 仍会到元素上
+      }
+      useUiStore.getState().startAssetDrag(asset.id, originRef.current.x, originRef.current.y);
+    }, LONG_PRESS_MS);
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (draggingRef.current) {
+      useUiStore.getState().moveAssetDrag(event.clientX, event.clientY);
+      return;
+    }
+    if (timerRef.current === null) return;
+    const dx = event.clientX - originRef.current.x;
+    const dy = event.clientY - originRef.current.y;
+    if (Math.hypot(dx, dy) > LONG_PRESS_SLOP) clearTimer();
+  };
+
+  const onPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    clearTimer();
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    useUiStore.getState().endAssetDrag(event.clientX, event.clientY);
+  };
+
+  const onPointerCancel = () => {
+    clearTimer();
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    useUiStore.getState().cancelAssetDrag();
+  };
+
   return (
     <button
       type="button"
       className={selected ? 'cb-asset cb-asset--selected' : 'cb-asset'}
-      onClick={onSelect}
+      onClick={() => {
+        // 一次成功的拖拽不应该顺带改选中项（Board 已选新建的图片节点）
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        onSelect();
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData(ASSET_DND_TYPE, asset.id);
@@ -55,7 +131,7 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
   );
 }
 
-/** 素材库：证据素材 / AI 生成 两个分区，索引进 doc.assets，图片二进制在 IndexedDB */
+/** 素材库：证据素材 / AI 生成 两个分区，索引进 doc.assets，图片二进制在沙箱文件仓（桌面/鸿蒙）或 IndexedDB（浏览器） */
 export function AssetLibrary() {
   const assets = useDocStore((s) => s.doc.assets);
   const folders = useDocStore((s) => s.doc.assetFolders);
@@ -336,7 +412,7 @@ export function AssetLibrary() {
 
       {assets.length > 0 ? (
         <p className="cb-panel__note">
-          原件与缩略图存在本机 IndexedDB（{list.length} 张当前分区）；SHA-256 用于秒级去重。
+          原件与缩略图存在本机（{list.length} 张当前分区）；SHA-256 用于秒级去重。
         </p>
       ) : null}
 

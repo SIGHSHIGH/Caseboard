@@ -13,6 +13,8 @@
  */
 import { webview } from '@kit.ArkWeb';
 import { AppContext } from '../common/AppContext';
+import { FileService } from '../service/FileService';
+import { PickedFileJson } from '../common/Types';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CaseBoardBridge, BRIDGE_NAME, BRIDGE_METHODS } from '../bridge/CaseBoardBridge';
 import { APP_ENTRY_URL, APP_SCHEME, APP_HOST, createAppSchemeHandler } from '../bridge/RawfileScheme';
@@ -63,10 +65,6 @@ struct Index {
       return '900vp';
     }
     return '100%';
-  }
-
-  private webHeight(): string {
-    return AppContext.selftestPhase === '5' ? '1400vp' : '100%';
   }
 
   /**
@@ -455,6 +453,197 @@ struct Index {
       "      var eTouch = document.documentElement.dataset.input || 'none';",
       "      console.log('[hitband] edge=' + eWide + ' input=' + eTouch);",
       "    }",
+      // phase=12：四条导入入口体检。坐标盲点不可靠，这里按文案找按钮再 click()，
+      // 然后看原生侧有没有打 [file-select]（说明 <input type=file> 真的被触发）。
+      "    if ('" + phase + "' === '12') {",
+      "      var lbs = ['导入素材', '圈选成组', '导入背景图', '示例案卷'];",
+      "      var hits = [];",
+      "      var el2 = document.querySelectorAll('button');",
+      "      for (var a3 = 0; a3 < el2.length; a3++) {",
+      "        var tx = (el2[a3].innerText || '').replace(/\\s+/g, '');",
+      "        for (var b3 = 0; b3 < lbs.length; b3++) {",
+      "          if (tx.indexOf(lbs[b3]) >= 0 && tx.length <= 20) { hits.push([lbs[b3], el2[a3]]); }",
+      "        }",
+      "      }",
+      "      var nms = [];",
+      "      for (var c3 = 0; c3 < hits.length; c3++) { nms.push(hits[c3][0]); }",
+      "      console.log('[import] 入口 ' + hits.length + ' 个: ' + nms.join('|'));",
+      "      var st = 0;",
+      "      var nx = function() {",
+      "        if (st >= hits.length) { console.log('[import] 点完'); return; }",
+      "        var n0 = hits[st][0];",
+      "        var e0 = hits[st][1];",
+      "        st = st + 1;",
+      "        console.log('[import] click ' + n0);",
+      "        try { e0.click(); } catch (err) { console.log('[import] ' + n0 + ' 抛错 ' + err.message); }",
+      "        setTimeout(nx, 1500);",
+      "      };",
+      "      setTimeout(nx, 800);",
+      "    }",
+      // phase=13：素材文件仓 + 触屏拖拽体检（H5）。要点：**所有日志都从定时器里打**。
+      // 实测教训：探针在页面刚加载时同步 console.log 的几行一条都没到 hilog，
+      // 于是「什么日志都没有」被误判成「探针没跑」，白查一轮。
+      //   ①导入链：canvas 合成 JPEG → new File(type) → DataTransfer → drop（绕开系统选择器）
+      //   ②素材落成沙箱文件：缩略图 src 是不是 caseboard://rawfile/asset/thumbs/…，能否 fetch 200
+      //   ③旧数据：先用 indexedDB.databases() 看库在不在——否则 open() 会顺手建一个空库，
+      //     读出来必然「没有 store」，反过来污染判断
+      //   ④触摸长按 450ms 起拖 → 移到画布中心松手，看 .react-flow__node 有没有 +1
+      "    if ('" + phase + "' === '13') {",
+      "      var dq = function(s) { return document.querySelectorAll(s).length; };",
+      "      var dlog = function(msg) { console.log('[diag] ' + msg); };",
+      // 汇总状态：hilog 会丢掉页面启动早期的 console 转发（实测 6~9s 的日志整段不见了，
+      // 但导入明明发生了），所以把关键结论存进 st，最后再用一条日志一次性报出来。
+      "      var st = { drop: 0, confirm: 'none', idb: '?', fetch: '?', imgS: -1, imgB: -1, imgD: -1 };",
+      "      var idbReport = function(tag, then) {",
+      "        if (!indexedDB.databases) { then(tag + ' no-db-api'); return; }",
+      "        indexedDB.databases().then(function(list) {",
+      "          var has = false;",
+      "          for (var i = 0; i < list.length; i++) { if (list[i].name === 'caseboard-assets') { has = true; } }",
+      "          if (!has) { then(tag + ' absent'); return; }",
+      "          var req = indexedDB.open('caseboard-assets');",
+      "          req.onerror = function() { then(tag + ' open-error'); };",
+      "          req.onsuccess = function() {",
+      "            var db = req.result;",
+      "            var names = [];",
+      "            for (var k = 0; k < db.objectStoreNames.length; k++) { names.push(db.objectStoreNames[k]); }",
+      "            if (names.indexOf('originals') < 0) { then(tag + ' no-stores'); db.close(); return; }",
+      "            var tx = db.transaction(['originals', 'thumbs'], 'readonly');",
+      "            var c1 = tx.objectStore('originals').count();",
+      "            var c2 = tx.objectStore('thumbs').count();",
+      "            tx.oncomplete = function() { then(tag + ' originals=' + c1.result + ' thumbs=' + c2.result); db.close(); };",
+      "            tx.onerror = function() { then(tag + ' tx-error'); db.close(); };",
+      "          };",
+      "        }).catch(function(e) { then(tag + ' databases-fail ' + e.message); });",
+      "      };",
+      // 3s→6s：环境 + IndexedDB 现状（前 4 秒的 console 转发会被吞，H5 实测）
+      "      setTimeout(function() {",
+      "        dlog('input=' + document.documentElement.dataset.input + ' DataTransfer=' + (typeof DataTransfer) + ' PointerEvent=' + (typeof PointerEvent) + ' File=' + (typeof File));",
+      "        idbReport('idb', function(text) { var s = String(text); st.idb = s.slice(s.lastIndexOf('idb') + 3).trim(); dlog(text); });",
+      "      }, 6000);",
+      // 4s：合成一张 JPEG 当「用户选的图」，喂给 App 的 drop（.cb-main 上的 onDrop）
+      "      setTimeout(function() {",
+      "        try {",
+      "          var cv = document.createElement('canvas');",
+      "          cv.width = 600; cv.height = 380;",
+      "          var ctx = cv.getContext('2d');",
+      "          ctx.fillStyle = '#3b6ea5'; ctx.fillRect(0, 0, 600, 380);",
+      "          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 56px sans-serif';",
+      "          ctx.fillText('H5 PROBE', 110, 216);",
+      // 每次运行都写进不同的时间戳：素材是按 SHA-256 秒级去重的，
+      // 字节一样就不会弹「确认导入」向导，探针也就点不到按钮。
+      "          ctx.font = 'bold 28px monospace';",
+      "          ctx.fillText('T' + Date.now(), 110, 300);",
+      "          cv.toBlob(function(blob) {",
+      "            if (!blob) { dlog('drop skip toBlob-null'); return; }",
+      "            dlog('blob type=' + blob.type + ' size=' + blob.size);",
+      "            var file = new File([blob], 'h5-probe.jpg', { type: 'image/jpeg' });",
+      "            var dt = new DataTransfer();",
+      "            dt.items.add(file);",
+      "            dlog('dt files=' + dt.files.length + ' file.type=' + file.type);",
+      "            var main = document.querySelector('.cb-main');",
+      "            if (!main) { dlog('drop skip no-main'); return; }",
+      "            main.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));",
+      "            st.drop = 1;",
+      "            dlog('drop dispatched');",
+      "          }, 'image/jpeg', 0.9);",
+      "        } catch (err) { dlog('drop threw ' + err.message); }",
+      "      }, 7000);",
+      // 导入向导要按一下「确认导入 N 张」，轮询找到就点
+      "      var confirmed = false;",
+      "      var tryConfirm = function(tries) {",
+      "        if (confirmed) { return; }",
+      "        var btn = document.querySelector('.cb-modal .cb-btn--primary');",
+      "        if (btn) {",
+      "          confirmed = true;",
+      "          st.confirm = String(btn.textContent || '').trim().slice(0, 24);",
+      "          dlog('confirm clicked: ' + String(btn.textContent || '').replace(/\\s+/g, ' ').trim());",
+      "          btn.click();",
+      "          return;",
+      "        }",
+      "        if (tries > 0) { setTimeout(function() { tryConfirm(tries - 1); }, 700); } else { dlog('confirm not found'); }",
+      "      };",
+      "      setTimeout(function() { tryConfirm(14); }, 8000);",
+      // 12s：素材卡与缩略图体检
+      "      setTimeout(function() {",
+      "        var imgs = document.querySelectorAll('.cb-asset__thumb img');",
+      "        dlog('tiles=' + dq('.cb-asset') + ' thumb-imgs=' + imgs.length);",
+      "        for (var i = 0; i < imgs.length && i < 4; i++) {",
+      "          dlog('thumb[' + i + '] natural=' + imgs[i].naturalWidth + 'x' + imgs[i].naturalHeight + ' src=' + String(imgs[i].getAttribute('src') || '').slice(0, 96));",
+      "        }",
+      "        if (imgs.length > 0) {",
+      "          var src0 = String(imgs[0].getAttribute('src') || '');",
+      "          fetch(src0).then(function(r) {",
+      "            st.fetch = r.status + '-' + r.headers.get('content-type');",
+      "            dlog('thumb.fetch status=' + st.fetch);",
+      "            return r.arrayBuffer();",
+      "          }).then(function(buf) {",
+      "            dlog('thumb.bytes=' + buf.byteLength);",
+      // 关键对照：同一份字节挂三张真 <img> 到 DOM（不靠 onload/onerror 回调，
+      // 那个在 ArkWeb 里连事件都不触发），2 秒后由定时器读 naturalWidth/complete。
+      // blob 成功、caseboard 失败 ⇒ 图片只能走 blob URL（缩略图/背景图都改）。
+      "            var mk = function(tag, url) {",
+      "              var el = document.createElement('img');",
+      "              el.setAttribute('data-diag', tag);",
+      "              el.style.cssText = 'position:fixed;left:4px;top:4px;width:32px;height:32px;z-index:99999;border:1px solid red';",
+      "              el.src = url;",
+      "              document.body.appendChild(el);",
+      "              return el;",
+      "            };",
+      "            var blobUrl = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' }));",
+      "            var elScheme = mk('scheme', src0);",
+      "            var elBlob = mk('blob', blobUrl);",
+      "            var elData = mk('data', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==');",
+      "            setTimeout(function() {",
+      "              st.imgS = elScheme.naturalWidth; st.imgB = elBlob.naturalWidth; st.imgD = elData.naturalWidth;",
+      "              dlog('img.scheme nat=' + elScheme.naturalWidth + ' complete=' + elScheme.complete);",
+      "              dlog('img.blob nat=' + elBlob.naturalWidth + ' complete=' + elBlob.complete);",
+      "              dlog('img.data nat=' + elData.naturalWidth + ' complete=' + elData.complete);",
+      "              elScheme.remove(); elBlob.remove(); elData.remove();",
+      "              URL.revokeObjectURL(blobUrl);",
+      "            }, 2000);",
+      "          }).catch(function(e) { dlog('thumb.fetch fail ' + e); });",
+      "        }",
+      "        idbReport('after.idb', function(text) { dlog(text); });",
+      "      }, 12000);",
+      // 16s：合成触摸长按 520ms → 两段 pointermove → pointerup，看画布是否 +1 个节点
+      //（AssetTile 的 LONG_PRESS_MS 是 450ms，留 70ms 余量）
+      "      setTimeout(function() {",
+      "        var tile = document.querySelector('.cb-asset');",
+      "        var pane = document.querySelector('.react-flow__pane');",
+      "        if (!tile || !pane) { dlog('drag skip tile=' + !!tile + ' pane=' + !!pane); return; }",
+      "        var tr = tile.getBoundingClientRect();",
+      "        var pr = pane.getBoundingClientRect();",
+      "        var before = dq('.react-flow__node');",
+      "        var sx = Math.round(tr.left + tr.width / 2);",
+      "        var sy = Math.round(tr.top + tr.height / 2);",
+      "        var tx = Math.round(pr.left + pr.width / 2);",
+      "        var ty = Math.round(pr.top + pr.height / 2);",
+      "        var pe = function(type, x, y) {",
+      "          tile.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, buttons: type === 'pointerup' ? 0 : 1 }));",
+      "        };",
+      "        dlog('drag from ' + sx + ',' + sy + ' to ' + tx + ',' + ty + ' nodes.before=' + before);",
+      "        pe('pointerdown', sx, sy);",
+      "        setTimeout(function() {",
+      "          dlog('drag ghost=' + dq('.cb-asset-drag'));",
+      "          pe('pointermove', Math.round((sx + tx) / 2), Math.round((sy + ty) / 2));",
+      "          pe('pointermove', tx, ty);",
+      "          pe('pointerup', tx, ty);",
+      "          setTimeout(function() {",
+      "            var fi = document.querySelectorAll('.cb-free-image__img');",
+      "            dlog('drag nodes ' + before + ' -> ' + dq('.react-flow__node') + ' ghost=' + dq('.cb-asset-drag'));",
+      "            for (var k = 0; k < fi.length && k < 3; k++) {",
+      "              dlog('free-img[' + k + '] natural=' + fi[k].naturalWidth + 'x' + fi[k].naturalHeight + ' src=' + String(fi[k].getAttribute('src') || '').slice(0, 96));",
+      "            }",
+      "          }, 1500);",
+      "        }, 520);",
+      "      }, 16000);",
+      // 19s：一条日志报全部结论（早期 console 转发会丢，靠这条兜底给验收脚本判断）
+      "      setTimeout(function() {",
+      "        var im = document.querySelectorAll('.cb-asset__thumb img');",
+      "        var w = im.length > 0 ? im[0].naturalWidth : 0;",
+      "        dlog('summary drop=' + st.drop + ' confirm=' + st.confirm + ' tiles=' + dq('.cb-asset') + ' idb=' + st.idb + ' thumb0=' + w + ' nodes=' + dq('.react-flow__node') + ' fetch=' + st.fetch + ' imgS=' + st.imgS + ' imgB=' + st.imgB + ' imgD=' + st.imgD);",
+      "      }, 19000);",
+      "    }",
       // 分别落在节点和画布空白处，看桌面版 M17 的菜单是否接住。（真机用 phase=8 + uitest longClick）
       "    if ('" + phase + "' === '7') {",
       "      var mkMenu = function() { var m = document.querySelector('.cb-ctxmenu'); return m ? (m.innerText || '').replace(/\\s+/g, '|').slice(0, 90) : ''; };",
@@ -509,7 +698,11 @@ struct Index {
         .domStorageAccess(true)
         .fileAccess(true)
         .imageAccess(true)
-        .onlineImageAccess(false)
+        // H5 排查：`.onlineImageAccess(false)` 先摘掉。ArkWeb 里这个开关的实现是全局的
+        // （内核侧统一置 ImageAccess 策略），怀疑它连本地 blob:/data: 图片一起挡住——
+        // H5 实测三张图（caseboard:// / blob: / data:）全都 complete=false、naturalWidth=0。
+        // 若摘掉后本地图能解码，说明本应用只能靠 CSP 或前端逻辑拦外链图，不能依赖该属性。
+        // .onlineImageAccess(false)
         .javaScriptProxy({
           object: this.bridge,
           name: BRIDGE_NAME,
@@ -522,6 +715,26 @@ struct Index {
           // controller 此刻才真正关联 Web 组件，setWebSchemeHandler 只在这里合法。
           this.controller.setWebSchemeHandler(APP_SCHEME, createAppSchemeHandler());
           hilog.info(DOMAIN, TAG, '%{public}s', '[web] controller 已附着，scheme handler 装好');
+        })
+        // ArkWeb 里 <input type="file"> 不会自己弹选择器，必须原生接住：
+        // 前端四条导入（示例案卷/素材/背景图/打开项目）都会走到这里。
+        .onShowFileSelector((event) => {
+          const accept: string[] = event.fileSelector.getAcceptType();
+          const mode: number = event.fileSelector.getMode();
+          const multiple: boolean = mode === 1;
+          hilog.info(DOMAIN, TAG, '[file-select] accept=%{public}s multiple=%{public}s', JSON.stringify(accept), String(multiple));
+          FileService.openFile(JSON.stringify(accept), multiple)
+            .then((listJson: string) => {
+              const list: PickedFileJson[] = JSON.parse(listJson) as PickedFileJson[];
+              const uris: string[] = list.map((item: PickedFileJson) => item.uri);
+              hilog.info(DOMAIN, TAG, '[file-select] 返回 %{public}d 个', uris.length);
+              event.result.handleFileList(uris);
+            })
+            .catch((e: Error) => {
+              hilog.warn(DOMAIN, TAG, '[file-select] 失败 %{public}s', e.message);
+              event.result.handleFileList([]);
+            });
+          return true;
         })
         .onConsole((event) => {
           hilog.info(DOMAIN, TAG, '[web-console] %{public}s', event.message.getMessage());
@@ -539,8 +752,8 @@ struct Index {
           this.runBridgeProbe();
         })
         .width(this.webWidth())
-        .height(this.webHeight())
         .layoutWeight(1)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')

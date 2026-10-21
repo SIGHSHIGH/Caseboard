@@ -1,6 +1,38 @@
 # CHANGELOG
 
-本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
+本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>` / 鸿蒙侧 `hs/H<n>`。
+
+## [未发布] · 鸿蒙 H5.1：素材通路（缩略图 / 背景图 / 触屏拖拽）
+
+### 症状
+素材能导入、能进库，但素材卡与画布图片节点**全是破图**，缩略图不显示，也无法把素材拖到画布上。
+
+### 根因（三条叠加）
+1. **图片加载被整体关掉**：`platforms/harmony/entry/src/main/ets/pages/Index.ets` 的 Web 组件上写了
+   `.onlineImageAccess(false)`。它让所有 `<img>` 都没有像素——连 `data:` URL 也不例外
+   （`naturalWidth=0`、`complete=false`），内核根本不发图片请求，但 `fetch()` 仍旧 200，
+   极易误判成「ArkWeb 不支持自定义 scheme 加载图片」。该属性默认即 true，已删除。
+2. **素材存储是半截迁移**：`services/platform.ts` 早已写好 `isHarmony()` 的按字节读写文件分支，
+   但 `services/imageStore.ts` 四个读写口只判 `isTauri()` → 鸿蒙全走 IndexedDB，
+   `assetFileUrl()` 因此永远拿不到文件路径，画布背景图也走错分支。
+3. **没有触屏拖拽**：素材卡只依赖 HTML5 DnD（`dataTransfer`），触屏浏览器不产生拖拽事件。
+
+### 改了什么
+- `web/src/services/platform.ts`：修 `assetFileUrl()`（原来先剥前导斜杠再比 `/data/…/files/` 前缀，
+  永远比不中，把绝对路径直接塞进 URL）；新增 `thumbFilePath(assetId,size)` 与 `usesNativeAssetStore()`。
+- `web/src/services/imageStore.ts`：改按 `usesNativeAssetStore()` 分流（Tauri 与鸿蒙都写文件仓），
+  旧 IndexedDB 数据保留只读回退；`thumbUrl()` 优先进文件仓 URL，未命中才回退 blob objectURL。
+- `web/src/components/flow/Board.tsx`：`canvasBgUrl` 的门从 `isTauri()` 改 `usesNativeAssetStore()`；
+  抽出 `dropAssetOnCanvas()`，桌面 DnD 与触屏落点共用一条建节点路径。
+- `web/src/store/uiStore.ts` + `web/src/components/panels/AssetLibrary.tsx` +
+  新增 `web/src/components/flow/AssetDragGhost.tsx`：长按 450ms 起拖、指尖跟手影、松手落点建图片节点
+  （长按后移动超 8px 即取消；鼠标仍走 DnD）。
+- `platforms/harmony/scripts/`：新增 `accept-h5.ps1`（10 条上机验收）、`build-hap.ps1`（签名站点构建）、
+  `check-probe.mjs`（探针注入块语法校验）、`fix-bom.mjs`（.ps1 补 BOM）。
+
+### 验收
+`accept-h5.ps1` **10/10 PASS**（导入 → 沙箱落盘 → 缩略图 256×160 真解码 → 长按拖入画布建节点 → 画布节点 1024×614 真实像素）；
+模拟器截图里 7 张素材卡与 2 个画布图片节点均为真实图像。
 
 ## [未发布] · 顶栏收容修正（从鸿蒙移植回填）
 

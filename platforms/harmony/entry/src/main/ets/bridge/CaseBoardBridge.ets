@@ -253,7 +253,9 @@ export class CaseBoardBridge {
   }
 
   readPickedFile(uri: string, cb: BridgeCallback): void {
-    this.runSync(cb, () => FileService.readPickedFile(uri));
+    // 必须 JSON.stringify：返回值是纯 base64 字符串，直接塞进信封会拼出非法 JSON，
+    // 前端 callNative 会报「原生桥返回非法 JSON（readPickedFile）」→ 图片导入静默失败。
+    this.runSync(cb, () => JSON.stringify(FileService.readPickedFile(uri)));
   }
 
   pickImages(multiple: boolean, cb: BridgeCallback): void {

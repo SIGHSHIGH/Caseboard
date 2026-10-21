@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useCodeSyncBridge } from './components/code/useCodeSyncBridge';
 import { Board } from './components/flow/Board';
+import { AssetDragGhost } from './components/flow/AssetDragGhost';
 import { ImportWizard } from './components/panels/ImportWizard';
 import { CanvasLegend } from './components/panels/CanvasLegend';
 import { LeftPanel } from './components/panels/LeftPanel';
@@ -207,7 +208,7 @@ export default function App() {
         {leftDrawer || rightDrawer ? (
           <button
             type="button"
-            className="cb-scrim"
+            className={`cb-scrim${rightDrawer && !leftDrawer ? ' cb-scrim--pass' : ''}`}
             aria-label="关闭侧栏"
             onClick={() => {
               if (rightDrawer) setRightOpen(false);
@@ -288,6 +289,7 @@ export default function App() {
       <ImportWizard />
       <NewNodeDialog />
       <TagLinkDialog />
+      <AssetDragGhost />
       {viewMode === 'board' ? <CanvasLegend /> : null}
       {paletteOpen ? <CommandPalette /> : null}
     </div>

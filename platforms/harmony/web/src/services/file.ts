@@ -231,12 +231,32 @@ export const fileService: FileService = {
 
   async pickFiles(accept, multiple = true) {
     if (isHarmony()) {
-      const picked = await harmonyPick(acceptToSuffixes(accept), multiple);
+      console.log('[pick] accept=' + accept + ' multiple=' + multiple);
+      let picked: Array<{ name: string; uri: string; size: number }> = [];
+      try {
+        picked = await harmonyPick(acceptToSuffixes(accept), multiple);
+      } catch (error) {
+        console.error('[pick] openFile 抛错：', error);
+        return [];
+      }
+      console.log('[pick] picked=' + picked.length + ' uris=' + picked.map((p) => p.uri).join(','));
       const out: File[] = [];
       for (const item of picked) {
-        const base64 = await callNative<string>('readPickedFile', item.uri);
+        let base64 = '';
+        try {
+          base64 = await callNative<string>('readPickedFile', item.uri);
+        } catch (error) {
+          console.error('[pick] readPickedFile 抛错 uri=' + item.uri, error);
+          continue;
+        }
+        console.log('[pick] read uri=' + item.uri + ' b64len=' + base64.length);
+        if (!base64) continue;
         const bytes = base64ToBytes(base64);
-        out.push(new File([new Uint8Array(bytes)], item.name || baseName(item.uri)));
+        // 关键：必须带上 MIME。File 没有 type 时 imageService.prepare 会判成「不是图片」
+        // 而整条导入静默失败（ArkWeb 的 window.alert 又是静默的），素材/背景图全灭。
+        out.push(new File([new Uint8Array(bytes)], item.name || baseName(item.uri), {
+          type: mimeOfName(item.name || baseName(item.uri)),
+        }));
       }
       return out;
     }
