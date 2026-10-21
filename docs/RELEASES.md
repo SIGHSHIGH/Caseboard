@@ -1,9 +1,4 @@
 # 发布产物（RELEASES）
-
-> 面向维护者：安装包是**构建产物**，不随仓库分发。
-> 本地构建完成后放在仓库根目录的 release\（已加入 .gitignore），
-> 需要对外分发时请走 GitHub Releases 或另行提供下载地址。
-
 ## 历史安装包（本机归档）
 
 下表是本项目在本机构建过的安装包记录，便于回溯版本与校验。
@@ -26,40 +21,6 @@
 
 Beta 1.0 的 1.0.0-beta.1 与 0.18.1 体积几乎一致（少 938 字节，只改了版本号）。0.18.1 与 0.18.0 体积几乎一致（多 1,177 字节：只改了折线包围盒预筛与命中判定范围，逻辑几乎没加）。M18 的 0.18.0 与 0.17.0 体积几乎一致（多 4,235 字节：关系线自动梳理、锚点挑选与曲率优化都是逻辑改动，DSL 只多两行序列化）。M17 的 0.17.0 与 0.16.0 体积几乎一致（多 418 字节：关系气泡、线宽与锚点代价模型都是逻辑改动，仓库卫生只动了文档）。M16 的 0.16.0 与 0.15.0 体积几乎一致（多 7,437 字节：许可文件与示范案卷数据不进安装包，涨的是自动检验与示例面板的代码）。M15 的 0.15.0 与 0.14.0 体积几乎一致（多 2,189 字节：顶栏改 portal 与实测重排、背景图改走原件地址，都是逻辑改动）。M14 的 0.14.0 与 0.13.0 体积几乎一致（多 2,565 字节：画布底衬与顶栏折叠都是样式与纯函数逻辑）。M13 的 0.13.0 与 0.12.0 体积几乎一致（少 355 字节：改地点断线与控件对齐都只是逻辑与样式）。M12 的 0.12.0 与 0.11.0 基本一致（多 2.9 KB）。M11 的 0.11.0 与 0.10.0 也基本一致（多 4.8 KB）。`0.10.0` 比 `0.9.0` 大约 8.6 MB：M10 把 OCR 引擎（`tesseract.js` WASM worker + 三档 SIMD 内核 + 中英文语言包，源目录 `public/ocr` 约 15.7 MB）内嵌进了安装包，换来「干净机不装任何东西也能离线识别文字」。安装包内的资源是压缩后的体积，所以只涨 8.6 MB。
 
-## 重新产出
-
-```powershell
-Get-Process caseboard -ErrorAction SilentlyContinue | Stop-Process -Force
-$env:TMP = "$PWD\.tmp-esbuild"; $env:TEMP = $env:TMP
-$env:CARGO_HOME = "$PWD\.rust\cargo"; $env:RUSTUP_HOME = "$PWD\.rust\rustup"
-$env:PATH = "$PWD\.rust\cargo\bin;" + $env:PATH
-node scripts/tauri-cli.cjs build --bundles nsis
-```
-
-产物在 `src-tauri\target\release\bundle\nsis\CaseBoard_<version>_x64-setup.exe`，复制到本目录即可。
-体积变化时以实际文件为准，请同步更新上表（`Get-FileHash <file> -Algorithm SHA256`）。
-
-## 签名
-
-本机 `Cert:\CurrentUser\My` 没有代码签名证书，当前安装包**未签名**，Windows 可能提示「未知发布者」。
-拿到证书后：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/sign-installer.ps1 -Installer release\CaseBoard_0.16.0_x64-setup.exe
-```
-
-`-SelfSignedTest` 只用于演练签名流程（自签证书不能消除 SmartScreen 提示）。
-
-## 发布到 GitHub
-
-仓库 `https://github.com/SIGHSHIGH/Caseboard.git`。本机直连 github.com:443 会被重置，必须走系统里那个本地代理
-（IE 设置里 `127.0.0.1:10808`，SOCKS5）。已写进 `.git/config`：
-
-```powershell
-git config --local http.proxy socks5h://127.0.0.1:10808
-git push origin main
-git push origin ms/M18 ms/M18.1 v1.0.0-beta.1
-```
 
 标签约定：每个里程碑 `ms/M<n>`；跨里程碑的正式版本另打语义化 tag（`v1.0.0-beta.1`）。
 发布用 GitHub 网页建 Release 并上传 `release\` 里的 `.exe`（本机没有 `gh` CLI）。
