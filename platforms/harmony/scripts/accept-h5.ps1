@@ -370,6 +370,33 @@ if ($sum17Line -match 'ghost=(\d+)') { $gGhost = [int]$Matches[1] }
 if ($sum17Line -match 'nodes=(\d+)') { $gNodes = [int]$Matches[1] }
 Add-Result 'H5-21' '长按拖入画布不再卡壳（按住 / 拖动 / 落点三段帧间隔均 ≤ 200ms）' (($gGhost -eq 1) -and ($gNodes -ge 1) -and ($gHold -ge 0) -and ($gHold -le 200) -and ($gMove -le 200) -and ($gUp -le 200)) ('hold=' + $gHold + ' move=' + $gMove + ' up=' + $gUp + ' settle=' + $gSettle + ' ghost=' + $gGhost + ' nodes=' + $gNodes)
 
+# ---------- 动态断言：phase=20（图钉自由落点 / 换色 / 卡片层级按钮） ----------
+$lines20 = Invoke-Cb '20' 16
+$sum20Line = ''
+if ($lines20 -and $lines20.Count -gt 0) {
+  $lines20 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase20.log') -Encoding utf8
+  $hit20 = @($lines20 | Select-String -Pattern '\[diag\] summary20')
+  if ($hit20.Count -gt 0) { $sum20Line = $hit20[-1].Line }
+}
+$p20Pin = 0
+$p20Move = 0
+$p20Active = 0
+$p20Btn = 0
+$p20Z0 = -1
+$p20Z1 = -1
+$p20Z2 = -1
+$p20Color = ''
+if ($sum20Line -match 'pin=(\d+)') { $p20Pin = [int]$Matches[1] }
+if ($sum20Line -match 'move=(\d+)') { $p20Move = [int]$Matches[1] }
+if ($sum20Line -match 'active=(\d+)') { $p20Active = [int]$Matches[1] }
+if ($sum20Line -match 'btn=(\d+)') { $p20Btn = [int]$Matches[1] }
+if ($sum20Line -match 'z0=(-?\d+)') { $p20Z0 = [int]$Matches[1] }
+if ($sum20Line -match 'z1=(-?\d+)') { $p20Z1 = [int]$Matches[1] }
+if ($sum20Line -match 'z2=(-?\d+)') { $p20Z2 = [int]$Matches[1] }
+if ($sum20Line -match 'color=(rgba?\([^)]*\)|#[0-9a-fA-F]+)') { $p20Color = $Matches[1] }
+Add-Result 'H5-22' '图钉可在图片范围内任意落点并换色' (($p20Pin -eq 1) -and ($p20Move -eq 1) -and ($p20Active -ge 1) -and ($p20Color -ne '')) ('pin=' + $p20Pin + ' move=' + $p20Move + ' active=' + $p20Active + ' color=' + $p20Color + ' ' + (Short $sum20Line))
+Add-Result 'H5-23' '卡片右栏「置底 / 置顶」真的改了层级（先降后升）' (($p20Btn -ge 2) -and ($p20Z1 -le $p20Z0) -and ($p20Z2 -gt $p20Z1)) ('btn=' + $p20Btn + ' z0=' + $p20Z0 + ' bottom=' + $p20Z1 + ' top=' + $p20Z2)
+
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })
 $report = [ordered]@{
