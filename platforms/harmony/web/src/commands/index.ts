@@ -30,6 +30,7 @@ export {
   moveGroup,
   resizeGroup,
   assignNodesToGroup,
+  addNodesToGroup,
   canParentGroup,
 } from './groupCommands';
 export type { AddGroupInput, GroupPatch } from './groupCommands';

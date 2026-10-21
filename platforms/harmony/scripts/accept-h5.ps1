@@ -240,6 +240,74 @@ Add-Result 'H5-8' '画布背景图改走 usesNativeAssetStore' $boardOk 'Board.t
 $legacyOk = ($storeText -match 'idbGetOriginal') -and ($storeText -match 'idbGetThumb') -and ($storeText -match 'usesNativeAssetStore')
 Add-Result 'H5-9' '旧 IndexedDB 素材有回退读路径' $legacyOk 'imageStore.ts'
 
+# H5-11：全仓库不许再出现 window.confirm / window.alert（ArkWeb 里两个都静默失效）
+$srcRoot = Join-Path $root 'web\src'
+$leftCalls = @(Get-ChildItem -Path $srcRoot -Recurse -Include '*.ts', '*.tsx' |
+  Select-String -Pattern 'window\.(confirm|alert)\(')
+Add-Result 'H5-11' 'src 内 window.confirm/alert 归零' ($leftCalls.Count -eq 0) (($leftCalls.Count.ToString()) + ' 处')
+
+# H5-12：确认框/提示条宿主必须挂在 App 根上，否则调用点等到的 Promise 永远没人答
+$appSrc = Join-Path $srcRoot 'App.tsx'
+$appText = ''
+if (Test-Path $appSrc) { $appText = Get-Content $appSrc -Raw }
+$hostOk = ($appText -match '<ConfirmHost') -and ($appText -match '<NoticeHost')
+Add-Result 'H5-12' 'ConfirmHost/NoticeHost 已挂到 App 根' $hostOk 'App.tsx'
+
+# H5-13：三处硬约束 7 的云端授权必须走应用内确认（不能用原生 confirm）
+$aiText = ''
+$aiImgText = ''
+$aiSrc = Join-Path $srcRoot 'components\panels\AiPanel.tsx'
+$aiImgSrc = Join-Path $srcRoot 'components\panels\AiImagePanel.tsx'
+if (Test-Path $aiSrc) { $aiText = Get-Content $aiSrc -Raw }
+if (Test-Path $aiImgSrc) { $aiImgText = Get-Content $aiImgSrc -Raw }
+$confirmOk = ($aiText -match 'askConfirm') -and ($aiImgText -match 'askConfirm')
+Add-Result 'H5-13' '云端授权（远程模型/云端生图）走应用内确认' $confirmOk 'AiPanel + AiImagePanel'
+
+# ---------- 动态断言：phase=14（触屏长按多选 + 收进组框） ----------
+$lines14 = Invoke-Cb '14' 20
+if (-not $lines14 -or $lines14.Count -eq 0) {
+  Add-Result 'H5-14' '长按卡片进入多选并出现「已选 N 项」' $false 'phase=14 没有日志'
+  Add-Result 'H5-15' '「加入组框…」把卡片放进组框内' $false 'phase=14 没有日志'
+} else {
+  $lines14 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase14.log') -Encoding utf8
+  $sum14Line = ''
+  $hit14 = @($lines14 | Select-String -Pattern '\[diag\] summary14')
+  if ($hit14.Count -gt 0) { $sum14Line = $hit14[-1].Line }
+  # 早期 console 转发会丢：summary14 没到就退回用逐条日志判断
+  if ($sum14Line -eq '') {
+    $tap14 = @($lines14 | Select-String -Pattern '\[diag\] msel after tap') | Select-Object -Last 1
+    if ($tap14) { $sum14Line = $tap14.Line }
+  }
+  $banner = 0; $sel = 0; $picked = 0; $contained = 0; $rect = ''
+  if ($sum14Line -match 'banner=(\d+)') { $banner = [int]$Matches[1] }
+  if ($sum14Line -match 'sel=(\d+)') { $sel = [int]$Matches[1] }
+  if ($sum14Line -match 'picked=(\d+)') { $picked = [int]$Matches[1] }
+  if ($sum14Line -match 'contained=(\d+)') { $contained = [int]$Matches[1] }
+  if ($sum14Line -match 'rect=([0-9x]+)') { $rect = $Matches[1] }
+  if ($sel -eq 0 -and $sum14Line -match 'selected=(\d+)') { $sel = [int]$Matches[1] }
+  Add-Result 'H5-14' '长按卡片进入多选并出现「已选 N 项」' (($banner -eq 1) -and ($sel -ge 2)) ('sel=' + $sel + ' banner=' + $banner + ' ' + (Short $sum14Line))
+  Add-Result 'H5-15' '「加入组框…」把卡片放进组框内' (($picked -eq 1) -and ($contained -eq 1)) ('picked=' + $picked + ' contained=' + $contained + ' rect=' + $rect)
+}
+
+# ---------- 动态断言：phase=15（画布迟滞量） ----------
+$lines15 = Invoke-Cb '15' 16
+$sum15Line = ''
+if ($lines15 -and $lines15.Count -gt 0) {
+  $lines15 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase15.log') -Encoding utf8
+  $hit15 = @($lines15 | Select-String -Pattern '\[diag\] summary15')
+  if ($hit15.Count -gt 0) { $sum15Line = $hit15[-1].Line }
+}
+$p50 = -1
+$p95 = -1
+$drop = -1
+$frames = 0
+if ($sum15Line -match 'p50=([0-9.]+)') { $p50 = [double]$Matches[1] }
+if ($sum15Line -match 'p95=([0-9.]+)') { $p95 = [double]$Matches[1] }
+if ($sum15Line -match 'drop=(\d+)') { $drop = [int]$Matches[1] }
+if ($sum15Line -match 'frames=(\d+)') { $frames = [int]$Matches[1] }
+# 60Hz 下正常帧 16.7ms；p95 超过 34ms 就说明拖动期间掉到 30fps 以下
+Add-Result 'H5-2' '拖动画布时帧率（p95 ≤ 34ms）' (($frames -ge 60) -and ($p95 -gt 0) -and ($p95 -le 34.0)) ('p50=' + $p50 + ' p95=' + $p95 + ' drop=' + $drop + ' frames=' + $frames)
+
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })
 $report = [ordered]@{

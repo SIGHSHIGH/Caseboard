@@ -31,6 +31,9 @@ const SIDES: Array<{ id: EdgeAnchor; position: Position; left?: string }> = [
   { id: 'br', position: Position.Bottom, left: '100%' },
 ];
 
+const LONG_PRESS_MS = 480;
+const LONG_PRESS_SLOP = 8;
+
 function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const node = data.node;
   const attachTarget = data.attachTarget === true;
@@ -40,10 +43,47 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const status = STATUS_META[node.status];
   const dispatch = useDocStore((s) => s.dispatch);
   const setHoverNode = useUiStore((s) => s.setHoverNode);
+  const multiSelect = useUiStore((s) => s.multiSelect);
+  const enterMultiSelect = useUiStore((s) => s.enterMultiSelect);
+  const toggleMultiSelect = useUiStore((s) => s.toggleMultiSelect);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.title);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /* 触屏长按进多选（H5-5）：手指没有 Ctrl，用 480ms 长按当「加选修饰键」。
+     长按后再点别的卡片由 Board 的 onNodeClick 转给 toggleMultiSelect 累加。
+     一旦移动超过 8px 或抬手就撤销计时器，免得拖动卡片时被误判成多选。 */
+  const pressTimer = useRef<number | null>(null);
+  const pressOrigin = useRef({ x: 0, y: 0, id: '' });
+
+  const clearPressTimer = () => {
+    if (pressTimer.current !== null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  useEffect(() => clearPressTimer, []);
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return;
+    clearPressTimer();
+    pressOrigin.current = { x: event.clientX, y: event.clientY, id: node.id };
+    pressTimer.current = window.setTimeout(() => {
+      pressTimer.current = null;
+      // 已经在多选态里再长按同一张卡 = 取消它；否则进多选并把它算进选择
+      if (useUiStore.getState().multiSelect) toggleMultiSelect(node.id);
+      else enterMultiSelect(node.id);
+    }, LONG_PRESS_MS);
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pressTimer.current === null) return;
+    if (Math.hypot(event.clientX - pressOrigin.current.x, event.clientY - pressOrigin.current.y) > LONG_PRESS_SLOP) {
+      clearPressTimer();
+    }
+  };
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -65,10 +105,14 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
 
   return (
     <div
-      className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}${data.dimmed ? ' is-dim' : ''}${onPath ? ' is-path' : ''}`}
+      className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}${data.dimmed ? ' is-dim' : ''}${onPath ? ' is-path' : ''}${multiSelect && selected ? ' is-multi' : ''}`}
       data-heat={heat > 0 ? heat.toFixed(2) : undefined}
       onMouseEnter={() => setHoverNode(node.id)}
       onMouseLeave={() => setHoverNode(null)}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={clearPressTimer}
+      onPointerCancel={clearPressTimer}
       style={{ width: node.w }}
       data-type={node.type}
     >

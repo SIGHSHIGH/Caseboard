@@ -6,6 +6,27 @@ export type CanvasMode = 'select' | 'lasso';
 /** 左栏四个标签：对象类型 / 素材库 / 分组 / 分析（M5-2 过滤与聚焦） */
 export type LeftTab = 'nodes' | 'assets' | 'groups' | 'analysis';
 
+/**
+ * 应用内确认框（H5-4）。ArkWeb 里 `window.confirm` 静默返回 false、`window.alert` 直接丢弃，
+ * 于是「清空回收站」「允许发送到云端」这类确认全部变成点了没反应。统一改走这里的应用内对话框。
+ */
+export interface ConfirmRequest {
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+  /** 危险操作（删除/清空/离开本机）用证据红按钮 */
+  danger: boolean;
+}
+
+/** 应用内提示条（H5-4）：替代 `window.alert` 的结果回执 */
+export interface Notice {
+  id: number;
+  text: string;
+  kind: 'info' | 'error';
+}
+
+
 interface UiStore {
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
@@ -16,6 +37,21 @@ interface UiStore {
   selectedImageIds: string[];
   /** 多选实体卡片（框选 / Ctrl 点选）：selectedNodeId 是其中的主选中项，供右栏显示 */
   selectedNodeIds: string[];
+  /**
+   * 触屏多选态（H5-5）。手指没有 Ctrl/Shift，React Flow 的 `multiSelectionKeyCode` 用不上，
+   * 所以改成「长按卡片 → 进入多选 → 再点其他卡片是加选/减选 → 点空白退出」。
+   */
+  multiSelect: boolean;
+  enterMultiSelect: (id: string) => void;
+  toggleMultiSelect: (id: string) => void;
+  exitMultiSelect: () => void;
+  /**
+   * 组框加入节点请求（H5-6）：多选一批卡片后点「加入组框…」，由 GroupPickDialog 消费。
+   * 这里只带 nodeIds，真正的落位在命令 groupCommands.addNodesToGroup 里算。
+   */
+  groupPick: { nodeIds: string[] } | null;
+  requestGroupPick: () => void;
+  consumeGroupPick: () => void;
   /** 拖动图片时命中的对齐参考线（不进 doc，松手即清空） */
   guides: AlignGuide[];
   /** 正在被拖到卡片上的图片所指向的目标节点，用于高亮吸附 */
@@ -74,6 +110,18 @@ interface UiStore {
   endAssetDrag: (clientX: number, clientY: number) => void;
   cancelAssetDrag: () => void;
   consumeAssetDrop: () => void;
+  /** 当前待答的确认框；同时只允许一个 */
+  confirmRequest: ConfirmRequest | null;
+  /** 等待答复的回调：resolveConfirm 时调用，随后清空 */
+  confirmResolve: ((ok: boolean) => void) | null;
+  /** 弹确认框并等用户答（离开本机/删除类操作必须走这里，别用 window.confirm） */
+  askConfirm: (req: Partial<ConfirmRequest> & { message: string }) => Promise<boolean>;
+  resolveConfirm: (ok: boolean) => void;
+  notices: Notice[];
+  /** 递增序号，供 pushNotice 生成自增 id */
+  noticeSeq: number;
+  pushNotice: (text: string, kind?: 'info' | 'error') => void;
+  dismissNotice: (id: number) => void;
 }
 
 const NO_SELECTION = {
@@ -86,7 +134,7 @@ const NO_SELECTION = {
   selectedNodeIds: [] as string[],
 } as const;
 
-export const useUiStore = create<UiStore>((set) => ({
+export const useUiStore = create<UiStore>((set, get) => ({
   ...NO_SELECTION,
   guides: [],
   attachTargetId: null,
@@ -128,6 +176,26 @@ export const useUiStore = create<UiStore>((set) => ({
         : state.selectedImageIds.filter((item) => item !== id);
       return { selectedImageIds: next, selectedImageId: next.length > 0 ? next[next.length - 1] : null };
     }),
+  multiSelect: false,
+  enterMultiSelect: (id) =>
+    set((state) => {
+      const ids = state.selectedNodeIds.includes(id) ? state.selectedNodeIds : [...state.selectedNodeIds, id];
+      const primary = state.selectedNodeId && ids.includes(state.selectedNodeId) ? state.selectedNodeId : id;
+      return { ...NO_SELECTION, multiSelect: true, selectedNodeId: primary, selectedNodeIds: ids };
+    }),
+  toggleMultiSelect: (id) =>
+    set((state) => {
+      const ids = state.selectedNodeIds.includes(id)
+        ? state.selectedNodeIds.filter((item) => item !== id)
+        : [...state.selectedNodeIds, id];
+      if (ids.length === 0) return { ...NO_SELECTION, multiSelect: false };
+      const primary = state.selectedNodeId && ids.includes(state.selectedNodeId) ? state.selectedNodeId : ids[ids.length - 1];
+      return { ...NO_SELECTION, multiSelect: true, selectedNodeId: primary, selectedNodeIds: ids };
+    }),
+  exitMultiSelect: () => set({ multiSelect: false }),
+  groupPick: null,
+  requestGroupPick: () => set((state) => ({ groupPick: { nodeIds: state.selectedNodeIds } })),
+  consumeGroupPick: () => set({ groupPick: null }),
   selectEdge: (id) => set({ ...NO_SELECTION, selectedEdgeId: id }),
   selectGroup: (id) => set({ ...NO_SELECTION, selectedGroupId: id }),
   selectAsset: (id) => set({ ...NO_SELECTION, selectedAssetId: id }),
@@ -143,7 +211,7 @@ export const useUiStore = create<UiStore>((set) => ({
         selectedImageIds: next,
       };
     }),
-  clearSelection: () => set({ ...NO_SELECTION }),
+  clearSelection: () => set({ ...NO_SELECTION, multiSelect: false }),
   setDragPos: (id, pos) =>
     set((state) => {
       const next = { ...state.dragPos };
@@ -170,4 +238,35 @@ export const useUiStore = create<UiStore>((set) => ({
     }),
   cancelAssetDrag: () => set({ assetDrag: null }),
   consumeAssetDrop: () => set({ assetDrop: null }),
+  confirmRequest: null,
+  confirmResolve: null,
+  askConfirm: (req) =>
+    new Promise<boolean>((resolve) => {
+      // 上一条还没答就来了新的：先把旧的按「取消」收尾，避免 Promise 永远悬着
+      const previous = get().confirmResolve;
+      if (previous) previous(false);
+      set({
+        confirmRequest: {
+          title: req.title ?? '请确认',
+          message: req.message,
+          confirmText: req.confirmText ?? '确定',
+          cancelText: req.cancelText ?? '取消',
+          danger: req.danger ?? false,
+        },
+        confirmResolve: resolve,
+      });
+    }),
+  resolveConfirm: (ok) => {
+    const resolver = get().confirmResolve;
+    set({ confirmRequest: null, confirmResolve: null });
+    resolver?.(ok);
+  },
+  notices: [],
+  noticeSeq: 0,
+  pushNotice: (text, kind = 'info') =>
+    set((state) => ({
+      notices: [...state.notices, { id: state.noticeSeq + 1, text, kind }],
+      noticeSeq: state.noticeSeq + 1,
+    })),
+  dismissNotice: (id) => set((state) => ({ notices: state.notices.filter((item) => item.id !== id) })),
 }));

@@ -313,3 +313,167 @@
   font-size: 12px;
   color: var(--cb-muted);
 }
+/*
+ * H5-4：应用内确认框与结果提示条（SystemDialogs 用）。
+ * ArkWeb 里 window.confirm/alert 静默失效，所以关键确认与一次性回执都改用这套。
+ */
+.cb-confirm {
+  max-width: 420px;
+}
+
+.cb-confirm__message {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cb-modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cb-notices {
+  position: fixed;
+  z-index: 95;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(560px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.cb-notice {
+  pointer-events: auto;
+  display: block;
+  max-width: 100%;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--cb-border-strong);
+  background: var(--cb-surface);
+  color: var(--cb-text);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 8px 22px rgba(28, 27, 26, 0.18);
+  cursor: pointer;
+}
+
+.cb-notice--error {
+  border-color: var(--cb-accent);
+  color: var(--cb-accent);
+}
+
+/* 触屏：提示条与确认按钮加大到 44px 高度 */
+@media (pointer: coarse) {
+  .cb-notice {
+    min-height: 44px;
+    padding: 12px 16px;
+  }
+}
+
+/* 确认框要压在别的弹窗（历史/导出/AI）之上：同 z-index 时靠 DOM 顺序，这里显式抬高 */
+.cb-modal__mask--confirm {
+  z-index: 120;
+}
+
+/* ---------- H5-5 / H5-6：触屏长按多选 + 收进组框 ---------- */
+.cb-node.is-multi {
+  outline: 2px dashed var(--cb-accent);
+  outline-offset: 2px;
+}
+
+.cb-multisel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border-strong);
+  border-left: 3px solid var(--cb-accent);
+  border-radius: 6px;
+}
+
+.cb-multisel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cb-text);
+}
+
+.cb-multisel__hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--cb-muted);
+}
+
+.cb-multisel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 组框选择对话框（H5-6） */
+.cb-group-pick {
+  max-width: 460px;
+}
+
+.cb-group-pick__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.cb-group-pick__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--cb-bg);
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  color: var(--cb-text);
+  cursor: pointer;
+}
+
+.cb-group-pick__item:hover,
+.cb-group-pick__item:focus-visible {
+  border-color: var(--cb-accent);
+}
+
+.cb-group-pick__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.cb-group-pick__title {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cb-group-pick__meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--cb-muted);
+}

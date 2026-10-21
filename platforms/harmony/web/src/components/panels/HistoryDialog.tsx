@@ -19,6 +19,7 @@ import {
   type TrashRow,
 } from '../../services/storage';
 import { useBackend, useDocStore } from '../../store/docStore';
+import { useUiStore } from '../../store/uiStore';
 import type { CaseEdge, CaseNode } from '../../types';
 
 interface HistoryDialogProps {
@@ -48,6 +49,7 @@ export function HistoryDialog({ onClose }: HistoryDialogProps) {
   const doc = useDocStore((s) => s.doc);
   const dispatch = useDocStore((s) => s.dispatch);
   const backend = useBackend();
+  const askConfirm = useUiStore((s) => s.askConfirm);
   const [tab, setTab] = useState<Tab>('snapshots');
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
   const [trash, setTrash] = useState<TrashRow[]>([]);
@@ -140,11 +142,20 @@ export function HistoryDialog({ onClose }: HistoryDialogProps) {
     });
 
   const emptyTrash = () => {
-    if (!window.confirm('清空回收站后无法恢复，确定继续？')) return;
-    void run(async () => {
-      await purgeTrashInStorage(caseId);
-      return '回收站已清空';
-    });
+    // ArkWeb 里 window.confirm 静默返回 false，会把「清空回收站」直接吞掉 → 改用应用内确认框
+    void (async () => {
+      const ok = await askConfirm({
+        title: '清空回收站',
+        message: '清空回收站后无法恢复，确定继续？',
+        confirmText: '清空',
+        danger: true,
+      });
+      if (!ok) return;
+      await run(async () => {
+        await purgeTrashInStorage(caseId);
+        return '回收站已清空';
+      });
+    })();
   };
 
   return (

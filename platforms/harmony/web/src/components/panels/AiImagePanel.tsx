@@ -19,6 +19,7 @@ import {
   type AiImageSettings,
 } from '../../services/aiImage';
 import { useDocStore } from '../../store/docStore';
+import { useUiStore } from '../../store/uiStore';
 
 interface AiImagePanelProps {
   onClose: () => void;
@@ -34,6 +35,7 @@ function errorText(error: unknown): string {
 export function AiImagePanel({ onClose }: AiImagePanelProps) {
   const doc = useDocStore((s) => s.doc);
   const dispatch = useDocStore((s) => s.dispatch);
+  const askConfirm = useUiStore((s) => s.askConfirm);
   const [settings, setSettings] = useState<AiImageSettings>(() => loadAiImageSettings());
   const [preset, setPreset] = useState<AiImagePreset>('sketch');
   const [subject, setSubject] = useState('身材偏瘦的中年男子，短发，穿深色夹克，面部特征从简');
@@ -224,10 +226,20 @@ export function AiImagePanel({ onClose }: AiImagePanelProps) {
                   checked={settings.allowCloud}
                   onChange={(event) => {
                     const checked = event.target.checked;
-                    if (checked && !window.confirm('允许把画面描述发送到云端生图接口？描述里不要包含真实姓名与个人隐私。')) {
+                    if (!checked) {
+                      update({ allowCloud: false });
                       return;
                     }
-                    update({ allowCloud: checked });
+                    // 硬约束 7：云端生图必须显式二次确认；ArkWeb 里 window.confirm 会被静默丢弃
+                    void (async () => {
+                      const ok = await askConfirm({
+                        title: '允许云端生图',
+                        message: '允许把画面描述发送到云端生图接口？描述里不要包含真实姓名与个人隐私。',
+                        confirmText: '允许',
+                        danger: true,
+                      });
+                      if (ok) update({ allowCloud: true });
+                    })();
                   }}
                 />
                 <span>允许云端生图（每次生成仍需我确认）</span>

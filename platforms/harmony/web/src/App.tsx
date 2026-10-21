@@ -19,6 +19,8 @@ import { MapView } from './components/views/MapView';
 import { CommandPalette } from './components/panels/CommandPalette';
 import { NewNodeDialog } from './components/panels/NewNodeDialog';
 import { TagLinkDialog } from './components/panels/TagLinkDialog';
+import { GroupPickDialog } from './components/panels/GroupPickDialog';
+import { ConfirmHost, NoticeHost } from './components/panels/SystemDialogs';
 import { usePaletteStore } from './store/paletteStore';
 import { ASSET_DND_TYPE } from './lib/dnd';
 import { OrientationGate } from './components/OrientationGate';
@@ -289,6 +291,9 @@ export default function App() {
       <ImportWizard />
       <NewNodeDialog />
       <TagLinkDialog />
+      <GroupPickDialog />
+      <ConfirmHost />
+      <NoticeHost />
       <AssetDragGhost />
       {viewMode === 'board' ? <CanvasLegend /> : null}
       {paletteOpen ? <CommandPalette /> : null}

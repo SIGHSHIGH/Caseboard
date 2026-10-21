@@ -1365,6 +1365,11 @@ export function RightPanel() {
   const selectedGroupId = useUiStore((s) => s.selectedGroupId);
   const selectedAssetId = useUiStore((s) => s.selectedAssetId);
   const selectedImageId = useUiStore((s) => s.selectedImageId);
+  const selectedNodeIds = useUiStore((s) => s.selectedNodeIds);
+  const multiSelect = useUiStore((s) => s.multiSelect);
+  const requestGroupPick = useUiStore((s) => s.requestGroupPick);
+  const clearSelection = useUiStore((s) => s.clearSelection);
+  const exitMultiSelect = useUiStore((s) => s.exitMultiSelect);
 
   const node = doc.nodes.find((item) => item.id === selectedNodeId) ?? null;
   const edge = doc.edges.find((item) => item.id === selectedEdgeId) ?? null;
@@ -1374,8 +1379,36 @@ export function RightPanel() {
 
   const titleOf = (id: string) => doc.nodes.find((item) => item.id === id)?.title ?? id;
 
+  /* 多选态横幅（H5-5 / H5-6）：触屏长按进了多选、且选了不止一张卡时，先把「选了几张、
+     能拿这批选中做什么」摆出来，否则右栏永远只显示最后一张卡的属性，用户看不出自己在多选。 */
+  const multiBanner =
+    multiSelect && selectedNodeIds.length > 1 ? (
+      <section className="cb-multisel" aria-label="多选操作">
+        <p className="cb-multisel__head">
+          已选 {selectedNodeIds.length} 个卡片
+          <span className="cb-multisel__hint">继续点卡片加选 / 再长按取消某张</span>
+        </p>
+        <div className="cb-multisel__actions">
+          <button type="button" className="cb-btn" onClick={requestGroupPick}>
+            加入组框…
+          </button>
+          <button
+            type="button"
+            className="cb-btn cb-btn--ghost"
+            onClick={() => {
+              exitMultiSelect();
+              clearSelection();
+            }}
+          >
+            清空选择
+          </button>
+        </div>
+      </section>
+    ) : null;
+
   return (
     <aside className="cb-panel cb-panel--right">
+      {multiBanner}
       {node ? (
         <>
           <h2 className="cb-panel__title">

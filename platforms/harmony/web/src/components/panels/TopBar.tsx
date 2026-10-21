@@ -7,6 +7,7 @@ import { fileService } from '../../services/file';
 import { closeCodeView, openCodeView, useCodeStore } from '../../store/codeStore';
 import { useBackend, useDocStore, useLastSavedAt } from '../../store/docStore';
 import { useViewModeStore, type ViewMode } from '../../store/viewModeStore';
+import { useUiStore } from '../../store/uiStore';
 import { ExportDialog } from './ExportDialog';
 import { HistoryDialog } from './HistoryDialog';
 import { AiPanel } from './AiPanel';
@@ -95,6 +96,8 @@ export function TopBar() {
   // 实测宽度（估算只用于首帧）与「因为真的挤在一起而强制收进菜单」的集合
   const [widths, setWidths] = useState<Record<string, number>>({});
   const [forced, setForced] = useState<string[]>([]);
+  // ArkWeb 里 window.alert 静默丢弃，保存/打开/导入的结果回执改走应用内提示条
+  const pushNotice = useUiStore((state) => state.pushNotice);
 
   useEffect(() => {
     const element = ioRef.current;
@@ -141,9 +144,9 @@ export function TopBar() {
     setSavingProject(true);
     try {
       const result = await exportCaseboardFile(doc);
-      if (result.path) window.alert('项目已保存：\n' + result.path);
+      if (result.path) pushNotice('项目已保存：\n' + result.path);
     } catch (error) {
-      window.alert(`保存项目失败：${errorText(error)}`);
+      pushNotice(`保存项目失败：${errorText(error)}`, 'error');
     } finally {
       setSavingProject(false);
     }
@@ -156,7 +159,7 @@ export function TopBar() {
       const opened = await openCaseboardFile();
       if (opened) dispatch(replaceDocument(opened.doc));
     } catch (error) {
-      window.alert(`打开项目失败：${errorText(error)}`);
+      pushNotice(`打开项目失败：${errorText(error)}`, 'error');
     } finally {
       importing.current = false;
     }
@@ -170,7 +173,7 @@ export function TopBar() {
       if (!picked) return;
       dispatch(replaceDocument(fromJson(picked.text)));
     } catch (error) {
-      window.alert(`导入失败：${errorText(error)}`);
+      pushNotice(`导入失败：${errorText(error)}`, 'error');
     } finally {
       importing.current = false;
     }

@@ -162,6 +162,9 @@ export function Board() {
   const requestNewNode = useUiStore((s) => s.requestNewNode);
   const setMode = useUiStore((s) => s.setMode);
   const setNodeSelection = useUiStore((s) => s.setNodeSelection);
+  const multiSelect = useUiStore((s) => s.multiSelect);
+  const toggleMultiSelect = useUiStore((s) => s.toggleMultiSelect);
+  const enterMultiSelect = useUiStore((s) => s.enterMultiSelect);
   const applyImageSelection = useUiStore((s) => s.applyImageSelection);
   const selectEdge = useUiStore((s) => s.selectEdge);
   const selectGroup = useUiStore((s) => s.selectGroup);
@@ -472,6 +475,14 @@ export function Board() {
       const store = useUiStore.getState();
       const imageIds = new Set(doc.imageNodes.map((item) => item.id));
       const images: Array<{ id: string; selected: boolean }> = [];
+      // 触屏多选态（H5-5）由 BaseNode 长按 + onNodeClick 的 toggle 独占：
+      // React Flow 的「点一张卡就把其它卡全取消选中」会和 toggle 互相打架（点第二张卡反而清空选择），
+      // 所以多选态下忽略卡片的 select 变更，只放图片的。
+      if (store.multiSelect) {
+        for (const change of selectChanges) if (imageIds.has(change.id)) images.push(change);
+        for (const change of images) applyImageSelection(change.id, change.selected);
+        return;
+      }
       let nodeIds = [...store.selectedNodeIds];
       for (const change of selectChanges) {
         if (imageIds.has(change.id)) {
@@ -701,6 +712,7 @@ export function Board() {
         requestNewNode({ x: Math.round(position.x), y: Math.round(position.y) });
         return;
       }
+      // clearSelection 同时会退出多选态（点空白即散选，符合触屏直觉）
       clearSelection();
     },
     [clearSelection, mode, requestNewNode, screenToFlowPosition],
@@ -1111,6 +1123,11 @@ export function Board() {
         onEdgesDelete={onEdgesDelete}
         onNodeDrag={onNodeDrag}
         onNodeClick={(_event, node) => {
+          // 长按进了多选态：点卡片是加选/减选（触屏没有 Ctrl，靠这条补上）
+          if (multiSelect) {
+            if (parseBoardNodeId(node.id).kind === 'node') toggleMultiSelect(node.id);
+            return;
+          }
           // 卡片与图片的选中态由 select 变更驱动（支持框选与 Ctrl 多选），这里只补组
           const group = groupOfBoardNode(node);
           if (group) selectGroup(group.id);
@@ -1213,6 +1230,24 @@ export function Board() {
                 onClick={() => addRelationBubble(ctxMenu.nodeId)}
               >
                 新建关系气泡并连到此实体
+              </button>
+            ) : null}
+            {ctxMenu.nodeId ? (
+              // 触屏上「长按卡片」被 ArkWeb 抢去弹系统/页面右键菜单（实测模拟器上长按卡片
+              // 直接弹出这个菜单，BaseNode 自己的 480ms 计时器收不到完整的触摸序列），
+              // 所以多选在这里给一个明确入口：长按 → 多选卡片 → 再点其它卡片加选。
+              <button
+                type="button"
+                className="cb-ctxmenu__item"
+                role="menuitem"
+                data-diag="ctx-multiselect"
+                onClick={() => {
+                  const id = ctxMenu.nodeId;
+                  closeContextMenu();
+                  if (id) enterMultiSelect(id);
+                }}
+              >
+                多选卡片（选多张一起加进组框）
               </button>
             ) : null}
             <div className="cb-ctxmenu__hint">关系气泡是圆角矩形，可以把多条关系线汇到它上面</div>

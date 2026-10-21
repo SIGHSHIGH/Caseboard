@@ -110,6 +110,8 @@ export function AiPanel({ onClose }: AiPanelProps) {
 
   const doc = useDocStore((state) => state.doc);
   const selectNode = useUiStore((state) => state.selectNode);
+  const askConfirm = useUiStore((state) => state.askConfirm);
+  const pushNotice = useUiStore((state) => state.pushNotice);
   const setViewMode = useViewModeStore((state) => state.setMode);
   /** 自动检验（M16）：停在这一页时随文档变化实时重算，改完一个字段就能看到结果。 */
   const checkReport = useMemo(() => (tab === 'check' ? runSelfCheck(doc) : null), [doc, tab]);
@@ -136,7 +138,7 @@ export function AiPanel({ onClose }: AiPanelProps) {
       const bytes = buildReportDocx(store.report.markdown, store.report.title);
       await fileService.saveBytes(store.report.title + '.docx', bytes, [{ name: 'Word 文档', extensions: ['docx'] }]);
     } catch (error) {
-      window.alert('导出 Word 失败：' + errorText(error));
+      pushNotice('导出 Word 失败：' + errorText(error), 'error');
     } finally {
       setExporting(null);
     }
@@ -150,7 +152,7 @@ export function AiPanel({ onClose }: AiPanelProps) {
       const bytes = await reportToPdfBytes(store.report.markdown, store.report.title);
       await fileService.saveBytes(store.report.title + '.pdf', bytes, [{ name: 'PDF 文档', extensions: ['pdf'] }]);
     } catch (error) {
-      window.alert('导出 PDF 失败：' + errorText(error));
+      pushNotice('导出 PDF 失败：' + errorText(error), 'error');
     } finally {
       setExporting(null);
     }
@@ -568,8 +570,21 @@ export function AiPanel({ onClose }: AiPanelProps) {
                   type="checkbox"
                   checked={store.settings.allowRemote}
                   onChange={(event) => {
-                    if (event.target.checked && !window.confirm('允许把案情文本发送给远程模型？这会离开本机，请确认数据合规。')) return;
-                    store.setSettings({ allowRemote: event.target.checked });
+                    // 硬约束 7：云端能力必须显式二次确认。ArkWeb 里 window.confirm 静默返回 false，
+                    // 会把「允许远程模型」的确认吞掉（勾不上也不报错）→ 改用应用内确认框。
+                    if (!event.target.checked) {
+                      store.setSettings({ allowRemote: false });
+                      return;
+                    }
+                    void (async () => {
+                      const ok = await askConfirm({
+                        title: '允许远程模型',
+                        message: '允许把案情文本发送给远程模型？这会离开本机，请确认数据合规。',
+                        confirmText: '允许',
+                        danger: true,
+                      });
+                      if (ok) store.setSettings({ allowRemote: true });
+                    })();
                   }}
                 />
                 <span>允许远程模型（数据会离开本机，默认关闭）</span>

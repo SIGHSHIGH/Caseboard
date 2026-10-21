@@ -2,6 +2,28 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>` / 鸿蒙侧 `hs/H<n>`。
 
+## [未发布] · 鸿蒙 H5.2：静默失败清账 + 触屏多选 + 组框收编 + 帧耗时实测
+
+### 症状
+1. 「保存/打开/导出失败」「云端授权」「清空回收站」这些提示在鸿蒙上**完全无声**——`window.confirm/alert` 在 ArkWeb 里静默失效（`confirm` 直接返回 `false`，`alert` 直接丢弃）。
+2. 触屏**没法多选**卡片（快捷键 `Ctrl/Cmd` 在平板上不存在），因此「把几个已有节点收进组框」也做不到。
+3. 画布拖动是否掉帧一直只有主观感受，没有数字（H6 原生画布要不要做取决于这个）。
+
+### 改了什么
+- 新增 `web/src/store/uiStore.ts`：`askConfirm()`（返回 Promise，同屏只留一个请求，旧的按取消收尾）、`pushNotice()` / `dismissNotice()`。
+- 新增 `web/src/components/panels/SystemDialogs.tsx`：`ConfirmHost`（遮罩/Esc 取消，危险操作走 `cb-btn--danger`）+ `NoticeHost`（4.2s 自动消失，`role="status"`），在 `App.tsx` 挂载。
+- 9 处 `window.confirm/alert` 全部替换：`TopBar.tsx` 4 处改 `pushNotice`；`AiPanel.tsx` 2 处导出失败提示改 `pushNotice`、云端授权改 `askConfirm`（`danger`，符合硬约束 7 的二次确认）；`AiImagePanel.tsx` 云端生图授权同上；`HistoryDialog.tsx` 清空回收站改 `askConfirm`。
+- 触屏多选两条通道：`BaseNode.tsx` 卡片长按 480ms 进多选（`enterMultiSelect`/`toggleMultiSelect`）；**真机上长按会被 ArkWeb 合成 `contextmenu` 抢走**，因此在画布右键菜单新增「多选卡片（选多张一起加进组框）」。
+- 多选态下 `Board.tsx` 的 `onNodesChange` 忽略卡片的 `select` 变更（否则「点第二张」会被 React Flow 清空选择），由 `onNodeClick` 自己 toggle；右栏顶部出现「已选 N 个卡片 + 加入组框…/清空选择」横幅。
+- 新增命令 `addNodesToGroup(nodeIds, groupId)`（`commands/groupCommands.ts`）：按组头 40 / 内边距 24 / 间距 16 竖排进框，**不压窄卡片**，组框只放大不缩小。
+- 新增 `web/src/components/panels/GroupPickDialog.tsx`：多选后选目标组框，成功后 `pushNotice('已把 N 个卡片收进「…」')` 并退出多选。
+- `platforms/harmony/scripts/accept-h5.ps1` 扩到 16 条（H5-11/12/13 静态清账、H5-14/15 多选与组框、H5-2 帧耗时），探针加 `--ps caseboardSelftest 14`（多选/组框）与 `15`（rAF 帧采样）。
+
+### 实测
+- `accept-h5.ps1` → **16/16 PASS**：`summary14 banner=1 sel=2 picked=1 contained=1 rect=180x626 inside=2/2`；`p50=16.8 p95=16.9 drop=1 frames=130`（阈值 p95≤34ms，60fps 稳）。
+- 真手势复核（`uitest`）：长按卡片 → 菜单 → 多选卡片 → 点第二张 → 「已选 2 个卡片」→ 加入组框 → 「诈骗团伙」3 → 5 个对象、组成员清单 5 条、两张卡落进框内。
+- 结论：**H6 原生画布没有性能理由**，画布平移已经贴 60fps。
+
 ## [未发布] · 鸿蒙 H5.1：素材通路（缩略图 / 背景图 / 触屏拖拽）
 
 ### 症状
