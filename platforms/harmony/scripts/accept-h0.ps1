@@ -20,6 +20,7 @@
 param(
   [switch]$SkipBuild,
   [switch]$SkipWeb,
+  [string]$DevEcoHome = '',
   [string]$OutFile = ''
 )
 
@@ -31,9 +32,11 @@ $RawfileDir = Join-Path $ProjectRoot 'entry/src/main/resources/rawfile'
 $HapPath = Join-Path $ProjectRoot 'entry/build/default/outputs/default/entry-default-unsigned.hap'
 $Bundle = 'com.caseboard.harmony'
 $Ability = 'EntryAbility'
-$Hdc = 'D:\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe'
-$Hvigorw = 'D:\DevEco Studio\tools\hvigor\bin\hvigorw.bat'
-$DevEcoNode = 'D:\DevEco Studio\tools\node'
+. (Join-Path $PSScriptRoot '_env.ps1')
+$envInfo = Initialize-DevEcoEnv -DevEcoHome $DevEcoHome -ProjectRoot $ProjectRoot
+$Hdc = $envInfo.Hdc
+$Hvigorw = $envInfo.Hvigorw
+$DevEcoNode = $envInfo.NodeDir
 if (-not $OutFile) { $OutFile = Join-Path $ProjectRoot '.tmp-esbuild/accept-h0.json' }
 
 $report = [ordered]@{

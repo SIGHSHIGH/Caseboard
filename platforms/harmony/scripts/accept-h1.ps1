@@ -9,13 +9,19 @@ param(
   [switch]$SkipBuild,
   [switch]$SkipWeb,
   [string]$BundleName = 'com.caseboard.harmony',
-  [string]$Hdc = 'D:\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe',
+  [string]$Hdc = '',
+  [string]$DevEcoHome = '',
   [string]$OutFile = ''
 )
 
 $ErrorActionPreference = 'Continue'
 
+. (Join-Path $PSScriptRoot '_env.ps1')
+
 $root = Split-Path -Parent $PSScriptRoot
+$envInfo = Initialize-DevEcoEnv -DevEcoHome $DevEcoHome -ProjectRoot $root
+if (-not $Hdc) { $Hdc = $envInfo.Hdc }
+$Hvigorw = $envInfo.Hvigorw
 if (-not $OutFile) { $OutFile = Join-Path $root '.tmp-esbuild\accept-h1.json' }
 $web = Join-Path $root 'web'
 $rawfile = Join-Path $root 'entry\src\main\resources\rawfile'
@@ -88,11 +94,8 @@ Add-Check 'H1-3' '触控样式与抽屉样式已打包' $cssOk $cssDetail
 
 if (-not $SkipBuild) {
   Write-Host '-- 构建 + 安装 --'
-  $env:NODE_HOME = 'D:\DevEco Studio\tools\node'
-  $env:DEVECO_SDK_HOME = 'D:\DevEco Studio\sdk'
-  $env:PATH = "$env:NODE_HOME;$env:PATH"
   Push-Location $root
-  $buildOut = & 'D:\DevEco Studio\tools\hvigor\bin\hvigorw.bat' assembleHap --mode module -p product=default -p buildMode=debug --no-daemon 2>&1
+  $buildOut = & $Hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon 2>&1
   $buildExit = $LASTEXITCODE
   Pop-Location
   Add-Check 'H1-4' 'hvigorw assembleHap' ($buildExit -eq 0) ("exit=$buildExit")

@@ -75,3 +75,28 @@ caseboard/                        ← 一个仓库
 2. 每次改逻辑层，**同一天**在两个仓库各提交一次，CI 里加一条「两边 sha 一致」的检查。
 
 这会比单仓库多付约 15% 的日常成本，换来的只是「鸿蒙仓库权限单独控制」——除非有真实的权限隔离需求，不划算。
+
+## 七、迁移已落地（H2 收尾，2026-10-21）
+
+按第五节做了。实际步骤比预估多两步，逐条记在这里，换机器复现也照这份走：
+
+```powershell
+# 1. 在桌面仓库建 harmony 分支，从远端 harmony 起步
+git checkout -B harmony origin/harmony
+# 2. 把独立仓库的历史嫁接到 platforms/harmony/（不是拷文件，提交历史保留）
+git remote add hs-local "F:/DSH PROJECT/masaike board/masaike board hamonyos"
+git fetch hs-local main
+git merge -s ours --no-commit --allow-unrelated-histories hs-local/main
+git read-tree --prefix=platforms/harmony/ -u hs-local/main
+git commit -m "harmony: 迁入鸿蒙移植工程"
+# 3. 删掉旧目录，并从桌面仓库 .git/info/exclude 删掉隔离那一行
+```
+
+踩到的坑，四条都值得记：
+
+1. **`.gitignore` 的 `/` 锚点跟着目录走**。`platforms/harmony/.gitignore` 里的 `/entry/build`、`/web/node_modules` 是相对它自己所在目录解析的，所以整棵树搬进子目录后**一条都不用改**（抽检 7 条仍全部 IGNORED）。
+2. **全新 clone 出来 `web/.tmp` 不存在**，而 pnpm 内部用 tempy 会要求 TMP 目录已存在，否则 `ENOENT lstat '...\web\.tmp'` 直接把整条构建链打断。`scripts/build-web.ps1` 现在先建目录再设 `TMP`。
+3. **Windows PowerShell 里 `$home` 是只读自动变量**。`scripts/_env.ps1` 第一版写成 `$home = Resolve-DevEcoHome ...`，dot-source 时报 `Cannot overwrite variable HOME`，但**不会中断脚本**，只让后续路径全变 `$null`，最终症状是一连串 `BadExpression: The expression after '&' ... was not valid`（看起来像脚本语法错，实际是路径变量没赋上）。改名 `$devEcoRoot` 后正常。教训：改完 .ps1 必须真跑一遍验收，只看语法通过不算数。
+4. **脚本不能再写死本机路径**。原有 `D:\DevEco Studio`、某个 `pnpm.cjs` 绝对路径已收口到 `scripts/_env.ps1`，优先级：显式参数 > 环境变量（`DEVECO_HOME` / `NODE_HOME` / `HDC` / `PNPM_CLI` / `PNPM_STORE_DIR`）> 常见安装位置 > `PATH`。换机器只需要设一个 `DEVECO_HOME`。
+
+迁移后的验证方式没有变：`scripts\accept-h1.ps1` 一条命令 17 条断言，全绿才算通过。

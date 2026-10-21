@@ -13,25 +13,33 @@
 #>
 [CmdletBinding()]
 param(
-  [switch]$SkipInstall
+  [switch]$SkipInstall,
+  [string]$DevEcoHome = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot '_env.ps1')
+
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $WebRoot = Join-Path $ProjectRoot 'web'
-$Node = 'D:\DevEco Studio\tools\node\node.exe'
-$Pnpm = 'E:\DSH\DSH Desktop\resources\app.asar.unpacked\node_modules\pnpm\bin\pnpm.cjs'
-$StoreDir = Join-Path (Split-Path -Parent $ProjectRoot) '.pnpm-store'
+$envInfo = Initialize-DevEcoEnv -DevEcoHome $DevEcoHome -ProjectRoot $ProjectRoot
+$Node = $envInfo.NodeExe
+$StoreDir = $envInfo.PnpmStore
 
-if (-not (Test-Path $Node)) { throw "找不到 DevEco node：$Node" }
+# 临时目录必须落在工作区内（系统 Temp 处理大产物会失败），但 pnpm/tempy 要求目录已存在——
+# 全新 clone 出来时 web/.tmp 并不存在（被 .gitignore 忽略），不创建就报
+# ENOENT lstat '...\web\.tmp' 并让整个构建失败。
+$TempDir = Join-Path $WebRoot '.tmp'
+if (-not (Test-Path $TempDir)) { New-Item -ItemType Directory -Path $TempDir -Force | Out-Null }
+$env:TMP = $TempDir
+$env:TEMP = $TempDir
+
 if (-not (Test-Path (Join-Path $WebRoot 'node_modules'))) {
-  if (-not (Test-Path $Pnpm)) { throw "web/node_modules 缺失，且找不到 pnpm：$Pnpm（先手工 pnpm install）" }
+  $Pnpm = Resolve-PnpmCli
   Write-Host '[web] 首次安装依赖…'
   Push-Location $WebRoot
   try {
-    $env:TMP = Join-Path $WebRoot '.tmp'
-    $env:TEMP = $env:TMP
     & $Node $Pnpm install --store-dir $StoreDir --prefer-offline
     if ($LASTEXITCODE -ne 0) { throw "pnpm install 失败（exit $LASTEXITCODE）" }
   } finally { Pop-Location }
@@ -39,9 +47,6 @@ if (-not (Test-Path (Join-Path $WebRoot 'node_modules'))) {
 
 Push-Location $WebRoot
 try {
-  $env:TMP = Join-Path $WebRoot '.tmp'
-  $env:TEMP = $env:TMP
-
   Write-Host '[web] tsc --noEmit'
   & $Node 'node_modules\typescript\bin\tsc' --noEmit
   if ($LASTEXITCODE -ne 0) { throw "tsc 失败（exit $LASTEXITCODE）" }
