@@ -42,11 +42,29 @@ if (touch) document.documentElement.dataset.input = 'touch';
 
 配套：顶栏 52→56、左右折叠条 16→36px、视图页签 `min-height: 36px`、画布缩放控件 26→40px、分组折叠/计数按钮补 `min-height: 26px`、图例钮 `min-height: 36px`；触屏上撤掉 hover 变色（`:hover` 在触屏会粘住）。
 
-## 三、顶栏在 1440 的取舍
+## 三、顶栏在 1440 的取舍（H2 已修，结论反转）
 
-`max-width: 1560px` 收紧顶栏 gap 与案件名宽度（`max-width: 18ch`）；`max-width: 1280px` 隐藏案件编号（右栏「案件概览」里仍有）。既有 `planTopbarOverflow`（`web/src/lib/topbarOverflow.ts`）会把低优先级按钮收进「⋯」。
+`max-width: 1560px` 收紧顶栏 gap 与案件名宽度（`max-width: 18ch`）；`max-width: 1280px` 隐藏案件编号（右栏「案件概览」里仍有）。收容统一由 `planTopbarOverflow`（`web/src/lib/topbarOverflow.ts`）负责，放不下的进「⋯」。
 
-**已知遗留**：触控放大后，顶栏「主题·默认」按钮在 1440 会被左边缘裁掉约 1/3（实测 `theme left=226` vs 其父容器 `left=596`）。根因是 `.cb-topbar__io` 用 `justify-content: flex-end`，内容溢出时向左跑，而 `scrollWidth` 只统计右侧溢出，所以既有溢出算法认为「没超」，不把按钮收进「⋯」。修法是把 撤销/重做/主题/背景/搜索 这五个**手工渲染**的控件并入 `actions` 列表，让溢出算法统一收容——属顶栏改造，排到 H2/H3，不在 H1 硬塞。
+**H1 遗留的裁切问题已在 H2 修掉，但根因和我最初的判断不一样**（对抗审查推翻了自己的假设）：
+
+- 我原以为「撤销/重做/主题/背景/搜索」是五个手工渲染在 `__tools` 里的控件、绕开了溢出算法。实测 `.cb-topbar__tools` 只有**撤销/重做两个图标按钮**（86px = 2×40 + gap），主题/背景/搜索本来就在 `actions` 列表里（priority 5 / 6 / 0），渲染进 `__io`。
+- 真正的原因是两条叠加：① `.cb-topbar__io` 用 `justify-content: flex-end`，内容溢出时往**左**跑，而 `scrollWidth` 只统计右侧溢出 → 算法认为「没超」；② `.cb-topbar__io` 里除了动作按钮，还塞着「⋯」按钮与「SQLite · 已保存 hh:mm」常驻文字（约 150px），它们吃宽度却不在 `planTopbarOverflow` 的账本里 → 预算虚高。
+- 修法（`TopBar.tsx`）：预算改成 `ioWidth − 常驻元素实测宽度`（新 `staticWidth` 状态，用 `saveRef` 与 `moreRef` 实测量，gap 取 `getComputedStyle().columnGap`）；溢出判定改成「首个子元素左边界 < 容器左边界」为主、`scrollWidth` 为辅。同时在 `≤1560px` 隐藏「SQLite · 已保存 hh:mm」（状态提示，不是操作；右栏「最后保存」有完整时间，保存成功也弹确认框），把宽度让给操作。
+
+稳态实测（1440×893）：
+
+```
+[topbar] tools=86/86 io=834/834
+[clip]  count=5 ioLeft=596 list=theme@226|canvas@315|bgimage@403|demo@485|search@567   ← onPageEnd 首帧，尚未收敛
+[clip2] count=0 inline=9 ioLeft=596 list=                                              ← 2s 后稳态
+[more]  open=true items=6 keys=bgimage,demo,import,aiimage,history,security
+[moreclick] found=true   [moreclick2] panel=true                                       ← 菜单里点「生图」确实打开了面板
+```
+
+窄档 1000：`[clip2] count=0 inline=5`，「⋯」里 10 项（含主题/背景/AI 助手/代码视图），零裁切。
+
+**注意收敛是渐进的**：每轮只把一个最低优先级按钮收进「⋯」，所以要等 2s 才是稳态——验收脚本断言的是 `[clip2]`（2000ms）而不是 `[clip]`（onPageEnd），这一条如果不写清楚，后面很容易把假阴性当成回归。
 
 ## 四、上机验证
 
@@ -78,6 +96,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept-h1.ps1
 ```
 
 13 条检查（H1-1…H1-13）全绿，报告 `.tmp-esbuild/accept-h1.json`，实测 `3,894,128B` HAP、`consoleError=0`、`webError=0`。
+
+H2 之后扩到 **17 条**（H1-14…H1-17 验顶栏收容：1440 零裁切、「⋯」可打开且有内容、菜单内按钮真能点、窄档零裁切）。
 
 ## 五、窄档怎么测的
 
@@ -126,4 +146,5 @@ Start-Process -FilePath 'D:\DevEco Studio\tools\emulator\Emulator.exe' -Argument
 - 触控手势层（双指缩放、长按菜单、拖拽惯性）：`@xyflow/react` 自带 pinch，长按菜单仍需自定义，排 H3。
 - 竖屏：**已决策不做**（见文档开头与 §七）。
 - 键盘快捷键（Ctrl+K、Delete 等）：平板外接键盘未测。
-- 顶栏「主题·默认」在 1440 被左边缘裁切（§三），修法已记录，排 H2/H3。
+- 顶栏优先级仍是桌面版的口径：1440 档 `代码视图`(priority 4) 比 `AI 助手`(8) / `生图`(9) 更优先留下。移植版是否该把 AI 相关提上来，等真实使用反馈再定，不在 H2 擅改。
+- 超宽屏（≥1561，`SQLite · 已保存` 会重新出现）在模拟器上无法构造，未实测；该分支只影响状态提示的显示。

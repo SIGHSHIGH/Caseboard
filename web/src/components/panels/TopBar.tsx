@@ -81,7 +81,14 @@ export function TopBar() {
   const moreRef = useRef<HTMLDivElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const morePanelRef = useRef<HTMLDivElement>(null);
+  const saveRef = useRef<HTMLSpanElement>(null);
   const [ioWidth, setIoWidth] = useState(0);
+  // H2（对抗审查发现的真实缺陷）：`.cb-topbar__io` 里除了动作按钮，还塞着「⋯」按钮和
+  // 「SQLite · 已保存 hh:mm」这段常驻文字。它们**也吃宽度**，但不在 planTopbarOverflow 的
+  // 账本里，于是规划器以为放得下、实际却溢出；溢出的方向又正好是左侧（`justify-content:
+  // flex-end`），表现为最左边那个按钮被裁掉半边，而 scrollWidth 只统计右侧溢出、看起来「没超」。
+  // 所以预算必须扣掉这些常驻元素的实测宽度。
+  const [staticWidth, setStaticWidth] = useState(0);
   const [winWidth, setWinWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
   const [moreOpen, setMoreOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
@@ -292,6 +299,8 @@ export function TopBar() {
     if (ioWidth <= 0) {
       return { inline: actions.map((action) => action.key), overflow: [], used: 0 };
     }
+    // 可用宽度 = 容器宽度 − 常驻元素（「⋯」按钮 + 保存状态文字）实测宽度
+    const budget = Math.max(0, ioWidth - staticWidth);
     const base = planTopbarOverflow(
       actions.map((action) => ({
         key: action.key,
@@ -299,7 +308,7 @@ export function TopBar() {
         width: widths[action.key] ?? estimateLabelWidth(action.label),
         priority: action.priority,
       })),
-      ioWidth,
+      budget,
     );
     if (forced.length === 0) return base;
     const forcedSet = new Set(forced);
@@ -311,7 +320,7 @@ export function TopBar() {
     };
     // 只依赖标签与宽度：actions 每次渲染都是新数组，不能进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ioWidth, winWidth, widths, forced, actions.map((action) => action.key + action.label).join('|')]);
+  }, [ioWidth, staticWidth, winWidth, widths, forced, actions.map((action) => action.key + action.label).join('|')]);
 
   const inlineKeys = new Set(plan.inline);
   const overflowActions = actions.filter((action) => !inlineKeys.has(action.key));
@@ -333,8 +342,23 @@ export function TopBar() {
       const changed = Object.entries(measured).some(([key, value]) => Math.abs((widths[key] ?? 0) - value) > 1);
       if (changed) setWidths((current) => ({ ...current, ...measured }));
     }
+
+    // 常驻元素（「⋯」按钮 + 保存状态文字）的实测占位，用来把预算算准
+    const gapStyle = typeof getComputedStyle === 'function' ? getComputedStyle(container).columnGap : '';
+    const gap = Number.parseFloat(gapStyle) || 0;
+    const morePart = moreRef.current ? moreRef.current.getBoundingClientRect().width + gap : 0;
+    const savePart = saveRef.current ? saveRef.current.getBoundingClientRect().width + gap : 0;
+    const statics = Math.ceil(morePart + savePart);
+    if (Math.abs(staticWidth - statics) > 1) setStaticWidth(statics);
+
     if (ioWidth <= 0) return;
-    if (container.scrollWidth - container.clientWidth <= 1) return;
+    // `justify-content: flex-end` 的容器溢出时内容往左跑，而 scrollWidth 只统计右侧溢出，
+    // 于是「scrollWidth == clientWidth」但最左边的按钮已被裁掉。以「首个子元素的左边界」
+    // 为准来判溢出（H2 实测：主题·默认 被裁的就是这种情形）。
+    const box = container.getBoundingClientRect();
+    const firstChild = container.firstElementChild as HTMLElement | null;
+    const leftClipped = firstChild ? firstChild.getBoundingClientRect().left < box.left - 1 : false;
+    if (!leftClipped && container.scrollWidth - container.clientWidth <= 1) return;
     const victim = actions
       .filter((action) => inlineKeys.has(action.key))
       .sort((left, right) => right.priority - left.priority)[0];
@@ -462,7 +486,11 @@ export function TopBar() {
             </button>
           </div>
         ) : null}
-        <span className="cb-topbar__save" title={backend === 'sqlite' ? '数据写入本机 SQLite' : '数据写入浏览器本机存储'}>
+        <span
+          ref={saveRef}
+          className="cb-topbar__save"
+          title={backend === 'sqlite' ? '数据写入本机 SQLite' : '数据写入浏览器本机存储'}
+        >
           {backend === 'sqlite' ? 'SQLite' : '本机存储'}
           {lastSavedAt ? ' · 已保存 ' + new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
         </span>

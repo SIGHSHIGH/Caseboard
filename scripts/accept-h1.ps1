@@ -27,7 +27,7 @@ function Add-Check([string]$id, [string]$name, [bool]$ok, [string]$detail) {
   $mark = if ($ok) { 'PASS' } else { 'FAIL' }
   Write-Host ("  [{0}] {1} {2}  {3}" -f $mark, $id, $name, $detail)
 }
-function Get-CbLog([string]$tmpName, [string]$phase) {
+function Get-CbLog([string]$tmpName, [string]$phase, [int]$waitSec = 6) {
   & $hdc shell aa force-stop $BundleName 2>&1 | Out-Null
   & $hdc shell hilog -r 2>&1 | Out-Null
   $startOut = & $hdc shell aa start -a EntryAbility -b $BundleName --ps caseboardSelftest $phase 2>&1
@@ -35,15 +35,18 @@ function Get-CbLog([string]$tmpName, [string]$phase) {
     Write-Host ("  ! aa start 失败：{0}" -f ($startOut -join ' '))
   }
   $file = Join-Path $env:TEMP $tmpName
-  # 探针在 onPageEnd 之后还有两轮定时测量（150ms / 600ms），分三次抓、取首个非空结果，
-  # 避免 hilog 缓冲还没刷出来就 dump 到空文件。
-  for ($i = 0; $i -lt 3; $i++) {
-    Start-Sleep -Seconds 6
+  # 探针有一串延时打点：分档 1s 起稳定、[clip2] 2s、[more] 3s、[moreclick2] 4.2s。
+  # 所以第一次就等够 waitSec 秒再一次抓齐，别用「抓到了就返回」——那会漏掉后面的关键行。
+  Start-Sleep -Seconds $waitSec
+  & $hdc shell "hilog -x" 2>&1 | Out-File $file -Encoding utf8
+  $hit = @((Get-Content $file) | Select-String -SimpleMatch '/CaseBoard' | ForEach-Object { $_.Line })
+  if ($hit.Count -eq 0) {
+    # 缓冲可能还没刷出来，补一次
+    Start-Sleep -Seconds 5
     & $hdc shell "hilog -x" 2>&1 | Out-File $file -Encoding utf8
     $hit = @((Get-Content $file) | Select-String -SimpleMatch '/CaseBoard' | ForEach-Object { $_.Line })
-    if ($hit.Count -gt 0 -and ($hit -match '\[narrow\]|\[layout\] tier=')) { return $hit }
   }
-  return @()
+  return $hit
 }
 
 Write-Host ''
@@ -105,7 +108,7 @@ if (-not $SkipBuild) {
 # ---------- 上机：横屏全宽 ----------
 Write-Host '-- 上机：横屏全宽（phase 1）--'
 $phase = '1'
-$log1 = Get-CbLog 'cb-h1-wide.txt' $phase
+$log1 = Get-CbLog 'cb-h1-wide.txt' $phase 26
 
 $layoutLine = $log1 | Select-String -Pattern '\[layout\] tier=' | Select-Object -First 1
 $layoutOk = $false
@@ -140,7 +143,7 @@ Add-Check 'H1-8' '页面无横向溢出' $scrollOk $scrollDetail
 # ---------- 上机：窄档抽屉 ----------
 Write-Host '-- 上机：窄档抽屉（phase 3）--'
 $phase = '3'
-$log3 = Get-CbLog 'cb-h1-narrow.txt' $phase
+$log3 = Get-CbLog 'cb-h1-narrow.txt' $phase 26
 
 $narrowLine = $log3 | Select-String -Pattern '\[narrow\]' | Select-Object -First 1
 $narrowOk = $false
@@ -159,7 +162,7 @@ Add-Check 'H1-9' '窄档右栏转为贴边抽屉并带遮罩' $narrowOk $narrowD
 # ---------- 上机：竖屏 / 小窗拦截层 ----------
 Write-Host '-- 上机：竖屏 / 小窗提示层（phase 4）--'
 $phase = '4'
-$log4 = Get-CbLog 'cb-h1-gate.txt' $phase
+$log4 = Get-CbLog 'cb-h1-gate.txt' $phase 26
 
 $wideGate = $log1 | Select-String -Pattern '\[gate\] present=' | Select-Object -First 1
 $gateOff = $false
@@ -192,6 +195,46 @@ Get-ChildItem (Join-Path $rawfile 'assets\*.js') -ErrorAction SilentlyContinue |
   }
 }
 Add-Check 'H1-13' '提示层文案与样式已打包' $gateTextOk ("hit=$gateTextOk")
+
+# ---------- 顶栏收容（H2） ----------
+Write-Host '-- 顶栏收容（phase 1 / 3）--'
+
+$clip1 = $log1 | Select-String -Pattern '\[clip2\] count=' | Select-Object -First 1
+$clipOk = $false
+$clipDetail = 'no clip2 line'
+if ($clip1) {
+  $n = if ($clip1.Line -match 'count=(\d+)') { [int]$Matches[1] } else { -1 }
+  $inline = if ($clip1.Line -match 'inline=(\d+)') { [int]$Matches[1] } else { -1 }
+  $clipOk = ($n -eq 0) -and ($inline -gt 0)
+  $clipDetail = "clipped=$n inline=$inline"
+}
+Add-Check 'H1-14' '1440 顶栏零裁切（稳态）' $clipOk $clipDetail
+
+$more1 = $log1 | Select-String -Pattern '\[more\] open=' | Select-Object -First 1
+$moreOk = $false
+$moreDetail = 'no more line'
+if ($more1) {
+  $open = $more1.Line -match 'open=true'
+  $items = if ($more1.Line -match 'items=(\d+)') { [int]$Matches[1] } else { 0 }
+  $moreOk = $open -and ($items -gt 0)
+  $moreDetail = "open=$open items=$items"
+}
+Add-Check 'H1-15' '「⋯」菜单可打开且装着被收走的按钮' $moreOk $moreDetail
+
+$click1 = $log1 | Select-String -Pattern '\[moreclick' | ForEach-Object { $_.Line }
+$clickOk = ($click1 | Select-String -SimpleMatch 'found=true').Count -gt 0
+$clickDetail = ($click1 -join ' ')
+Add-Check 'H1-16' '菜单内按钮可点击（生图 样本）' $clickOk $clickDetail
+
+$clip3 = $log3 | Select-String -Pattern '\[clip2\] count=' | Select-Object -First 1
+$clip3Ok = $false
+$clip3Detail = 'no clip2 line'
+if ($clip3) {
+  $n = if ($clip3.Line -match 'count=(\d+)') { [int]$Matches[1] } else { -1 }
+  $clip3Ok = ($n -eq 0)
+  $clip3Detail = "clipped=$n"
+}
+Add-Check 'H1-17' '窄档 1000 顶栏零裁切' $clip3Ok $clip3Detail
 
 # ---------- 控制台 ----------
 $allLog = $log1 + $log3 + $log4

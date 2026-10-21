@@ -112,6 +112,13 @@
   .cb-topbar__case {
     max-width: 18ch;
   }
+
+  /* 「SQLite · 已保存 13:46」约占 150px。它是状态提示，不是操作：
+     右栏「案件概览 · 最后保存」里有完整时间，保存成功也会弹确认框。
+     1440 档把这段让给「AI 助手 / 生图」这类高频操作更值。 */
+  .cb-topbar__save {
+    display: none;
+  }
 }
 
 @media (max-width: 1280px) {
