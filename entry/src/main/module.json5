@@ -21,6 +21,9 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:startIcon",
         "startWindowBackground": "$color:start_window_background",
+        // H1 决策：本产品只做横屏。案情板是横向信息密度工具，竖屏下画布/时间线/左右栏都摊不开，
+        // 与其给半残界面，不如锁死横屏；2in1 小窗等情形由前端提示层兜底（OrientationGate）。
+        "orientation": "landscape",
         "exported": true,
         "skills": [
           {

@@ -43,6 +43,33 @@ struct Index {
   }
 
   /**
+   * 验收用的视口造形：模拟器改不了朝向，也无法拖成小窗，所以由 ArkUI 侧直接给 Web 组件
+   * 一个受限尺寸，页面里的 `window.innerWidth/innerHeight` 就会真实变化，`@media` 照常生效。
+   *   1/2  正常横屏（100%）
+   *   3    窄档：1000vp 宽（右栏应转抽屉）
+   *   4    小窗：700vp 宽（应被竖屏/小窗提示层接管）
+   *   5    竖屏比例：900×1400vp（应被提示层接管）
+   * 普通启动是 100%，与产品行为一致。
+   */
+  private webWidth(): string {
+    const phase: string = AppContext.selftestPhase;
+    if (phase === '3') {
+      return '1000vp';
+    }
+    if (phase === '4') {
+      return '700vp';
+    }
+    if (phase === '5') {
+      return '900vp';
+    }
+    return '100%';
+  }
+
+  private webHeight(): string {
+    return AppContext.selftestPhase === '5' ? '1400vp' : '100%';
+  }
+
+  /**
    * H0 验收探针：**仅当以 `--ps caseboardSelftest <phase>` 启动时**才通过页面调用 bridge，
    * 把 ping / getAppInfo / dbOpen / selftest 的结果打进 hilog，供验收脚本机器断言。
    * 普通启动完全不执行，因此不改变产品行为；H1 起由「设置 → 诊断」页取代。
@@ -90,6 +117,18 @@ struct Index {
       "      + ' buttons=' + counted + ' small=' + small + ' canvasMarks=' + canvasMarks",
       "      + ' min=' + Math.round(minW === 9999 ? 0 : minW) + 'x' + Math.round(minH === 9999 ? 0 : minH));",
       "    console.log('[layout] small:' + offenders);",
+      // [gate] 不能在 onPageEnd 立刻读：分档要「连续两次同样本」才生效，
+      // 首帧测量可能还是 1440 的过渡值，提示层要到 ~1s 后才稳定。所以延时两次再看。
+      "    setTimeout(function() {",
+      "      var root3 = document.querySelector('.cb-app');",
+      "      console.log('[gate] present=' + !!document.querySelector('.cb-gate')",
+      "        + ' w=' + window.innerWidth + ' h=' + window.innerHeight",
+      "        + ' tier=' + (root3 ? String(root3.getAttribute('data-tier')) : '?'));",
+      "    }, 1400);",
+      "    setTimeout(function() {",
+      "      console.log('[gate2] present=' + !!document.querySelector('.cb-gate')",
+      "        + ' w=' + window.innerWidth + ' h=' + window.innerHeight);",
+      "    }, 2600);",
       "    var toolsEl = document.querySelector('.cb-topbar__tools');",
       "    var ioEl = document.querySelector('.cb-topbar__io');",
       "    console.log('[topbar] tools=' + (toolsEl ? toolsEl.scrollWidth + '/' + toolsEl.clientWidth : 'n/a')",
@@ -171,7 +210,8 @@ struct Index {
           this.pageError = '';
           this.runBridgeProbe();
         })
-        .width(AppContext.selftestPhase === '3' ? '1000vp' : '100%')
+        .width(this.webWidth())
+        .height(this.webHeight())
         .layoutWeight(1)
     }
     .width('100%')

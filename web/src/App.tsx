@@ -20,10 +20,12 @@ import { NewNodeDialog } from './components/panels/NewNodeDialog';
 import { TagLinkDialog } from './components/panels/TagLinkDialog';
 import { usePaletteStore } from './store/paletteStore';
 import { ASSET_DND_TYPE } from './lib/dnd';
+import { OrientationGate } from './components/OrientationGate';
 import {
   classifyViewport,
   defaultPanelState,
   panelIsDrawer,
+  shouldGateLayout,
   shouldResetPanels,
   type ViewportTier,
 } from './lib/viewport';
@@ -56,15 +58,23 @@ export default function App() {
   // 平板或窄窗才进 medium/compact，右栏/左栏改浮层抽屉。
   const [tier, setTier] = useState<ViewportTier>('wide');
   const tierRef = useRef<ViewportTier>('wide');
+  // H1：不支持竖屏。竖屏或过窄视口直接由提示层接管（见 OrientationGate 注释）
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   useCodeSyncBridge();
 
   useEffect(() => {
     // 用 <html> 的 clientWidth（等于窗口宽度）：.cb-app 在首帧可能还没被内容撑开，
     // 拿它会读到 300 这类中间值，被误判成窄档后把右栏收起来——实测踩过这个坑。
     const readWidth = () => document.documentElement.clientWidth || window.innerWidth || 0;
+    const readHeight = () => document.documentElement.clientHeight || window.innerHeight || 0;
     let pending: ViewportTier | null = null;
     const measure = () => {
-      const next = classifyViewport(readWidth());
+      const width = readWidth();
+      const height = readHeight();
+      setViewport((current) =>
+        current.width === width && current.height === height ? current : { width, height },
+      );
+      const next = classifyViewport(width);
       if (next === tierRef.current) {
         pending = null;
         return;
@@ -166,9 +176,12 @@ export default function App() {
   // H1：窄档下侧栏是浮层抽屉，需要一层遮罩——点遮罩即关，和手机上拉抽屉的手感一致
   const leftDrawer = panelIsDrawer(tier, 'left') && leftOpen;
   const rightDrawer = panelIsDrawer(tier, 'right') && rightOpen;
+  // 竖屏 / 小窗：盖提示层（底下界面保持挂载，回到横屏立刻恢复）
+  const gated = shouldGateLayout(viewport.width, viewport.height);
 
   return (
     <div className="cb-app" data-tier={tier}>
+      {gated ? <OrientationGate width={viewport.width} height={viewport.height} /> : null}
       <div className="cb-print-head">
         <strong>{doc.meta.title}</strong>
         <span>{doc.meta.caseNo ? '案件编号 ' + doc.meta.caseNo : '未编号'}</span>

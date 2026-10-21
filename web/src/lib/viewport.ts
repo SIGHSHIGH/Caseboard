@@ -51,3 +51,21 @@ export function shouldResetPanels(prev: ViewportTier, next: ViewportTier): boole
   const order: Record<ViewportTier, number> = { wide: 2, medium: 1, compact: 0 };
   return order[next] < order[prev];
 }
+
+/**
+ * H1 决策：**不支持竖屏**。案情板是横向铺开的信息密度工具——画布要宽、时间线要长、
+ * 左右栏各占一列，竖屏下再怎么折叠也只剩一条窄缝。
+ *
+ * 所以平台侧强制横屏（`module.json5` 的 `orientation: "landscape"`），前端再兜一层：
+ * 一旦拿到竖屏比例（高 > 宽）或宽度不足 `USABLE_MIN_WIDTH`（2in1 拖成小窗、分屏、
+ * 折叠屏半折），直接盖一张提示层，而不是把半残的界面摆给用户看。
+ */
+export const USABLE_MIN_WIDTH = 900;
+
+/** 当前视口是否应当被提示层接管 */
+export function shouldGateLayout(width: number, height: number): boolean {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+  if (width <= 0 || height <= 0) return false;
+  if (height > width) return true;
+  return width < USABLE_MIN_WIDTH;
+}

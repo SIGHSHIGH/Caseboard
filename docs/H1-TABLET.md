@@ -2,6 +2,12 @@
 
 目标：让同一套前端在平板（MatePad Pro 13，1440×893 CSS px、dpr=2）上可用——不是「能显示」，而是手指点得到、窄档不挤爆。桌面版功能一行不减，八条硬约束一条不动。
 
+> **产品决策（H1 定性）：本产品只支持横屏，不做竖屏适配。**
+> 案情板是横向信息密度工具：画布要宽、时间线要长、左右栏各占一列。竖屏下无论怎么折叠都只剩一条窄缝，
+> 做了也只是把「勉强能用」伪装成「适配完成」。所以平台侧强制横屏
+> （`module.json5 → abilities[0].orientation: "landscape"`），前端再兜一层提示层，见 §七。
+> `medium` / `compact` 两档保留下来只服务 **2in1 小窗与分屏**，不再为竖屏优化。
+
 ## 一、分档模型
 
 | 档 | 视口宽度 | 左栏 | 右栏 | 顶栏 |
@@ -71,14 +77,53 @@ hdc shell aa start -a EntryAbility -b com.caseboard.harmony --ps caseboardSelfte
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept-h1.ps1
 ```
 
-10 条检查（H1-1…H1-10）全绿，报告 `.tmp-esbuild/accept-h1.json`，实测 `3,890,296B` HAP、`consoleError=0`、`webError=0`。
+13 条检查（H1-1…H1-13）全绿，报告 `.tmp-esbuild/accept-h1.json`，实测 `3,894,128B` HAP、`consoleError=0`、`webError=0`。
 
 ## 五、窄档怎么测的
 
-模拟器没有 `rotate` 子命令，`hdc` 也改不了朝向。所以用 ArkUI 侧改视口：`Index.ets` 的 `Web(...)` 在 `selftestPhase === '3'` 时 `.width('1000vp')`，页面侧 `window.innerWidth` 变成 1000——这是**真实视口变化**，不是 CSS 缩放，`@media` 全部照常生效。这条手法以后测任何响应式断点都能复用。
+模拟器没有 `rotate` 子命令，`hdc` 也改不了朝向。所以用 ArkUI 侧改视口：`Index.ets` 的 `Web(...)` 按 `selftestPhase` 给不同尺寸，页面侧 `window.innerWidth/innerHeight` 就真实变化，`@media` 全部照常生效：
 
-## 六、未做
+| phase | Web 尺寸 | 页面视口 | 用来验 |
+| --- | --- | --- | --- |
+| 1 / 2 | `100%` | 1440×893 | 横屏全宽 |
+| 3 | `1000vp` × `100%` | 1000×893 | 窄档右栏抽屉 |
+| 4 | `700vp` × `100%` | 700×893 | 竖屏 / 小窗提示层 |
+
+这条手法以后测任何响应式断点都能复用。
+
+## 六、上机环境（模拟器会被后台任务连带杀掉）
+
+Emulator 用**后台任务**启动时，任务一收尾进程就被带走。要用脱离式启动：
+
+```powershell
+$argstr = '-start "MatePad Pro 13" -instancePath "C:/Users/SIGHS/AppData/Local/Huawei/Emulator/deployed" -imageRoot "C:\Users\SIGHS\AppData\Local\Huawei\Sdk"'
+Start-Process -FilePath 'D:\DevEco Studio\tools\emulator\Emulator.exe' -ArgumentList $argstr -WindowStyle Minimized
+```
+
+两个坑：① `-ArgumentList` 传**单个字符串**，传数组会按空格拆参、报 `Invalid command: please attach - or -- before the option!`；
+② 许可协议会隔一段时间重置，启动前若日志出现 `Please agree to the agreement first.`，先跑 `Emulator.exe -license accept`。
+
+## 七、只做横屏：平台锁 + 前端兜底
+
+- **平台侧**：`entry/src/main/module.json5` 的 `abilities[0].orientation` 设为 `"landscape"`，手机/平板固定横屏。
+- **前端侧**：`web/src/lib/viewport.ts` 的 `shouldGateLayout(width, height)` —— `height > width`（竖屏）或 `width < USABLE_MIN_WIDTH (900)`（2in1 拖成小窗、分屏、折叠屏半折）时，
+  `App.tsx` 渲染 `web/src/components/OrientationGate.tsx` 盖住整个视口：
+
+  ```
+  _(:з」∠)_
+  请横屏使用
+  案情板要横向铺开才看得清：画布要宽、时间线要长、左右栏各占一列。
+  把平板横过来就好，案件数据不会丢。
+  ─────────────
+  当前 700×893，是竖屏
+  ```
+
+  几点实现约定：遮挡层**不透明**且 `z-index: 9000`；**底下界面不卸载**（保住 React Flow 的视口状态，转回横屏立刻恢复）；文案用简体中文，颜文字取证据红 `#C0392B`，不引入任何新色板。
+- 判定是纯函数，`shouldGateLayout` 可被 jsdom 直接断言，不依赖运行时截图。
+
+## 八、未做
 
 - 触控手势层（双指缩放、长按菜单、拖拽惯性）：`@xyflow/react` 自带 pinch，长按菜单仍需自定义，排 H3。
-- 竖屏（893×1440）：属 `medium` 档，右栏抽屉已就绪，但画布纵向空间与时间线需要单独调，排 H2。
+- 竖屏：**已决策不做**（见文档开头与 §七）。
 - 键盘快捷键（Ctrl+K、Delete 等）：平板外接键盘未测。
+- 顶栏「主题·默认」在 1440 被左边缘裁切（§三），修法已记录，排 H2/H3。

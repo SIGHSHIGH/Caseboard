@@ -156,8 +156,45 @@ if ($narrowLine) {
 }
 Add-Check 'H1-9' '窄档右栏转为贴边抽屉并带遮罩' $narrowOk $narrowDetail
 
+# ---------- 上机：竖屏 / 小窗拦截层 ----------
+Write-Host '-- 上机：竖屏 / 小窗提示层（phase 4）--'
+$phase = '4'
+$log4 = Get-CbLog 'cb-h1-gate.txt' $phase
+
+$wideGate = $log1 | Select-String -Pattern '\[gate\] present=' | Select-Object -First 1
+$gateOff = $false
+$gateOffDetail = 'no gate line'
+if ($wideGate) {
+  $gateOff = $wideGate.Line -match 'present=false'
+  $gateOffDetail = ($wideGate.Line -replace '^.*\[gate\] ', '')
+}
+Add-Check 'H1-11' '横屏全宽不弹提示层' $gateOff $gateOffDetail
+
+$gateLine = $log4 | Select-String -Pattern '\[gate2\] present=' | Select-Object -First 1
+$gateOk = $false
+$gateDetail = 'no gate2 line'
+if ($gateLine) {
+  $text = $gateLine.Line
+  $present = $text -match 'present=true'
+  $w = if ($text -match 'w=(\d+)') { [int]$Matches[1] } else { 0 }
+  $h = if ($text -match 'h=(\d+)') { [int]$Matches[1] } else { 0 }
+  $gateOk = $present -and ((($h -gt $w)) -or ($w -lt 900))
+  $gateDetail = "present=$present w=$w h=$h"
+}
+Add-Check 'H1-12' '竖屏/小窗（700×893）弹 _(:з」∠)_ 提示层' $gateOk $gateDetail
+
+# 提示层文案确实在构建产物里（不依赖运行时截图判断）
+$gateTextOk = $false
+Get-ChildItem (Join-Path $rawfile 'assets\*.js') -ErrorAction SilentlyContinue | ForEach-Object {
+  if (-not $gateTextOk) {
+    $t = [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8)
+    if ($t.Contains('请横屏使用') -and $t.Contains('cb-gate')) { $gateTextOk = $true }
+  }
+}
+Add-Check 'H1-13' '提示层文案与样式已打包' $gateTextOk ("hit=$gateTextOk")
+
 # ---------- 控制台 ----------
-$allLog = $log1 + $log3
+$allLog = $log1 + $log3 + $log4
 $consoleErrors = ($allLog | Select-String -SimpleMatch 'web-console' | Where-Object { $_.Line -match '\berror\b' }).Count
 $webErrors = ($allLog | Select-String -SimpleMatch 'web-error').Count
 Add-Check 'H1-10' '控制台无 error、无 Web 加载错误' (($consoleErrors -eq 0) -and ($webErrors -eq 0)) ("consoleError=$consoleErrors webError=$webErrors")

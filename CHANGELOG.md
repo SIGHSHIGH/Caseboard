@@ -1,5 +1,31 @@
 # 变更记录 · 鸿蒙移植
 
+## H1.1 · 只做横屏 + 竖屏/小窗提示层（2026-10-21）
+
+**决策**：本产品**只支持横屏**，取消竖屏适配。案情板是横向信息密度工具，竖屏下画布/时间线/左右栏都摊不开，
+做竖屏等于把「勉强能用」伪装成「适配完成」。`scripts/accept-h1.ps1` 13 条检查全 PASS。
+
+### 新增
+
+- **`web/src/lib/viewport.ts`**：`USABLE_MIN_WIDTH = 900` 与 `shouldGateLayout(width, height)`
+  —— `height > width`（竖屏）或 `width < 900`（小窗/分屏/半折）时返回 true，纯函数可断言。
+- **`web/src/components/OrientationGate.tsx`**：`_(:з」∠)_` + 「请横屏使用」提示层，
+  不透明遮挡（`z-index: 9000`），**底下界面不卸载**以保住 React Flow 视口状态，转回横屏立刻恢复。
+- **`web/src/styles/responsive.css`**：`.cb-gate` 与 `card/face/title/text/meta/hint` 全套，
+  颜文字取证据红 `#C0392B`，不引入新色板。
+- **`entry/src/main/module.json5`**：`abilities[0].orientation: "landscape"` 强制横屏。
+- **`Index.ets`**：验收探针按 phase 造真实视口（1/2 全宽、3 窄档 1000vp、4 竖屏 700vp），
+  新增 `[gate]`（1400ms）与 `[gate2]`（2600ms）延时打点。
+- **`scripts/accept-h1.ps1`**：新增 H1-11（横屏不弹层）、H1-12（700×893 弹层）、H1-13（文案已打包）。
+
+### 关键结论
+
+1. **提示层不能在 `onPageEnd` 立刻断言**：首帧测量还是 1440 的过渡值，分档要连续两个同样本才生效，
+   实测约 1s 后才稳定——探针必须延时打点。
+2. **模拟器会被后台任务连带杀掉**：必须 `Start-Process -ArgumentList '<单个字符串>'` 脱离式启动
+   （传数组会按空格拆参）；许可协议还会周期性重置，需先 `Emulator.exe -license accept`。
+3. `700×893` 同时命中「竖屏」与「宽度不足」两条规则，该设备上无法单独构造单一规则用例。
+
 ## H1 · 平板形态适配验收通过（2026-10-21）
 
 **目标**：同一套前端在 MatePad Pro 13（1440×893 CSS px / dpr=2）上手指可用，桌面功能不减，
