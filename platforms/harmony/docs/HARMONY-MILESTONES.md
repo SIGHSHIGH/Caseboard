@@ -15,6 +15,7 @@
 | H4 | 手指可用性：连线命中带、图例/分组控件放大、导出链路验通 | `scripts/accept-h4.ps1` 7 条 | `f2d5840` / `hs/H4` |
 | H5.1 | 素材通路：导入 → 沙箱落盘 → 缩略图显示 → 触摸长按拖入画布；**图片全军覆没的真根因** | `scripts/accept-h5.ps1` 10 条 | 见下方「H5.1 结项」 |
 | H5.2 | 静默失败清账 + 触屏多选/组框收编 + 画布帧耗时实测 | `scripts/accept-h5.ps1` 16 条 | 见下方「H5.2 结项」 |
+| H5.3 | 集中钉子 + 钉集（图片钉在一颗钉子上整体移动/绕钉旋转）+ 图钉自由落点与换色 + 各节点层级控件 + 组框直接挑节点加入 + 拖入画布卡壳量化 | `scripts/accept-h5.ps1` 22 条 | 见下方「H5.3 结项」 |
 
 桌面回填（`main`）：`774fa62` 顶栏两处修正 + `.cb-btn{flex-shrink:0}`，已 cherry-pick 回 harmony（`4a6315c`）。
 
@@ -102,3 +103,25 @@
 13. `uitest uiInput longClick` 等价于「按住不动 ≥500ms」；`drag` 才会产生连续 move。抓截图预览坐标换算物理像素用 **×1.8367**（预览 1568 宽 ↔ 物理 2880 宽），菜单项位置随长按点变化，每次都要重新截图定位。
 14. PowerShell 解析坑：`$lines | Select-String -Pattern X | ForEach-Object { $_.Line }` 取不到行文本（实测拿到 `"2"` 之类垃圾），必须 `$hit = @($lines | Select-String -Pattern X); $hit[-1].Line`。
 
+## H5.3 结项（集中钉子 / 钉集 / 层级 / 组框挑节点）
+
+`scripts/accept-h5.ps1` 扩到 **22 条**（探针 phase 13–19），一条命令覆盖：
+
+| 断言 | 内容 | 判据（本轮实测） |
+|---|---|---|
+| H5-1…H5-15 | H5.1 / H5.2 的十五条（回归） | 全 PASS |
+| H5-16 | 左栏「节点类型」能建出集中钉子 | `summary16 pins=1 made=1` |
+| H5-17 | 图片能钉进钉集（右栏「钉到…」或拖到钉子上） | `cluster=1` |
+| H5-18 | 钉集对外永远置顶（成员 z ≥ 1000，钉子在其上） | `imgZ=1000 pinZ=1600` |
+| H5-19 | 长按拖入画布后 2s 内最大帧间隔 ≤ 500ms | `gap=151ms` |
+| H5-20 | 组框可直接挑实体（右栏 + 分组总览）且图钉可换色 | 静态断言 `picker=True right=1 tree=2 color=2` |
+| H5-21 | 长按拖入画布三段（按住 / 拖动 / 落点）帧间隔 ≤ 200ms | `hold=34 move=17 up=84 ghost=1` |
+| H5-2 | 画布平移帧耗时（回归） | `p50=16.8 p95=16.9 drop=3 frames=126` |
+
+### 本轮新增的硬结论（踩过就别再踩）
+
+15. **图片「拖入画布一瞬间卡壳」是测量假象**：探针分段计时的 `mark(name)` 只能给「刚结束的那一段」赋值；写成 `res[name]=segMax` 会把**启动那一段**（300–676ms）算到下一段头上。修正后实测 hold=34ms / move=17ms / 落点 84–151ms，画布本身没有卡顿。顺手把长按阈值 450→320ms，并在 `pointerdown` 立刻加缩放反馈（`.cb-asset--pressing`），消除「按下去半秒没动静」的主观卡壳。
+16. **React Flow v12 选中会自动抬层**（`elevateNodesOnSelect` 默认 true）：钉集要求「对外永远置顶」，必须显式关掉，否则选中的成员图会压住钉子。
+17. **`uitest uiInput drag` 在 ArkWeb 里会被识别成长按**，弹出页面右键菜单、拖拽被中断（钉子的合成长拖因此测不到位移）。验证拖拽要么用探针合成 `PointerEvent`，要么用 `uitest uiInput fling`（高速、短时长）。
+18. **合成 PointerEvent 的 pointermove 必须派发到 `window`**：d3-drag 的监听挂在 window 上，派到 `document` 不会冒泡过去，节点纹丝不动。
+19. **缩略图目录不能每次导入后就地作废**：`thumbNames=null` 会让下一次渲染/起拖各过一次桥 `listAppDir`。改成 `thumbNameCache`（落盘时 add、删除时 delete），只首次列目录。

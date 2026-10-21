@@ -38,7 +38,7 @@ function inferType(title: string, explicit?: string): NodeType {
 }
 
 function typeLabel(type: NodeType): string {
-  return { person: '人物', org: '机构', place: '地点', item: '物品', event: '事件', evidence: '证据', time: '时间', note: '便签', relation: '关系' }[type];
+  return { person: '人物', org: '机构', place: '地点', item: '物品', event: '事件', evidence: '证据', time: '时间', note: '便签', relation: '关系', clusterPin: '集中钉子' }[type];
 }
 
 function findNode(doc: CaseDoc, name: string) {

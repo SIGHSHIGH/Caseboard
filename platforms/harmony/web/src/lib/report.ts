@@ -21,6 +21,7 @@ const TYPE_LABEL: Record<CaseNode['type'], string> = {
   time: '时间',
   note: '便签',
   relation: '关系',
+  clusterPin: '集中钉子',
 };
 
 const STYLE_LABEL: Record<LineStyle, string> = {

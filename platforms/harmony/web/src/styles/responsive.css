@@ -477,3 +477,151 @@
   font-size: 11px;
   color: var(--cb-muted);
 }
+
+/* H5.3：集中钉子（大图钉 + 规整黄色便利贴），只有右侧一个连接点 */
+.cb-pin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  touch-action: none;
+}
+
+.cb-pin__paper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 14px 12px 10px;
+  border-radius: 4px;
+  background: #f6e58d;
+  border: 1px solid #e2cf72;
+  box-shadow: 0 6px 14px rgba(43, 43, 43, 0.18);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.cb-pin__paper-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #5a4a12;
+  text-align: center;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.cb-pin__head {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border-strong);
+  box-shadow: 0 4px 10px rgba(43, 43, 43, 0.32);
+}
+
+.cb-pin__glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.cb-pin__label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--cb-muted);
+}
+
+.cb-pin.is-selected .cb-pin__head {
+  border-color: var(--cb-accent);
+  box-shadow: 0 0 0 2px var(--cb-accent);
+}
+
+.cb-pin.is-multi .cb-pin__head {
+  outline: 2px dashed var(--cb-accent);
+  outline-offset: 2px;
+}
+
+/* 右栏：图钉颜色色板 */
+.cb-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cb-swatch {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(43, 43, 43, 0.18);
+  cursor: pointer;
+}
+
+.cb-swatch.is-active {
+  border-color: var(--cb-text);
+}
+
+/* 挑实体加入组框 */
+.cb-group-pick__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+
+.cb-group-pick__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cb-group-pick__dot {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #fff;
+}
+
+.cb-group-pick__title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cb-group-pick__type {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+
+/* 分组总览每行的「＋」：直接挑实体加入 */
+.cb-gtree__add {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  background: var(--cb-surface);
+  color: var(--cb-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}

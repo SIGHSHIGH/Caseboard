@@ -1492,6 +1492,14 @@ button.cb-members__title--link:hover {
   box-shadow: 0 0 0 1px var(--cb-accent-soft);
 }
 
+/* H5.3：手指按下立刻反馈，长按阈值（320ms）期间不再是「没动静」 */
+.cb-asset--pressing {
+  transform: scale(0.96);
+  border-color: var(--cb-border-strong);
+  box-shadow: 0 0 0 1px var(--cb-accent-soft);
+  transition: transform 120ms ease-out;
+}
+
 .cb-asset__thumb {
   display: flex;
   align-items: center;
@@ -1767,16 +1775,37 @@ button.cb-members__title--link:hover {
   background: repeating-linear-gradient(135deg, var(--cb-surface-2), var(--cb-surface-2) 8px, var(--cb-surface), var(--cb-surface) 16px);
 }
 
+/* H5.3：图钉位置改由内联 left/top（0–1 相对图片）控制，可在图片范围内任意落点并自由换色，
+   所以要横竖居中、可拖动、加一点命中面积。 */
 .cb-free-image__pin {
   position: absolute;
-  top: -7px;
-  left: 50%;
   width: 14px;
   height: 14px;
   margin-left: -7px;
+  margin-top: -7px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #e06a5c, var(--cb-accent) 70%);
   box-shadow: 0 1px 3px rgba(43, 43, 43, 0.45);
+  cursor: grab;
+  touch-action: none;
+}
+
+.cb-free-image__pin::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+
+.cb-free-image__cluster {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(43, 43, 43, 0.72);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 
 .cb-free-image__linked {

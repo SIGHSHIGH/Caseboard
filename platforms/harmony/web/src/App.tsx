@@ -20,6 +20,7 @@ import { CommandPalette } from './components/panels/CommandPalette';
 import { NewNodeDialog } from './components/panels/NewNodeDialog';
 import { TagLinkDialog } from './components/panels/TagLinkDialog';
 import { GroupPickDialog } from './components/panels/GroupPickDialog';
+import { NodePickerDialog } from './components/panels/NodePickerDialog';
 import { ConfirmHost, NoticeHost } from './components/panels/SystemDialogs';
 import { usePaletteStore } from './store/paletteStore';
 import { ASSET_DND_TYPE } from './lib/dnd';
@@ -292,6 +293,7 @@ export default function App() {
       <NewNodeDialog />
       <TagLinkDialog />
       <GroupPickDialog />
+      <NodePickerDialog />
       <ConfirmHost />
       <NoticeHost />
       <AssetDragGhost />

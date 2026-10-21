@@ -52,6 +52,10 @@ interface UiStore {
   groupPick: { nodeIds: string[] } | null;
   requestGroupPick: () => void;
   consumeGroupPick: () => void;
+  /** H5.3：从「分组总览 / 组成员清单」直接挑实体加入某个组框 */
+  nodePick: { groupId: string } | null;
+  requestNodePick: (groupId: string) => void;
+  consumeNodePick: () => void;
   /** 拖动图片时命中的对齐参考线（不进 doc，松手即清空） */
   guides: AlignGuide[];
   /** 正在被拖到卡片上的图片所指向的目标节点，用于高亮吸附 */
@@ -196,6 +200,9 @@ export const useUiStore = create<UiStore>((set, get) => ({
   groupPick: null,
   requestGroupPick: () => set((state) => ({ groupPick: { nodeIds: state.selectedNodeIds } })),
   consumeGroupPick: () => set({ groupPick: null }),
+  nodePick: null,
+  requestNodePick: (groupId) => set({ nodePick: { groupId } }),
+  consumeNodePick: () => set({ nodePick: null }),
   selectEdge: (id) => set({ ...NO_SELECTION, selectedEdgeId: id }),
   selectGroup: (id) => set({ ...NO_SELECTION, selectedGroupId: id }),
   selectAsset: (id) => set({ ...NO_SELECTION, selectedAssetId: id }),

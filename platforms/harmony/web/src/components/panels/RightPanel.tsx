@@ -13,7 +13,11 @@ import {
   deleteEdge,
   deleteGroup,
   deleteImageNode,
+  detachImageFromCluster,
+  attachImageToCluster,
+  rotateClusterMember,
   setImageLayer,
+  setNodeLayer,
   updateImageNode,
   toggleGroupCollapsed,
   moveAssetsToFolder,
@@ -25,6 +29,8 @@ import {
 } from '../../commands';
 import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } from '../../lib/theme';
 import { memberNodeIds } from '../../lib/groups';
+import { CARD_LAYER_Z } from '../../lib/imageNode';
+import { offsetForCluster } from '../../lib/clusterPin';
 import { PLACE_LINK_EDGE, planPlaceRelink } from '../../lib/placeLink';
 import { NODE_TYPE_ORDER, NODE_TEMPLATES, templateOf, type NodeFieldDef } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
@@ -48,6 +54,16 @@ const BORDER_LABELS: Array<{ value: NonNullable<ImageNode['borderStyle']>; label
   { value: 'photo', label: '照片白边' },
   { value: 'plain', label: '无边框' },
   { value: 'polaroid', label: '拍立得' },
+];
+
+/** 图钉可选颜色（H5.3）：默认深红与证据红同源，其余是中性与常见标记色 */
+const PIN_COLORS: Array<{ value: string; label: string }> = [
+  { value: '#C0392B', label: '证据红' },
+  { value: '#1C1B1A', label: '碳黑' },
+  { value: '#2F6F4E', label: '墨绿' },
+  { value: '#B07C2A', label: '琥珀' },
+  { value: '#2C5F8A', label: '靛蓝' },
+  { value: '#7A7A74', label: '石灰' },
 ];
 
 const STATUSES: Status[] = ['todo', 'checking', 'confirmed', 'ruledout'];
@@ -180,6 +196,7 @@ function TemplateField({
 function NodeForm({ node }: { node: CaseNode }) {
   const dispatch = useDocStore((s) => s.dispatch);
   const groups = useDocStore((s) => s.doc.groups);
+  const clusterImgs = useDocStore((s) => s.doc.imageNodes).filter((item) => item.clusterId === node.id);
   const [title, setTitle] = useState(node.title);
   const [aliases, setAliases] = useState((node.aliases ?? []).join('、'));
   const [notes, setNotes] = useState(node.notes ?? '');
@@ -551,6 +568,63 @@ function NodeForm({ node }: { node: CaseNode }) {
         </div>
       </div>
 
+      {/* H5.3：集中钉子只写两个字段（便利贴显隐 + 便利贴文字），外加钉集成员清单 */}
+      {node.type === 'clusterPin' ? (
+        <div className="cb-form__section">
+          <h3 className="cb-form__subtitle">钉集成员（{clusterImgs.length}）</h3>
+          {clusterImgs.length === 0 ? (
+            <p className="cb-form__subtle">把画布上的图片拖到钉子上松手，它就会被钉住，整集一起移动。</p>
+          ) : (
+            <ul className="cb-members">
+              {clusterImgs.map((image) => {
+                const asset = useDocStore.getState().doc.assets.find((item) => item.id === image.assetId);
+                return (
+                  <li key={image.id} className="cb-members__item">
+                    <span className="cb-members__dot" style={{ background: '#7A7A74' }} />
+                    <span className="cb-members__title">{asset?.name ?? '图片'}</span>
+                    <button
+                      type="button"
+                      className="cb-link-btn"
+                      onClick={() => useUiStore.getState().selectImage(image.id)}
+                    >
+                      查看
+                    </button>
+                    <button
+                      type="button"
+                      className="cb-link-btn"
+                      onClick={() => dispatch(detachImageFromCluster(image.id))}
+                    >
+                      移出
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+
+      {/* H5.3：所有节点都给与图片一致的上下层控件（集中钉子的层级锁死在钉集之上，不提供） */}
+      {node.type === 'clusterPin' ? null : (
+        <div className="cb-form__section">
+          <h3 className="cb-form__subtitle">层级（zIndex {node.zIndex ?? CARD_LAYER_Z}）</h3>
+          <div className="cb-assets__actions">
+            <button type="button" className="cb-btn" onClick={() => dispatch(setNodeLayer(node.id, 'front'))}>
+              置顶
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(setNodeLayer(node.id, 'up'))}>
+              上移一层
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(setNodeLayer(node.id, 'down'))}>
+              下移一层
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(setNodeLayer(node.id, 'back'))}>
+              置底
+            </button>
+          </div>
+        </div>
+      )}
+
       <p className="cb-form__meta">ID：{node.id}</p>
     </div>
   );
@@ -823,11 +897,20 @@ function GroupForm({ group }: { group: Group }) {
           组成员清单（{members.length}）
           {indirectCount > 0 ? <span className="cb-form__subtle"> · 其中 {indirectCount} 个来自子组</span> : null}
         </h3>
+        {/* H5.3：对象总览里直接挑实体加入，不必先多选再拖 */}
+        <div className="cb-assets__actions">
+          <button
+            type="button"
+            className="cb-btn cb-btn--ghost"
+            onClick={() => useUiStore.getState().requestNodePick(group.id)}
+          >
+            选择实体加入…
+          </button>
+        </div>
         {members.length === 0 ? (
           <p className="cb-form__subtle">空分组：可直接拖入节点，或在节点属性里选择「所属分组」。</p>
         ) : (
-          <ul className="cb-members">
-            {members.map((node) => (
+          <ul className="cb-members">            {members.map((node) => (
               <li key={node.id} className="cb-members__item">
                 <span className="cb-members__dot" style={{ background: NODE_TYPE_META[node.type].color }} />
                 <button
@@ -1203,6 +1286,7 @@ function ImageForm({ image }: { image: ImageNode }) {
   const doc = useDocStore((s) => s.doc);
   const asset = doc.assets.find((item) => item.id === image.assetId) ?? null;
   const linked = doc.nodes.find((item) => item.id === image.linkedNodeId) ?? null;
+  const cluster = image.clusterId ? doc.nodes.find((item) => item.id === image.clusterId) ?? null : null;
   const [rotation, setRotation] = useState(image.rotation);
   const [thumb, setThumb] = useState<string | null>(null);
 
@@ -1280,8 +1364,57 @@ function ImageForm({ image }: { image: ImageNode }) {
         </select>
       </label>
 
+      {cluster ? (
+        <div className="cb-form__section">
+          <h3 className="cb-form__subtitle">钉集（{cluster.title}）</h3>
+          <p className="cb-form__subtle">
+            这张图已被集中钉子钉住：拖动它等于拖动整集，位置与层级由钉子统一管理，只能绕钉子旋转。
+          </p>
+          <div className="cb-assets__actions">
+            <button type="button" className="cb-btn" onClick={() => dispatch(rotateClusterMember(image.id, -15))}>
+              绕钉左转 15°
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(rotateClusterMember(image.id, 15))}>
+              绕钉右转 15°
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(detachImageFromCluster(image.id))}>
+              移出钉集
+            </button>
+          </div>
+        </div>
+      ) : doc.nodes.some((node) => node.type === 'clusterPin') ? (
+        <div className="cb-form__section">
+          <h3 className="cb-form__subtitle">钉到集中钉子</h3>
+          <p className="cb-form__subtle">也可以直接把图片拖到钉子本体上松手；钉住后整集一起移动、只能绕钉子旋转。</p>
+          <div className="cb-assets__actions">
+            {doc.nodes
+              .filter((node) => node.type === 'clusterPin')
+              .map((pin, pinIndex) => (
+                <button
+                  key={pin.id}
+                  type="button"
+                  className="cb-btn"
+                  onClick={() =>
+                    dispatch(
+                      attachImageToCluster(image.id, pin.id, offsetForCluster(pin, {
+                        x: image.x + image.w / 2,
+                        y: image.y + image.h / 2,
+                      })),
+                    )
+                  }
+                >
+                  钉到「{pin.title}」{doc.nodes.filter((n) => n.type === 'clusterPin').length > 1 ? ' #' + (pinIndex + 1) : ''}
+                </button>
+              ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="cb-form__section">
-        <h3 className="cb-form__subtitle">层级（zIndex {image.zIndex}）</h3>
+        {/* H5.3：钉集成员的层级在集内算，对外固定压在卡片与普通图片之上，不再展示旧的全局 zIndex */}
+        <h3 className="cb-form__subtitle">
+          {image.clusterId ? '钉集内层级（第 ' + (doc.imageNodes.filter((item) => item.clusterId === image.clusterId).findIndex((item) => item.id === image.id) + 1) + ' 层，对外永远置顶）' : '层级（zIndex ' + image.zIndex + '）'}
+        </h3>
         <div className="cb-assets__actions">
           <button type="button" className="cb-btn" onClick={() => dispatch(setImageLayer(image.id, 'front'))}>
             置顶
@@ -1306,6 +1439,33 @@ function ImageForm({ image }: { image: ImageNode }) {
         />
         <span>显示图钉</span>
       </label>
+
+      {image.pinned ? (
+        <div className="cb-form__section">
+          <h3 className="cb-form__subtitle">图钉颜色（可直接在图片上拖动图钉改位置）</h3>
+          <div className="cb-swatches">
+            {PIN_COLORS.map((color) => (
+              <button
+                key={color.value}
+                type="button"
+                className={`cb-swatch${(image.pinColor ?? PIN_COLORS[0].value) === color.value ? ' is-active' : ''}`}
+                style={{ background: color.value }}
+                title={color.label}
+                aria-label={color.label}
+                onClick={() => dispatch(updateImageNode(image.id, { pinColor: color.value }))}
+              />
+            ))}
+            <button
+              type="button"
+              className="cb-link-btn"
+              onClick={() => dispatch(updateImageNode(image.id, { pinPos: null }))}
+              title="把图钉放回图片左上角"
+            >
+              图钉归位
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <label className="cb-check">
         <input

@@ -34,7 +34,7 @@ function useThumb(assetId: string, size: number = 256): string | null {
 }
 
 /** 长按起拖：450ms 内移动超过 8px 就当作滚动 / 点选，不再起拖（H5 触屏） */
-const LONG_PRESS_MS = 450;
+const LONG_PRESS_MS = 320;
 const LONG_PRESS_SLOP = 8;
 
 function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: boolean; onSelect: () => void }) {
@@ -42,6 +42,7 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
   const timerRef = useRef<number | null>(null);
   const originRef = useRef({ x: 0, y: 0 });
   const draggingRef = useRef(false);
+  const [pressing, setPressing] = useState(false);
   const suppressClickRef = useRef(false);
 
   const clearTimer = () => {
@@ -57,12 +58,15 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
   // 所以触屏下改走「长按起拖 + 跟手缩略图影」，落点由 Board 换算成画布坐标。
   const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === 'mouse') return;
+    // H5.3：按下立刻给反馈（缩放 + 描边），长按阈值期间不再像没响应
+    setPressing(true);
     originRef.current = { x: event.clientX, y: event.clientY };
     const pointerId = event.pointerId;
     const target = event.currentTarget;
     clearTimer();
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
+      setPressing(false);
       draggingRef.current = true;
       suppressClickRef.current = true;
       try {
@@ -82,11 +86,15 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
     if (timerRef.current === null) return;
     const dx = event.clientX - originRef.current.x;
     const dy = event.clientY - originRef.current.y;
-    if (Math.hypot(dx, dy) > LONG_PRESS_SLOP) clearTimer();
+    if (Math.hypot(dx, dy) > LONG_PRESS_SLOP) {
+      clearTimer();
+      setPressing(false);
+    }
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
     clearTimer();
+    setPressing(false);
     if (!draggingRef.current) return;
     draggingRef.current = false;
     useUiStore.getState().endAssetDrag(event.clientX, event.clientY);
@@ -94,6 +102,7 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
 
   const onPointerCancel = () => {
     clearTimer();
+    setPressing(false);
     if (!draggingRef.current) return;
     draggingRef.current = false;
     useUiStore.getState().cancelAssetDrag();
@@ -102,7 +111,9 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
   return (
     <button
       type="button"
-      className={selected ? 'cb-asset cb-asset--selected' : 'cb-asset'}
+      className={
+        'cb-asset' + (selected ? ' cb-asset--selected' : '') + (pressing ? ' cb-asset--pressing' : '')
+      }
       onClick={() => {
         // 一次成功的拖拽不应该顺带改选中项（Board 已选新建的图片节点）
         if (suppressClickRef.current) {

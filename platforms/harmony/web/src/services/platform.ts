@@ -184,7 +184,27 @@ export async function hashFileSha256(path: string): Promise<string> {
 const ASSET_DIR = 'assets';
 const THUMB_DIR = 'thumbs';
 let assetNames: string[] | null = null;
-let thumbNames: string[] | null = null;
+// H5.3：缩略图名改成「落盘时就记住」，导入后不再整目录重列。
+// 原来每次导入后把缓存置空，下一次渲染/起拖都要过一次桥 listAppDir，
+// 实测会在长按起拖那一刻卡 100–300ms（探针 phase=17 的 hold 段）。
+const thumbNameCache = new Set<string>();
+let thumbNamesLoaded = false;
+
+async function ensureThumbNames(): Promise<void> {
+  if (thumbNamesLoaded) return;
+  const names = await listNames(THUMB_DIR);
+  for (const name of names) thumbNameCache.add(name);
+  thumbNamesLoaded = true;
+}
+
+function findThumbName(assetId: string, size: number): string | null {
+  const prefix = assetId + '_' + size;
+  if (thumbNameCache.has(prefix)) return prefix;
+  for (const name of thumbNameCache) {
+    if (name.startsWith(prefix + '.')) return name;
+  }
+  return null;
+}
 
 interface DirEntry {
   name: string;
@@ -245,9 +265,10 @@ export async function saveThumbBytes(assetId: string, size: number, ext: string,
   if (!isHarmony()) {
     return invoke<string>('save_thumb_base64', { assetId, size, ext, data: bytesToBase64(bytes) });
   }
-  const relPath = THUMB_DIR + '/' + fileNameFor(assetId + '_' + size, ext);
+  const name = fileNameFor(assetId + '_' + size, ext);
+  const relPath = THUMB_DIR + '/' + name;
   await callNative<string>('writeAppFile', relPath, bytesToBase64(bytes));
-  thumbNames = null;
+  thumbNameCache.add(name);
   return toAbsPath(relPath);
 }
 
@@ -257,8 +278,8 @@ export async function readThumbBytes(assetId: string, size: number): Promise<Uin
     return base64ToBytes(text);
   }
   const prefix = assetId + '_' + size;
-  if (!thumbNames) thumbNames = await listNames(THUMB_DIR);
-  const hit = thumbNames.find((name) => name === prefix || name.startsWith(prefix + '.'));
+  await ensureThumbNames();
+  const hit = findThumbName(assetId, size);
   if (!hit) throw new Error('缩略图不存在：' + prefix);
   const base64 = await callNative<string>('readAppFile', THUMB_DIR + '/' + hit);
   return base64ToBytes(base64);
@@ -270,9 +291,8 @@ export async function readThumbBytes(assetId: string, size: number): Promise<Uin
  */
 export async function thumbFilePath(assetId: string, size: number): Promise<string | null> {
   if (!isHarmony()) return null;
-  const prefix = assetId + '_' + size;
-  if (!thumbNames) thumbNames = await listNames(THUMB_DIR);
-  const hit = thumbNames.find((name) => name === prefix || name.startsWith(prefix + '.'));
+  await ensureThumbNames();
+  const hit = findThumbName(assetId, size);
   return hit ? toAbsPath(THUMB_DIR + '/' + hit) : null;
 }
 
@@ -306,7 +326,9 @@ export async function removeAssetFiles(assetId: string): Promise<void> {
     }
   }
   assetNames = null;
-  thumbNames = null;
+  for (const name of Array.from(thumbNameCache)) {
+    if (name.startsWith(assetId + '_')) thumbNameCache.delete(name);
+  }
 }
 
 /**

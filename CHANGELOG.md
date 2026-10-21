@@ -2,6 +2,35 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>` / 鸿蒙侧 `hs/H<n>`。
 
+## [未发布] · 鸿蒙 H5.3：集中钉子与钉集（把多张图片钉在一颗钉子上）
+
+### 需求
+1. 图片拖动「卡壳」，其余功能正常。
+2. 组框的「对象总览」与「分组总览」要能直接点按钮挑节点加入。
+3. 图片的图钉要能落在图片范围内的任意位置，并能换颜色。
+4. 各类节点在右栏都要有和图片一致的上下层控件。
+5. 新节点类型「集中钉子」：大图钉钉在规整矩形黄色便利贴上，便利贴可显隐、便利贴文字可编辑、只有一个关系线连接点、默认最顶层。
+6. 被钉子吸附的图片成为「钉集」：只能由拖钉子本身移动整集（拖元素等价于拖钉子），图片只能绕钉子旋转/移动，集内上下关系相对外界独立、对外永远置顶，右栏可调整集内成员。
+
+### 根因 / 关键结论
+1. 「卡壳」是**测量假象**：探针分段计时把启动那一段（300–676ms）记到了 hold 段头上。修正后实测按住 34ms / 拖动 17ms / 落点 84–151ms。真正的体感问题是「按下到起拖的 450ms 毫无反馈」。
+2. React Flow v12 默认开启 `elevateNodesOnSelect`，选中的成员图会压住钉子——钉集要「对外永远置顶」必须显式关掉。
+3. `uitest uiInput drag` 在 ArkWeb 里会被识别成长按、弹右键菜单打断拖拽；合成 `PointerEvent` 的 pointermove 必须派发到 `window`（d3-drag 的监听在 window 上）。
+4. 缩略图目录每次导入后就作废，导致下一次渲染/起拖各过一次桥 `listAppDir`（100–300ms）；改成「落盘即记住文件名」。
+
+### 改了什么
+- 数据层：`types/index.ts` 加 `NodeType: 'clusterPin'`、`ImageNode.{pinPos,pinColor,clusterId,clusterOffset}`；新增 `lib/clusterPin.ts`（层级常量、命中测试、成员位置与绕钉旋转、便利贴可见性与文字）；`commands/imageNodeCommands.ts` 新增 `attachImageToCluster` / `detachImageFromCluster` / `rotateClusterMember` / `moveClusterBy` / `syncClusterMembers`；`commands/nodeCommands.ts` 新增 `setNodeLayer`。
+- 画布：`Board.tsx` 钉集成员坐标由「钉子 + clusterOffset」推导、成员层级走集内空间（基准 1000、钉子 1600）、拖钉子或拖任意成员都换算成整集平移、素材直接落在钉子上即入集、关掉 `elevateNodesOnSelect`。
+- 节点：`BaseNode.tsx` 新增 `clusterPin` 分支（黄色便利贴 + 图钉头 + 单一右侧连线点）；`FreeImageNode.tsx` 图钉改为可拖（`pinPos` 0–1 相对坐标）+ 可换色 + 「钉集」徽标。
+- 右栏：`RightPanel.tsx` 所有节点加「层级（置顶/上移/下移/置底）」；图片加「图钉颜色」色板与「钉到「集中钉子」」入口；成员图显示「钉集内层级（第 N 层，对外永远置顶）」+ 绕钉左右转 15°/移出钉集；集中钉子节点显示钉集成员清单（移出、旋转）。
+- 组框：新增 `NodePickerDialog.tsx`，右栏组框表单与「分组总览」每组都有「＋ 加入…」入口。
+- 触屏体感：素材卡长按阈值 450→320ms，`pointerdown` 立刻缩放高亮（`.cb-asset--pressing`）；`platform.ts` 缩略图名改成落盘即记忆（`thumbNameCache`）。
+- 验收：`scripts/accept-h5.ps1` 扩到 **22 条**，探针新增 phase 16（建钉子/入钉集/层级/帧间隔）、17（长按拖入画布分段帧间隔）、18（合成指针归因对照）、19（拖素材到钉子入集）。
+
+### 验收
+`accept-h5.ps1` → **22/22 PASS**：`summary16 pins=1 made=1 cluster=1 imgZ=1000 pinZ=1600`、`hold=34 move=17 up=84 ghost=1`、`p95=16.9 frames=126`。
+真手势：`fling` 拖钉子后成员图跟着走（图片 X/Y 553→917 同步）；拖素材卡到钉子上松手 → 立即可见「钉集」徽标。
+
 ## [未发布] · 鸿蒙 H5.2：静默失败清账 + 触屏多选 + 组框收编 + 帧耗时实测
 
 ### 症状

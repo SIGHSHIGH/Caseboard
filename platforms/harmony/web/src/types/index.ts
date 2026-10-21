@@ -3,7 +3,18 @@
  * 允许新增字段，不得删除核心字段。
  */
 
-export type NodeType = 'person' | 'org' | 'place' | 'item' | 'event' | 'evidence' | 'time' | 'note' | 'relation';
+export type NodeType =
+  | 'person'
+  | 'org'
+  | 'place'
+  | 'item'
+  | 'event'
+  | 'evidence'
+  | 'time'
+  | 'note'
+  | 'relation'
+  /** 集中钉子（H5.3）：钉在一张规整的黄色便利贴上，被它钉住的图片组成「钉集」 */
+  | 'clusterPin';
 
 export type Status = 'todo' | 'checking' | 'confirmed' | 'ruledout';
 
@@ -214,8 +225,23 @@ export interface ImageNode {
   dockOffset?: XY;
   /** 图钉装饰（白板照片质感） */
   pinned?: boolean;
+  /**
+   * 图钉落点（H5.3）：0–1 相对图片自身宽高的比例坐标。
+   * 缺省按 { x: 0.5, y: 0.06 }（上边中间）渲染，旧数据不需要迁移。
+   */
+  pinPos?: XY;
+  /** 图钉颜色（H5.3）；缺省取主题证据红 */
+  pinColor?: string;
   /** 压缩成小圆点（M11 / I6）：方便把图片拖到卡片角吸附，占地极小 */
   dotMode?: boolean;
+  /**
+   * 所属「钉集」（H5.3）：值 = 集中钉子节点的 id。
+   * 入集后图片的坐标不再自由——由集中钉子的位置 + clusterOffset 推导，
+   * 拖动任一成员等价于拖动集中钉子本身（见 Board 的 onNodeDrag）。
+   */
+  clusterId?: string;
+  /** 相对集中钉子中心的偏移（像素，入集时记录；右栏可绕钉子旋转调整） */
+  clusterOffset?: XY;
 }
 
 /**

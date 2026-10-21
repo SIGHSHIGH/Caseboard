@@ -308,6 +308,68 @@ if ($sum15Line -match 'frames=(\d+)') { $frames = [int]$Matches[1] }
 # 60Hz 下正常帧 16.7ms；p95 超过 34ms 就说明拖动期间掉到 30fps 以下
 Add-Result 'H5-2' '拖动画布时帧率（p95 ≤ 34ms）' (($frames -ge 60) -and ($p95 -gt 0) -and ($p95 -le 34.0)) ('p50=' + $p50 + ' p95=' + $p95 + ' drop=' + $drop + ' frames=' + $frames)
 
+# ---------- 动态断言：phase=16（集中钉子 / 钉集 / 拖入卡顿） ----------
+$lines16 = Invoke-Cb '16' 26
+$sum16Line = ''
+if ($lines16 -and $lines16.Count -gt 0) {
+  $lines16 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase16.log') -Encoding utf8
+  $hit16 = @($lines16 | Select-String -Pattern '\[diag\] summary16')
+  if ($hit16.Count -gt 0) { $sum16Line = $hit16[-1].Line }
+  else {
+    $fallback = @($lines16 | Select-String -Pattern '\[diag\] pin ')
+    if ($fallback.Count -gt 0) { $sum16Line = $fallback[-1].Line }
+  }
+}
+$pinCount = 0
+$pinMade = 0
+$clusterCount = 0
+$imgZ = -1
+$pinZ = -1
+$maxGap = -1
+if ($sum16Line -match 'pins=(\d+)') { $pinCount = [int]$Matches[1] }
+if ($sum16Line -match 'made=(\d+)') { $pinMade = [int]$Matches[1] }
+if ($sum16Line -match 'cluster=(\d+)') { $clusterCount = [int]$Matches[1] }
+if ($sum16Line -match 'imgZ=(-?\d+)') { $imgZ = [int]$Matches[1] }
+if ($sum16Line -match 'pinZ=(-?\d+)') { $pinZ = [int]$Matches[1] }
+if ($sum16Line -match 'gap=(\d+)') { $maxGap = [int]$Matches[1] }
+Add-Result 'H5-16' '左栏「节点类型」能建出集中钉子（.cb-pin 上屏）' (($pinMade -eq 1) -and ($pinCount -ge 1)) ('made=' + $pinMade + ' pins=' + $pinCount + ' ' + (Short $sum16Line))
+Add-Result 'H5-17' '图片可钉进钉集（右栏「钉到…」或拖到钉子上）' ($clusterCount -ge 1) ('cluster=' + $clusterCount)
+Add-Result 'H5-18' '钉集对外永远置顶（成员 z ≥ 1000，钉子在其上）' (($imgZ -ge 1000) -and ($pinZ -gt $imgZ)) ('imgZ=' + $imgZ + ' pinZ=' + $pinZ)
+Add-Result 'H5-19' '长按拖入画布不再卡死（落点后 2s 内最大帧间隔 ≤ 500ms）' (($maxGap -gt 0) -and ($maxGap -le 500)) ('maxGap=' + $maxGap + 'ms')
+
+# H5-20：三个入口的静态检查（右栏挑实体 / 分组总览「＋」/ 图钉颜色）
+$pickerOk = (Test-Path (Join-Path $srcRoot 'components\panels\NodePickerDialog.tsx'))
+$rightPickLine = @(Select-String -Path (Join-Path $srcRoot 'components\panels\RightPanel.tsx') -Pattern 'requestNodePick' -SimpleMatch)
+$treePickLine = @(Select-String -Path (Join-Path $srcRoot 'components\panels\GroupTree.tsx') -Pattern 'requestNodePick' -SimpleMatch)
+$swatchLine = @(Select-String -Path (Join-Path $srcRoot 'components\panels\RightPanel.tsx') -Pattern 'pinColor' -SimpleMatch)
+Add-Result 'H5-20' '组框可直接挑实体加入（右栏 + 分组总览）且图钉可换色' ($pickerOk -and $rightPickLine.Count -gt 0 -and $treePickLine.Count -gt 0 -and $swatchLine.Count -gt 0) ('picker=' + $pickerOk + ' right=' + $rightPickLine.Count + ' tree=' + $treePickLine.Count + ' color=' + $swatchLine.Count)
+
+# ---------- 动态断言：phase=17（长按拖入画布的分段帧间隔） ----------
+$lines17 = Invoke-Cb '17' 16
+$sum17Line = ''
+if ($lines17 -and $lines17.Count -gt 0) {
+  $lines17 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase17.log') -Encoding utf8
+  $hit17 = @($lines17 | Select-String -Pattern '\[diag\] summary17')
+  if ($hit17.Count -gt 0) { $sum17Line = $hit17[-1].Line }
+  else {
+    $fb17 = @($lines17 | Select-String -Pattern '\[diag\] seg ')
+    if ($fb17.Count -gt 0) { $sum17Line = $fb17[-1].Line }
+  }
+}
+$gHold = -1
+$gMove = -1
+$gUp = -1
+$gSettle = -1
+$gGhost = 0
+$gNodes = 0
+if ($sum17Line -match 'hold=(\d+)') { $gHold = [int]$Matches[1] }
+if ($sum17Line -match 'move=(\d+)') { $gMove = [int]$Matches[1] }
+if ($sum17Line -match 'up=(\d+)') { $gUp = [int]$Matches[1] }
+if ($sum17Line -match 'settle=(\d+)') { $gSettle = [int]$Matches[1] }
+if ($sum17Line -match 'ghost=(\d+)') { $gGhost = [int]$Matches[1] }
+if ($sum17Line -match 'nodes=(\d+)') { $gNodes = [int]$Matches[1] }
+Add-Result 'H5-21' '长按拖入画布不再卡壳（按住 / 拖动 / 落点三段帧间隔均 ≤ 200ms）' (($gGhost -eq 1) -and ($gNodes -ge 1) -and ($gHold -ge 0) -and ($gHold -le 200) -and ($gMove -le 200) -and ($gUp -le 200)) ('hold=' + $gHold + ' move=' + $gMove + ' up=' + $gUp + ' settle=' + $gSettle + ' ghost=' + $gGhost + ' nodes=' + $gNodes)
+
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })
 $report = [ordered]@{

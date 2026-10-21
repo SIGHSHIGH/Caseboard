@@ -18,6 +18,7 @@ import {
   addImageNode,
   addNode,
   attachImageNode,
+  attachImageToCluster,
   addEdge,
   composeCommands,
   deleteGroup,
@@ -25,6 +26,7 @@ import {
   moveGroup,
   moveImageNode,
   moveImageNodes,
+  moveClusterBy,
   moveNode,
   moveNodes,
 } from '../../commands';
@@ -64,6 +66,7 @@ import {
   type AlignGuide,
 } from '../../lib/imageNode';
 import { canvasGrid, DEFAULT_CANVAS, normalizeCanvasSkin, showsCanvasGrid } from '../../lib/canvasSkin';
+import { CLUSTER_PIN_Z, clusterMemberZ, findClusterTarget, memberPosition, offsetForCluster } from '../../lib/clusterPin';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodeStore } from '../../store/codeStore';
@@ -322,28 +325,36 @@ export function Board() {
         },
         selected: selectedNodeIds.includes(node.id),
         // M10：卡片也进层级空间（固定 CARD_LAYER_Z），图片才能真的被压到卡片下面
-        zIndex: node.zIndex ?? CARD_LAYER_Z,
+        // H5.3：集中钉子固定压在钉集之上，不跟卡片抢层级
+        zIndex: node.type === 'clusterPin' ? CLUSTER_PIN_Z : (node.zIndex ?? CARD_LAYER_Z),
         style: { width: node.w },
         };
       });
 
     // 自由图片节点：不依附卡片，层级由自身 zIndex 决定（可压住/被压住）
-    const imageNodes: BoardFlowNode[] = doc.imageNodes.map((image) => ({
-      id: image.id,
-      type: 'freeImage',
-      position: dockPreview[image.id] ?? dragPos[image.id] ?? { x: image.x, y: image.y },
-      data: {
-        image,
-        asset: doc.assets.find((item) => item.id === image.assetId),
-        attachTarget: attachTargetId === image.id,
-      },
-      selected: selectedImageIds.includes(image.id),
-      zIndex: image.zIndex,
-      // M11（I6）：小圆点模式只占 26×26，方便拖到卡片角吸附
-      style: image.dotMode
-        ? { width: IMAGE_DOT_SIZE, height: IMAGE_DOT_SIZE }
-        : { width: image.w, height: image.h },
-    }));
+    // H5.3：钉集成员的坐标由「钉子位置 + clusterOffset」推导，层级也走集内独立空间（对外永远置顶）
+    const imageNodes: BoardFlowNode[] = doc.imageNodes.map((image) => {
+      const pin = image.clusterId
+        ? model.nodes.find((item) => item.id === image.clusterId && item.type === 'clusterPin')
+        : undefined;
+      const derived = pin ? memberPosition(pin, image.clusterOffset ?? { x: 0, y: 0 }, { w: image.w, h: image.h }) : null;
+      return {
+        id: image.id,
+        type: 'freeImage',
+        position: derived ?? dockPreview[image.id] ?? dragPos[image.id] ?? { x: image.x, y: image.y },
+        data: {
+          image,
+          asset: doc.assets.find((item) => item.id === image.assetId),
+          attachTarget: attachTargetId === image.id,
+        },
+        selected: selectedImageIds.includes(image.id),
+        zIndex: pin ? clusterMemberZ(doc.imageNodes, pin.id, image.id) : image.zIndex,
+        // M11（I6）：小圆点模式只占 26×26，方便拖到卡片角吸附
+        style: image.dotMode
+          ? { width: IMAGE_DOT_SIZE, height: IMAGE_DOT_SIZE }
+          : { width: image.w, height: image.h },
+      };
+    });
 
     // 组矩形永远排在前面，保证 zIndex -1 生效时不被节点层打乱；
     // M11（I1）：整体按 zIndex 升序排一次，DOM 顺序与层级一致，点「上移/下移/置顶/置底」立刻看到效果
@@ -518,6 +529,40 @@ export function Board() {
 
   const onNodeDrag = useCallback(
     (_event: unknown, node: BoardFlowNode) => {
+      // H5.3：钉集整体跟手——拖钉子时成员实时跟随；拖集内任一图片也等价于拖钉子
+      if (node.type === 'base' && node.data.node.type === 'clusterPin') {
+        const pin = node.data.node;
+        const dx = node.position.x - pin.x;
+        const dy = node.position.y - pin.y;
+        const next: Record<string, { x: number; y: number }> = {};
+        for (const member of doc.imageNodes) {
+          if (member.clusterId !== pin.id) continue;
+          const base = memberPosition(pin, member.clusterOffset ?? { x: 0, y: 0 }, { w: member.w, h: member.h });
+          next[member.id] = { x: base.x + dx, y: base.y + dy };
+        }
+        if (Object.keys(next).length > 0) setDockPreview(next);
+        return;
+      }
+      if (node.type === 'freeImage') {
+        const member = doc.imageNodes.find((item) => item.id === node.id);
+        const clusterPin = member?.clusterId
+          ? model.nodes.find((item) => item.id === member.clusterId && item.type === 'clusterPin')
+          : undefined;
+        if (member && clusterPin) {
+          const base = memberPosition(clusterPin, member.clusterOffset ?? { x: 0, y: 0 }, { w: member.w, h: member.h });
+          const peerDx = node.position.x - base.x;
+          const peerDy = node.position.y - base.y;
+          setDragPos(clusterPin.id, { x: clusterPin.x + peerDx, y: clusterPin.y + peerDy });
+          const next: Record<string, { x: number; y: number }> = {};
+          for (const peer of doc.imageNodes) {
+            if (peer.clusterId !== clusterPin.id || peer.id === member.id) continue;
+            const peerBase = memberPosition(clusterPin, peer.clusterOffset ?? { x: 0, y: 0 }, { w: peer.w, h: peer.h });
+            next[peer.id] = { x: peerBase.x + peerDx, y: peerBase.y + peerDy };
+          }
+          if (Object.keys(next).length > 0) setDockPreview(next);
+          return;
+        }
+      }
       if (node.type === 'freeImage') {
         const image = doc.imageNodes.find((item) => item.id === node.id);
         if (!image) return;
@@ -553,6 +598,30 @@ export function Board() {
     (_event: unknown, node: BoardFlowNode) => {
       // 松手后位置由命令落库，实时预览清掉，避免和 Model 里的坐标打架
       setDockPreview({});
+      // H5.3：钉集只能整体移动——拖钉子本身或拖集内任意图片，都换算成整集平移
+      if (node.type === 'base') {
+        const pin = node.data.node;
+        if (pin.type === 'clusterPin') {
+          const dx = Math.round(node.position.x - pin.x);
+          const dy = Math.round(node.position.y - pin.y);
+          if (dx !== 0 || dy !== 0) dispatch(moveClusterBy(pin.id, dx, dy));
+          return;
+        }
+      }
+      if (node.type === 'freeImage') {
+        const dragged = doc.imageNodes.find((item) => item.id === node.id);
+        if (dragged?.clusterId) {
+          const pin = model.nodes.find((item) => item.id === dragged.clusterId && item.type === 'clusterPin');
+          if (pin) {
+            const base = memberPosition(pin, dragged.clusterOffset ?? { x: 0, y: 0 }, { w: dragged.w, h: dragged.h });
+            const dx = Math.round(node.position.x - base.x);
+            const dy = Math.round(node.position.y - base.y);
+            if (dx !== 0 || dy !== 0) dispatch(moveClusterBy(pin.id, dx, dy));
+            setDragPos(pin.id, null);
+            return;
+          }
+        }
+      }
       if (node.type === 'freeImage') {
         const image = doc.imageNodes.find((item) => item.id === node.id);
         if (image) {
@@ -578,6 +647,16 @@ export function Board() {
               };
             });
           const docking = findDockTarget(result.rect, model.nodes, DOCK_TOLERANCE);
+          // H5.3：拖到集中钉子上松手 → 收进钉集（之后只能整体移动、绕钉子转）
+          const imageCenter = { x: result.rect.x + image.w / 2, y: result.rect.y + image.h / 2 };
+          const clusterPin = image.clusterId ? null : findClusterTarget(model.nodes, imageCenter);
+          if (clusterPin) {
+            dispatch(attachImageToCluster(node.id, clusterPin.id, offsetForCluster(clusterPin, imageCenter)));
+            setDragPos(node.id, null);
+            setGuides([]);
+            setAttachTarget(null);
+            return;
+          }
           // 卡片被一起拖动时，吸在它们身上的图片由命令层随动，这里必须排除，否则位移两次
           const mixedNodeIds = new Set(mixedNodes.map((item) => item.id));
           const followIds = new Set(
@@ -945,20 +1024,26 @@ export function Board() {
       const size = fitImageSize(asset.width, asset.height);
       const point = screenToFlowPosition({ x: clientX, y: clientY });
       const id = newId('img');
+      const x = Math.round(point.x - size.w / 2);
+      const y = Math.round(point.y - size.h / 2);
       dispatch(
         addImageNode({
           id,
           assetId,
-          x: Math.round(point.x - size.w / 2),
-          y: Math.round(point.y - size.h / 2),
+          x,
+          y,
           w: size.w,
           h: size.h,
           siblings: doc.imageNodes,
         }),
       );
+      // H5.3：素材直接落在集中钉子上 → 建好即入钉集（右栏提示的「拖到钉子本体上松手」就是这条）
+      const center = { x: x + size.w / 2, y: y + size.h / 2 };
+      const pin = findClusterTarget(model.nodes, center);
+      if (pin) dispatch(attachImageToCluster(id, pin.id, offsetForCluster(pin, center)));
       selectImage(id);
     },
-    [dispatch, doc.assets, doc.imageNodes, screenToFlowPosition, selectImage],
+    [dispatch, doc.assets, doc.imageNodes, model.nodes, screenToFlowPosition, selectImage],
   );
 
   // 素材库拖入画布 → 在落点中心生成自由图片节点
@@ -1151,6 +1236,9 @@ export function Board() {
         panOnDrag={[1, 2]}
         panActivationKeyCode="Space"
         multiSelectionKeyCode={['Meta', 'Control']}
+        // H5.3：钉集要求「对外永远置顶」，层级只能由我们算——关掉 React Flow 选中自动抬层
+        elevateNodesOnSelect={false}
+        elevateEdgesOnSelect={false}
         nodesDraggable={!graphLocked}
         nodesConnectable={!graphLocked}
         nodesFocusable={!graphLocked}

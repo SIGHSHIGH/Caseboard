@@ -1,5 +1,5 @@
 export type { Command } from './types';
-export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addComment, deleteComment } from './nodeCommands';
+export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addComment, deleteComment, setNodeLayer } from './nodeCommands';
 export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
@@ -55,6 +55,11 @@ export {
   deleteImageNodes,
   attachImageNode,
   applyImageLayout,
+  attachImageToCluster,
+  detachImageFromCluster,
+  rotateClusterMember,
+  moveClusterBy,
+  syncClusterMembers,
 } from './imageNodeCommands';
 export type { AddImageNodeInput, ImageNodePatch } from './imageNodeCommands';
 export {

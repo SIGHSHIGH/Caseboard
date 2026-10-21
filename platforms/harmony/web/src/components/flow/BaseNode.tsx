@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { updateNode } from '../../commands';
+import { CLUSTER_PIN_H, stickyText, stickyVisible } from '../../lib/clusterPin';
 import { NODE_TYPE_META, STATUS_META } from '../../lib/theme';
 import { fieldEntriesOf } from '../../lib/nodeTemplates';
 import type { EdgeAnchor } from '../../lib/edgeCurve';
@@ -103,6 +104,46 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
     setEditing(false);
   };
 
+  /* 集中钉子（H5.3）：不画普通卡片，而是一枚更大的图钉钉在一张规整的黄色便利贴上。
+     需求明确「只有一个关系线连接点」，所以这里只保留右侧一对 Handle（target 做几何锚点）。 */
+  if (node.type === 'clusterPin') {
+    const paperVisible = stickyVisible(node);
+    const text = stickyText(node);
+    return (
+      <div
+        className={`cb-pin${selected ? ' is-selected' : ''}${multiSelect && selected ? ' is-multi' : ''}`}
+        style={{ width: node.w, height: node.h > 0 ? node.h : CLUSTER_PIN_H }}
+        onMouseEnter={() => setHoverNode(node.id)}
+        onMouseLeave={() => setHoverNode(null)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={clearPressTimer}
+        onPointerCancel={clearPressTimer}
+        data-type="clusterPin"
+      >
+        <Handle
+          id="right"
+          type="target"
+          position={Position.Right}
+          className="cb-handle cb-handle--target"
+          isConnectable={false}
+        />
+        <Handle id="right" type="source" position={Position.Right} className="cb-handle cb-handle--source" />
+        {paperVisible ? (
+          <div className="cb-pin__paper">
+            <span className="cb-pin__paper-text">{text}</span>
+          </div>
+        ) : null}
+        <div className="cb-pin__head" title="集中钉子：拖动它带动整个钉集">
+          <span className="cb-pin__glyph" aria-hidden="true">
+            {meta.icon}
+          </span>
+          <span className="cb-pin__label">集中钉子</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}${data.dimmed ? ' is-dim' : ''}${onPath ? ' is-path' : ''}${multiSelect && selected ? ' is-multi' : ''}`}
@@ -115,8 +156,7 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
       onPointerCancel={clearPressTimer}
       style={{ width: node.w }}
       data-type={node.type}
-    >
-      {/* 每个连接点放两个：target 只做几何锚点（React Flow 计算连线路径需要 target 侧边界），
+    >      {/* 每个连接点放两个：target 只做几何锚点（React Flow 计算连线路径需要 target 侧边界），
           source 负责拖拽发起；两者重叠，target 不接收指针事件，避免抢走拖拽。
           M10：一共八处（四边中点 + 四角），关系线不再只能从四条边中间出来。 */}
       {SIDES.map((side) => (

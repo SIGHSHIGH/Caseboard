@@ -1,4 +1,4 @@
-import type { DockCorner, ImageNode } from '../types';
+import type { DockCorner, ImageNode, XY } from '../types';
 import {
   fitImageSize,
   nextZIndex,
@@ -6,6 +6,7 @@ import {
   reorderLayers,
   type LayerAction,
 } from '../lib/imageNode';
+import { memberPosition, rotateOffset } from '../lib/clusterPin';
 import { newId } from '../lib/id';
 import type { Command } from './types';
 
@@ -71,6 +72,10 @@ export interface ImageNodePatch {
   pinned?: boolean;
   /** M11（I6）：true = 压缩成小圆点；false/null = 展开成正常图片 */
   dotMode?: boolean;
+  /** H5.3：图钉落点（0–1 相对图片），可落在图片范围内任意位置；null = 回到默认左上 */
+  pinPos?: XY | null;
+  /** H5.3：图钉颜色；null = 用默认深红 */
+  pinColor?: string | null;
 }
 
 export function updateImageNode(id: string, patch: ImageNodePatch): Command {
@@ -108,6 +113,17 @@ export function updateImageNode(id: string, patch: ImageNodePatch): Command {
       }
       if (patch.pinned !== undefined) node.pinned = patch.pinned ? true : undefined;
       if (patch.dotMode !== undefined) node.dotMode = patch.dotMode ? true : undefined;
+      if (patch.pinPos !== undefined) {
+        if (patch.pinPos === null) delete node.pinPos;
+        else {
+          const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+          node.pinPos = { x: clamp01(patch.pinPos.x), y: clamp01(patch.pinPos.y) };
+        }
+      }
+      if (patch.pinColor !== undefined) {
+        if (patch.pinColor === null) delete node.pinColor;
+        else node.pinColor = patch.pinColor;
+      }
     },
   };
 }
@@ -224,6 +240,99 @@ export function applyImageLayout(
         if (!node) continue;
         node.x = Math.round(move.x);
         node.y = Math.round(move.y);
+      }
+    },
+  };
+}
+
+/* ------------------------------------------------------------------------- *
+ * 钉集（H5.3）：集中钉子 + 被它钉住的图片
+ * ------------------------------------------------------------------------- */
+
+/** 把图片钉进集中钉子：记录相对钉子中心的偏移，并立即把坐标对齐到该偏移 */
+export function attachImageToCluster(imageId: string, pinId: string, offset: XY): Command {
+  return {
+    label: '钉到集中钉子上',
+    apply(draft) {
+      const image = draft.imageNodes.find((item) => item.id === imageId);
+      const pin = draft.nodes.find((item) => item.id === pinId);
+      if (!image || !pin || pin.type !== 'clusterPin') return;
+      image.clusterId = pin.id;
+      image.clusterOffset = { x: Math.round(offset.x), y: Math.round(offset.y) };
+      // 钉集与卡片角吸附互斥：一个图片不能同时被卡片角和钉子约束
+      delete image.linkedNodeId;
+      delete image.dockCorner;
+      delete image.dockOffset;
+      const position = memberPosition(pin, image.clusterOffset, { w: image.w, h: image.h });
+      image.x = position.x;
+      image.y = position.y;
+    },
+  };
+}
+
+export function detachImageFromCluster(imageId: string): Command {
+  return {
+    label: '从钉集移出',
+    apply(draft) {
+      const image = draft.imageNodes.find((item) => item.id === imageId);
+      if (!image) return;
+      delete image.clusterId;
+      delete image.clusterOffset;
+    },
+  };
+}
+
+/** 让成员图片绕钉子转一个角度（右栏「绕钉子转」按钮） */
+export function rotateClusterMember(imageId: string, degrees: number): Command {
+  return {
+    label: '绕钉子调整位置',
+    apply(draft) {
+      const image = draft.imageNodes.find((item) => item.id === imageId);
+      if (!image || !image.clusterId) return;
+      const pin = draft.nodes.find((item) => item.id === image.clusterId);
+      if (!pin) return;
+      const offset = image.clusterOffset ?? { x: 0, y: 0 };
+      image.clusterOffset = rotateOffset(offset, degrees);
+      const position = memberPosition(pin, image.clusterOffset, { w: image.w, h: image.h });
+      image.x = position.x;
+      image.y = position.y;
+    },
+  };
+}
+
+/**
+ * 移动整个钉集：钉子 + 全部成员一条命令，撤销时整集一起回退。
+ * 「拖集内任一图片等价于拖动钉子本身」在 Board 里换算成这条命令。
+ */
+export function moveClusterBy(pinId: string, dx: number, dy: number): Command {
+  return {
+    label: '移动钉集',
+    apply(draft) {
+      const pin = draft.nodes.find((item) => item.id === pinId);
+      if (!pin) return;
+      pin.x = Math.round(pin.x + dx);
+      pin.y = Math.round(pin.y + dy);
+      for (const image of draft.imageNodes) {
+        if (image.clusterId !== pinId) continue;
+        image.x = Math.round(image.x + dx);
+        image.y = Math.round(image.y + dy);
+      }
+    },
+  };
+}
+
+/** 钉集成员位置重排（拖动预览落库时用）：按钉子当前位置把每个成员摆回 offset 处 */
+export function syncClusterMembers(pinId: string): Command {
+  return {
+    label: '整理钉集',
+    apply(draft) {
+      const pin = draft.nodes.find((item) => item.id === pinId);
+      if (!pin) return;
+      for (const image of draft.imageNodes) {
+        if (image.clusterId !== pinId) continue;
+        const position = memberPosition(pin, image.clusterOffset ?? { x: 0, y: 0 }, { w: image.w, h: image.h });
+        image.x = position.x;
+        image.y = position.y;
       }
     },
   };
