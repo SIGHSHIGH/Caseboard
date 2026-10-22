@@ -485,7 +485,7 @@ Add-Result 'H5-38' '红线待连接态有全画布热区，点第二颗钉子能
 Add-Result 'H5-39' '红线是一条直线，且没有变成关系线（关系数不变）' (($p23Straight -eq 1) -and ($p23EdgesDelta -eq 0)) ('straight=' + $p23Straight + ' edgesDelta=' + $p23EdgesDelta)
 
 # ---------- 静态断言：H5.9 红线粗细的全局滑块 ----------
-$srcRoot9 = Join-Path $root 'platforms\harmony\web\src'
+$srcRoot9 = $srcRoot
 $sliderFile = Join-Path $srcRoot9 'components\panels\CanvasBackdropForm.tsx'
 $layerFile = Join-Path $srcRoot9 'components\flow\PinLinkLayer.tsx'
 $boardFile = Join-Path $srcRoot9 'components\flow\Board.tsx'
