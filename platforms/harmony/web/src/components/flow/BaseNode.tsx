@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { updateNode } from '../../commands';
-import { CLUSTER_PIN_H, stickyText, stickyVisible } from '../../lib/clusterPin';
+import { CLUSTER_PIN_H, CLUSTER_PIN_W, stickyText, stickyVisible } from '../../lib/clusterPin';
 import { NODE_TYPE_META, STATUS_META } from '../../lib/theme';
 import { fieldEntriesOf } from '../../lib/nodeTemplates';
 import type { EdgeAnchor } from '../../lib/edgeCurve';
@@ -113,7 +113,7 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
     return (
       <div
         className={`cb-pin${selected ? ' is-selected' : ''}${multiSelect && selected ? ' is-multi' : ''}`}
-        style={{ width: node.w, height: node.h > 0 ? node.h : CLUSTER_PIN_H }}
+        style={{ width: CLUSTER_PIN_W, height: CLUSTER_PIN_H }}
         onMouseEnter={() => setHoverNode(node.id)}
         onMouseLeave={() => setHoverNode(null)}
         onPointerDown={onPointerDown}
