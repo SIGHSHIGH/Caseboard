@@ -443,8 +443,39 @@ Add-Result 'H5-25' '集中钉子建出来是一个圆点，新建弹窗会问要
 Add-Result 'H5-26' '便利贴默认不显示，右栏切「显示」后才出现' (($p22Paper0 -eq 0) -and ($p22PaperOn -eq 1)) ('paper0=' + $p22Paper0 + ' paperOn=' + $p22PaperOn)
 Add-Result 'H5-27' '关系线连接点与圆点同心' ((([math]::Abs($p22Hdx)) -le 2) -and (([math]::Abs($p22Hdy)) -le 2)) ('hdx=' + $p22Hdx + ' hdy=' + $p22Hdy)
 Add-Result 'H5-28' '拖动集中钉子时钉集成员跟着一起走' ((([math]::Abs($p22PinDx)) -ge 10) -and (([math]::Abs($p22PinDx - $p22MemDx)) -le 3) -and (([math]::Abs($p22PinDy - $p22MemDy)) -le 3)) ('pin=' + $p22PinDx + ',' + $p22PinDy + ' member=' + $p22MemDx + ',' + $p22MemDy + ' 贴入=' + $p22Attach)
-Add-Result 'H5-29' '绕钉旋转会带着图片自身角度一起转，右栏方向键能挪位置' ((($p22Rot1 - $p22Rot0) -eq 15) -and ($p22Nudge -ge 3)) ('rot=' + $p22Rot0 + '->' + $p22Rot1 + ' nudge=' + $p22Nudge)
+Add-Result 'H5-29' '绕钉旋转会带着图片自身角度一起转，右栏能精确挪位置' (((($p22Rot1 - $p22Rot0 + 360) % 360) -eq 15) -and ($p22Nudge -ge 3)) ('rot=' + $p22Rot0 + '->' + $p22Rot1 + ' nudge=' + $p22Nudge)
 Add-Result 'H5-30' '右栏开关停在小地图左边、不压右栏内容' (($p22Tog -eq 1) -and ($p22TogPanel -eq 1)) ('tog=' + $p22Tog + ' togPanel=' + $p22TogPanel + ' ' + ((($sum22Line -split 'tog=')[1]) -replace ' err=.*', ''))
+
+# ---------- 动态断言：phase=23（H5.6 相对位置恒定 / 集中钉右栏瘦身 / 滑块数值输入 / 创建红线） ----------
+$lines23 = Invoke-Cb '23' 52
+$sum23Line = ''
+if ($lines23 -and $lines23.Count -gt 0) {
+  $lines23 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase23.log') -Encoding utf8
+  $hit23 = @($lines23 | Select-String -Pattern '\[diag\] summary23')
+  if ($hit23.Count -gt 0) { $sum23Line = $hit23[-1].Line }
+}
+$p23KeptPin = -1; $p23KeptMem = -1; $p23Follow = -1
+$p23Alias = -1; $p23Map = -1; $p23Comment = -1
+$p23Rows = 0; $p23Nums = 0; $p23Slide = -1
+$p23Hint = -1; $p23Red = -1; $p23RedW = -1; $p23Attach = 0
+if ($sum23Line -match 'keptPin=(-?\d+)') { $p23KeptPin = [int]$Matches[1] }
+if ($sum23Line -match 'keptMem=(-?\d+)') { $p23KeptMem = [int]$Matches[1] }
+if ($sum23Line -match 'follow=(-?\d+)') { $p23Follow = [int]$Matches[1] }
+if ($sum23Line -match 'alias=(-?\d+)') { $p23Alias = [int]$Matches[1] }
+if ($sum23Line -match 'map=(-?\d+)') { $p23Map = [int]$Matches[1] }
+if ($sum23Line -match 'comment=(-?\d+)') { $p23Comment = [int]$Matches[1] }
+if ($sum23Line -match 'rows=(\d+)') { $p23Rows = [int]$Matches[1] }
+if ($sum23Line -match 'nums=(\d+)') { $p23Nums = [int]$Matches[1] }
+if ($sum23Line -match 'slide=(-?\d+)') { $p23Slide = [int]$Matches[1] }
+if ($sum23Line -match 'hint=(-?\d+)') { $p23Hint = [int]$Matches[1] }
+if ($sum23Line -match 'red=(-?\d+)') { $p23Red = [int]$Matches[1] }
+if ($sum23Line -match 'redW=(-?\d+)') { $p23RedW = [int]$Matches[1] }
+if ($sum23Line -match 'attach=(\d+)') { $p23Attach = [int]$Matches[1] }
+Add-Result 'H5-31' '拖动集中钉子后，钉子与成员图片的相对位置不变' ($p23KeptPin -eq 1) ('keptPin=' + $p23KeptPin + ' 贴入=' + $p23Attach + ' ' + ((($sum23Line -split 'keptPin=')[1]) -replace ' keptMem=.*', ''))
+Add-Result 'H5-32' '拖动钉集成员时成员跟手走、松手后相对位置不变' (($p23KeptMem -eq 1) -and ($p23Follow -eq 1)) ('keptMem=' + $p23KeptMem + ' follow=' + $p23Follow)
+Add-Result 'H5-33' '集中钉右栏不再显示别名 / 地图坐标 / 评论' (($p23Alias -eq 1) -and ($p23Map -eq 1) -and ($p23Comment -eq 1)) ('alias=' + $p23Alias + ' map=' + $p23Map + ' comment=' + $p23Comment)
+Add-Result 'H5-34' '相对位置与旋转是「每行一个滑块 + 可输入数字」' (($p23Rows -ge 3) -and ($p23Nums -ge 3) -and ($p23Slide -eq 1)) ('rows=' + $p23Rows + ' nums=' + $p23Nums + ' slide=' + $p23Slide)
+Add-Result 'H5-35' '长按集中钉 → 创建红线 → 点另一钉子，出现略宽红色实心线' (($p23Hint -eq 1) -and ($p23Red -ge 1) -and ($p23RedW -ge 3)) ('hint=' + $p23Hint + ' red=' + $p23Red + ' redW=' + $p23RedW)
 
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })

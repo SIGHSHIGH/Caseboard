@@ -17,6 +17,7 @@ import {
   attachImageToCluster,
   rotateClusterMember,
   nudgeClusterOffset,
+  setClusterOffset,
   setImageLayer,
   setNodeLayer,
   updateImageNode,
@@ -196,6 +197,8 @@ function TemplateField({
 
 function NodeForm({ node }: { node: CaseNode }) {
   const dispatch = useDocStore((s) => s.dispatch);
+  // H5.6：集中钉子只留「钉集」相关的东西，别名 / 地图坐标 / 评论对它是噪音
+  const isPin = node.type === 'clusterPin';
   const groups = useDocStore((s) => s.doc.groups);
   const clusterImgs = useDocStore((s) => s.doc.imageNodes).filter((item) => item.clusterId === node.id);
   // H5.3/H5.5：还没被任何钉子钉住的图片，可以在钉子的右栏里直接挑进来
@@ -406,15 +409,17 @@ function NodeForm({ node }: { node: CaseNode }) {
         />
       </label>
 
-      <label className="cb-field">
-        <span>别名（顿号或逗号分隔）</span>
-        <input
-          value={aliases}
-          placeholder="如：三哥、张老三"
-          onChange={(event) => setAliases(event.target.value)}
-          onBlur={commitAliases}
-        />
-      </label>
+      {isPin ? null : (
+        <label className="cb-field">
+          <span>别名（顿号或逗号分隔）</span>
+          <input
+            value={aliases}
+            placeholder="如：三哥、张老三"
+            onChange={(event) => setAliases(event.target.value)}
+            onBlur={commitAliases}
+          />
+        </label>
+      )}
 
       <div className="cb-field cb-field--block">
         <span>标签（统一 tag 编辑）</span>
@@ -429,11 +434,12 @@ function NodeForm({ node }: { node: CaseNode }) {
         </button>
       </div>
 
-      <div className="cb-form__section">
-        <h3 className="cb-form__subtitle">
-          地图坐标
-          <span className="cb-form__subtle">写回「经纬度」字段，留空即从地图上移除</span>
-        </h3>
+      {isPin ? null : (
+        <div className="cb-form__section">
+          <h3 className="cb-form__subtitle">
+            地图坐标
+            <span className="cb-form__subtle">写回「经纬度」字段，留空即从地图上移除</span>
+          </h3>
         <div className="cb-geo">
           <label className="cb-field">
             <span>纬度</span>
@@ -485,7 +491,8 @@ function NodeForm({ node }: { node: CaseNode }) {
             </button>
           ) : null}
         </div>
-      </div>
+        </div>
+      )}
 
       <div className="cb-form__section">
         <h3 className="cb-form__subtitle">
@@ -540,37 +547,39 @@ function NodeForm({ node }: { node: CaseNode }) {
         />
       </label>
 
-      <div className="cb-form__section">
-        <h3 className="cb-form__subtitle">评论（{(node.comments ?? []).length}）</h3>
-        <ul className="cb-comments">
-          {(node.comments ?? []).map((comment) => (
-            <li key={comment.id} className="cb-comments__item">
-              <p className="cb-comments__text">{comment.text}</p>
-              <div className="cb-comments__meta">
-                <span>{new Date(comment.createdAt).toLocaleString('zh-CN')}</span>
-                <button
-                  type="button"
-                  className="cb-link-btn"
-                  onClick={() => dispatch(deleteComment(node.id, comment.id))}
-                >
-                  删除
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-        <div className="cb-comments__new">
-          <textarea
-            rows={2}
-            placeholder="记一条工作评论，例如：待调取 9 月 5 日通话详单"
-            value={commentText}
-            onChange={(event) => setCommentText(event.target.value)}
-          />
-          <button type="button" className="cb-btn" onClick={addOneComment}>
-            添加评论
-          </button>
+      {isPin ? null : (
+        <div className="cb-form__section">
+          <h3 className="cb-form__subtitle">评论（{(node.comments ?? []).length}）</h3>
+          <ul className="cb-comments">
+            {(node.comments ?? []).map((comment) => (
+              <li key={comment.id} className="cb-comments__item">
+                <p className="cb-comments__text">{comment.text}</p>
+                <div className="cb-comments__meta">
+                  <span>{new Date(comment.createdAt).toLocaleString('zh-CN')}</span>
+                  <button
+                    type="button"
+                    className="cb-link-btn"
+                    onClick={() => dispatch(deleteComment(node.id, comment.id))}
+                  >
+                    删除
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="cb-comments__new">
+            <textarea
+              rows={2}
+              placeholder="记一条工作评论，例如：待调取 9 月 5 日通话详单"
+              value={commentText}
+              onChange={(event) => setCommentText(event.target.value)}
+            />
+            <button type="button" className="cb-btn" onClick={addOneComment}>
+              添加评论
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* H5.3：集中钉子只写两个字段（便利贴显隐 + 便利贴文字），外加钉集成员清单 */}
       {node.type === 'clusterPin' ? (
@@ -1423,23 +1432,62 @@ function ImageForm({ image }: { image: ImageNode }) {
               移出钉集
             </button>
           </div>
-          {/* H5.5：成员相对钉子的位置也能在右栏里精确挪，不用靠拖 */}
-          <h4 className="cb-form__subtitle">
-            相对钉子的位置（{Math.round(image.clusterOffset?.x ?? 0)}, {Math.round(image.clusterOffset?.y ?? 0)}）
-          </h4>
+          {/* H5.6：位置与旋转改成「滑块 + 可直接输入数值」，每个自由度单独一行 */}
+          <div className="cb-field-row">
+            <span className="cb-field-row__label">相对钉子的 X</span>
+            <input
+              type="range"
+              className="cb-range"
+              min={-600}
+              max={600}
+              step={1}
+              value={Math.round(image.clusterOffset?.x ?? 0)}
+              onChange={(event) => dispatch(setClusterOffset(image.id, Number(event.target.value), image.clusterOffset?.y ?? 0))}
+            />
+            <input
+              type="number"
+              className="cb-input cb-input--num"
+              value={Math.round(image.clusterOffset?.x ?? 0)}
+              onChange={(event) => dispatch(setClusterOffset(image.id, Number(event.target.value), image.clusterOffset?.y ?? 0))}
+            />
+          </div>
+          <div className="cb-field-row">
+            <span className="cb-field-row__label">相对钉子的 Y</span>
+            <input
+              type="range"
+              className="cb-range"
+              min={-600}
+              max={600}
+              step={1}
+              value={Math.round(image.clusterOffset?.y ?? 0)}
+              onChange={(event) => dispatch(setClusterOffset(image.id, image.clusterOffset?.x ?? 0, Number(event.target.value)))}
+            />
+            <input
+              type="number"
+              className="cb-input cb-input--num"
+              value={Math.round(image.clusterOffset?.y ?? 0)}
+              onChange={(event) => dispatch(setClusterOffset(image.id, image.clusterOffset?.x ?? 0, Number(event.target.value)))}
+            />
+          </div>
+          <div className="cb-field-row">
+            <span className="cb-field-row__label">自身旋转</span>
+            <input
+              type="range"
+              className="cb-range"
+              min={-180}
+              max={180}
+              step={1}
+              value={Math.round(image.rotation ?? 0)}
+              onChange={(event) => dispatch(updateImageNode(image.id, { rotation: Number(event.target.value) }))}
+            />
+            <input
+              type="number"
+              className="cb-input cb-input--num"
+              value={Math.round(image.rotation ?? 0)}
+              onChange={(event) => dispatch(updateImageNode(image.id, { rotation: Number(event.target.value) }))}
+            />
+          </div>
           <div className="cb-assets__actions">
-            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, -12, 0))}>
-              ← 左移
-            </button>
-            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, 12, 0))}>
-              右移 →
-            </button>
-            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, 0, -12))}>
-              ↑ 上移
-            </button>
-            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, 0, 12))}>
-              ↓ 下移
-            </button>
             <button
               type="button"
               className="cb-btn"

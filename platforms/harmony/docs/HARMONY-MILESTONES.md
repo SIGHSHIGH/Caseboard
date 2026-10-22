@@ -18,6 +18,7 @@
 | H5.3 | 集中钉子 + 钉集（图片钉在一颗钉子上整体移动/绕钉旋转）+ 图钉自由落点与换色 + 各节点层级控件 + 组框直接挑节点加入 + 拖入画布卡壳量化 | `scripts/accept-h5.ps1` 25 条 | 见下方「H5.3 结项」 |
 | H5.4 | 素材跨栏拖拽不再「卡住」+ 长按阈值 480ms + 长按菜单贴边自动夹进视口 | `scripts/accept-h5.ps1` 25 条（H5-24 菜单贴边） | 本节结论 20–22 |
 | H5.5 | 集中钉子改圆点（连接点同心、便签在圆点上边正中、默认无便签、新建时弹窗询问）+ 拖钉带动钉集 + 绕钉真旋转 + 钉子右栏成员增减 + 成员相对位置控件 + 长按阈值 100ms + 杀掉 ArkWeb 原生拖影（整图跟随 + 背景高斯模糊）+ 右栏开关挪到小地图左侧 | `scripts/accept-h5.ps1` 31 条（H5-25…H5-30） | 见下方「H5.5 结项」 |
+| H5.6 | 拖钉集时「钉子与图片相对位置」不再漂移（预览坐标压过推导坐标 + 松手清预览）+ 集中钉右栏去掉别名/地图坐标/评论 + 成员「相对 X / 相对 Y / 自身旋转」各占一行、滑块+数字输入 + 长按钉子「创建红线」→ 点另一钉子生成 4px 红色实线 | `scripts/accept-h5.ps1` 36 条（H5-31…H5-35） | 见下方「H5.6 结项」 |
 
 桌面回填（`main`）：`774fa62` 顶栏两处修正 + `.cb-btn{flex-shrink:0}`，已 cherry-pick 回 harmony（`4a6315c`）。
 
@@ -173,3 +174,51 @@
 powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
 ```
 → 31/31 PASS（报告落 `platforms/harmony/.tmp-esbuild/accept-h5.json`）。
+
+## H5.6 结项（相对位置恒定 / 集中钉右栏瘦身 / 滑块数值输入 / 创建红线）
+
+### 断言表（accept-h5.ps1 36 条，本次新增 5 条）
+
+| 编号 | 断言 | 实测 |
+| --- | --- | --- |
+| H5-31 | 拖动集中钉子后，钉子与成员图片的相对位置不变 | `keptPin=1`（拖前拖后成员相对偏移差 ≤3px） |
+| H5-32 | 拖动钉集成员时成员跟手、松手后相对位置不变 | `keptMem=1 follow=1` |
+| H5-33 | 集中钉右栏不再有别名 / 地图坐标 / 评论 | `alias=1 map=1 comment=1` |
+| H5-34 | 相对位置与旋转是「每行一个滑块 + 可输入数字」 | `rows=3 nums=3 slide=1` |
+| H5-35 | 长按钉子 → 创建红线 → 点另一钉子 → 略宽红色实心线 | `hint=1 red=1 redW=4` |
+
+### 相对位置漂移的真根因
+
+`Board.tsx` 渲染图片节点时用的是 `derived ?? dockPreview ?? dragPos`——
+`derived`（钉子位置 + clusterOffset 推导）优先级最高，于是拖动集内成员时：
+成员自己被推导坐标钉在原地，只有钉子与其它成员在动；松手后 `onNodeDragStop`
+按「拖动位置 − 推导位置」算出位移再 `moveClusterBy`，整集平移，成员位置跳一下，
+看起来就是「钉子与图片的相对位置变了」。
+
+修法三处：
+1. 渲染改成 `dockPreview ?? dragPos` 优先于 `derived`（预览态盖住推导坐标）；
+2. 拖成员时把**被拖的那张**也放进预览表（否则它仍被推导坐标钉住）；
+3. 松手时把拖拽用到的 `dragPos`（成员 + 钉子）与 `dockPreview` 全部清掉，
+   避免残留坐标和 Model 打架。
+
+### 红线
+
+- 走现成的 `addEdge`（`CaseEdge` 本来就有 `color/thickness/style`），不新增数据结构：
+  `relType:'related'`、`label:'红线'`、`style:'solid'`、`color:'#C0392B'`、`thickness:4`、`directed:false`。
+- 入口在右键/长按菜单：只有右键对象是 `clusterPin` 时才渲染「创建红线（点另一颗集中钉子连起来）」，
+  点了之后画布顶部出现提示条 `红线：点另一颗集中钉子连起来`，再点另一颗钉子即连线，点同一颗或点空白则取消。
+
+### 新增硬结论（续 28 起）
+
+33. 触屏上 React 受控 `input` 用「原型 setter + `input` 事件」可以写进去，但**必须写对元素**：
+   H5-34 第一版误写 `nums[2]`（自身旋转），旋转只转自己、中心不动，`slide` 恒为 0。
+34. 探针里先改过相对位置、再量「相对位置不变」，基准必须重抽（`pinAt0 = relOf()`），否则比的是旧基准。
+35. `splice-phase.mjs` 替换既有块时只能用自己写进去的 `// end-of-phase` 标记收尾；
+   退回老判据（`"  }",` + `}catch(e)`）会把后面的相位块一起吞掉（曾整段吃掉 phase 22）。
+
+### 一条可复现验收
+
+```
+powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
+```
+→ 36/36 PASS（报告落 `platforms/harmony/.tmp-esbuild/accept-h5.json`）。

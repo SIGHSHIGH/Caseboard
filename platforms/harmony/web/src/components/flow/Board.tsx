@@ -168,6 +168,10 @@ export function Board() {
   const multiSelect = useUiStore((s) => s.multiSelect);
   const toggleMultiSelect = useUiStore((s) => s.toggleMultiSelect);
   const enterMultiSelect = useUiStore((s) => s.enterMultiSelect);
+  const redLineFrom = useUiStore((s) => s.redLineFrom);
+  const startRedLine = useUiStore((s) => s.startRedLine);
+  const cancelRedLine = useUiStore((s) => s.cancelRedLine);
+  const pushNotice = useUiStore((s) => s.pushNotice);
   const applyImageSelection = useUiStore((s) => s.applyImageSelection);
   const selectEdge = useUiStore((s) => s.selectEdge);
   const selectGroup = useUiStore((s) => s.selectGroup);
@@ -341,10 +345,13 @@ export function Board() {
         ? model.nodes.find((item) => item.id === image.clusterId && item.type === 'clusterPin')
         : undefined;
       const derived = pin ? memberPosition(pin, image.clusterOffset ?? { x: 0, y: 0 }, { w: image.w, h: image.h }) : null;
+      // H5.6：拖拽预览要压过「钉集推导坐标」，否则拖成员时它自己被 derived 钉在原地、
+      // 只有钉子和其它成员在动，松手后相对位置就跳了。
+      const preview = dockPreview[image.id] ?? dragPos[image.id];
       return {
         id: image.id,
         type: 'freeImage',
-        position: derived ?? dockPreview[image.id] ?? dragPos[image.id] ?? { x: image.x, y: image.y },
+        position: preview ?? derived ?? { x: image.x, y: image.y },
         data: {
           image,
           asset: doc.assets.find((item) => item.id === image.assetId),
@@ -556,7 +563,9 @@ export function Board() {
           const peerDx = node.position.x - base.x;
           const peerDy = node.position.y - base.y;
           setDragPos(clusterPin.id, { x: clusterPin.x + peerDx, y: clusterPin.y + peerDy });
-          const next: Record<string, { x: number; y: number }> = {};
+          // H5.6：拖动中的这张图片也必须进预览表——否则它被「钉子位置 + 偏移」的推导坐标钉在原地，
+          // 只有钉子和同伴在跑，松手后整集平移，相对位置看起来就变了。
+          const next: Record<string, { x: number; y: number }> = { [member.id]: { x: node.position.x, y: node.position.y } };
           for (const peer of doc.imageNodes) {
             if (peer.clusterId !== clusterPin.id || peer.id === member.id) continue;
             const peerBase = memberPosition(clusterPin, peer.clusterOffset ?? { x: 0, y: 0 }, { w: peer.w, h: peer.h });
@@ -608,6 +617,8 @@ export function Board() {
           const dx = Math.round(node.position.x - pin.x);
           const dy = Math.round(node.position.y - pin.y);
           if (dx !== 0 || dy !== 0) dispatch(moveClusterBy(pin.id, dx, dy));
+          // H5.6：钉子自身的拖拽预览（dragPos）也要清，否则圆点会停在松手点
+          setDragPos(pin.id, null);
           return;
         }
       }
@@ -620,6 +631,8 @@ export function Board() {
             const dx = Math.round(node.position.x - base.x);
             const dy = Math.round(node.position.y - base.y);
             if (dx !== 0 || dy !== 0) dispatch(moveClusterBy(pin.id, dx, dy));
+            // H5.6：预览残留会让图片停在松手点、和推导坐标打架，两条分支都要清干净
+            setDragPos(node.id, null);
             setDragPos(pin.id, null);
             return;
           }
@@ -1263,6 +1276,36 @@ export function Board() {
         onEdgesDelete={onEdgesDelete}
         onNodeDrag={onNodeDrag}
         onNodeClick={(_event, node) => {
+          // H5.6：红线待连接态——点第二颗集中钉子就成线
+          if (redLineFrom) {
+            const target = model.nodes.find((item) => item.id === node.id);
+            if (target?.type === 'clusterPin') {
+              if (target.id === redLineFrom) {
+                cancelRedLine();
+                return;
+              }
+              dispatch(
+                addEdge({
+                  source: redLineFrom,
+                  target: target.id,
+                  sourceHandle: 'right',
+                  targetHandle: 'right',
+                  relType: 'related',
+                  label: '红线',
+                  style: 'solid',
+                  color: '#C0392B',
+                  thickness: 4,
+                  directed: false,
+                  confidence: 60,
+                }),
+              );
+              cancelRedLine();
+              pushNotice('已用红线连起两颗集中钉子');
+              return;
+            }
+            cancelRedLine();
+            return;
+          }
           // 长按进了多选态：点卡片是加选/减选（触屏没有 Ctrl，靠这条补上）
           if (multiSelect) {
             if (parseBoardNodeId(node.id).kind === 'node') toggleMultiSelect(node.id);
@@ -1377,6 +1420,26 @@ export function Board() {
               </button>
             ) : null}
             {ctxMenu.nodeId ? (
+              (() => {
+                const ctxNode = model.nodes.find((item) => item.id === ctxMenu.nodeId);
+                return ctxNode?.type === 'clusterPin' ? (
+                  <button
+                    type="button"
+                    className="cb-ctxmenu__item"
+                    role="menuitem"
+                    data-diag="ctx-redline"
+                    onClick={() => {
+                      const id = ctxMenu.nodeId;
+                      closeContextMenu();
+                      if (id) startRedLine(id);
+                    }}
+                  >
+                    创建红线（点另一颗集中钉子连起来）
+                  </button>
+                ) : null;
+              })()
+            ) : null}
+            {ctxMenu.nodeId ? (
               // 触屏上「长按卡片」被 ArkWeb 抢去弹系统/页面右键菜单（实测模拟器上长按卡片
               // 直接弹出这个菜单，BaseNode 自己的 480ms 计时器收不到完整的触摸序列），
               // 所以多选在这里给一个明确入口：长按 → 多选卡片 → 再点其它卡片加选。
@@ -1397,6 +1460,14 @@ export function Board() {
             <div className="cb-ctxmenu__hint">关系气泡是圆角矩形，可以把多条关系线汇到它上面</div>
           </div>
         </>
+      ) : null}
+      {redLineFrom ? (
+        <div className="cb-redline-hint" role="status" data-diag="redline-hint">
+          <span className="cb-redline-hint__text">红线：点另一颗集中钉子连起来</span>
+          <button type="button" className="cb-btn" onClick={cancelRedLine}>
+            取消
+          </button>
+        </div>
       ) : null}
     </div>
   );

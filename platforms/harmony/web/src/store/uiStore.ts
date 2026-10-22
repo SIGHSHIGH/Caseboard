@@ -52,6 +52,10 @@ interface UiStore {
   groupPick: { nodeIds: string[] } | null;
   requestGroupPick: () => void;
   consumeGroupPick: () => void;
+  /** H5.6：红线待连接态——记下第一颗集中钉子，点第二颗时连成一条粗红线 */
+  redLineFrom: string | null;
+  startRedLine: (pinId: string) => void;
+  cancelRedLine: () => void;
   /** H5.3：从「分组总览 / 组成员清单」直接挑实体加入某个组框 */
   nodePick: { groupId: string } | null;
   requestNodePick: (groupId: string) => void;
@@ -203,6 +207,9 @@ export const useUiStore = create<UiStore>((set, get) => ({
   groupPick: null,
   requestGroupPick: () => set((state) => ({ groupPick: { nodeIds: state.selectedNodeIds } })),
   consumeGroupPick: () => set({ groupPick: null }),
+  redLineFrom: null,
+  startRedLine: (pinId: string) => set({ redLineFrom: pinId }),
+  cancelRedLine: () => set({ redLineFrom: null }),
   nodePick: null,
   requestNodePick: (groupId) => set({ nodePick: { groupId } }),
   consumeNodePick: () => set({ nodePick: null }),

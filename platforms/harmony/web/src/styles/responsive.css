@@ -677,3 +677,91 @@
   line-height: 1;
   cursor: pointer;
 }
+
+/* H5.6：右栏「每个自由度一行」的滑块 + 数值输入 */
+.cb-field-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.cb-field-row__label {
+  font-size: 12px;
+  color: var(--cb-muted);
+  white-space: nowrap;
+}
+.cb-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cb-border);
+  outline: none;
+}
+.cb-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cb-accent);
+  border: 2px solid var(--cb-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.cb-range::-webkit-slider-thumb:active {
+  transform: scale(1.12);
+}
+.cb-input--num {
+  width: 64px;
+  text-align: right;
+  padding: 4px 6px;
+}
+@media (pointer: coarse) {
+  .cb-field-row {
+    grid-template-columns: 76px minmax(0, 1fr) 72px;
+  }
+  .cb-range {
+    height: 8px;
+  }
+  .cb-range::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  .cb-input--num {
+    width: 72px;
+    min-height: 40px;
+  }
+}
+
+/* H5.6：红线待连接提示条（点另一颗集中钉子完成） */
+.cb-redline-hint {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 92;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 999px;
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-accent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.cb-redline-hint__text {
+  font-size: 12px;
+  color: var(--cb-text);
+  white-space: nowrap;
+}
+.cb-redline-hint .cb-btn {
+  min-height: 30px;
+  padding: 0 12px;
+}
+@media (pointer: coarse) {
+  .cb-redline-hint .cb-btn {
+    min-height: 40px;
+  }
+}

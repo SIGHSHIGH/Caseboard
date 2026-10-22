@@ -322,6 +322,27 @@ export function nudgeClusterOffset(imageId: string, dx: number, dy: number): Com
 }
 
 /**
+ * H5.6：把成员相对钉子的偏移直接设成给定值（右栏滑块 / 数值输入用）。
+ * 与 nudgeClusterOffset 的区别是「绝对值」而不是「增量」，滑块拖动时不会累积误差。
+ */
+export function setClusterOffset(imageId: string, x: number, y: number): Command {
+  return {
+    label: '设定钉集内位置',
+    apply(draft) {
+      const image = draft.imageNodes.find((item) => item.id === imageId);
+      if (!image || !image.clusterId) return;
+      const pin = draft.nodes.find((item) => item.id === image.clusterId);
+      if (!pin) return;
+      const clamp = (value: number) => Math.max(-4000, Math.min(4000, Math.round(value)));
+      image.clusterOffset = { x: clamp(x), y: clamp(y) };
+      const position = memberPosition(pin, image.clusterOffset, { w: image.w, h: image.h });
+      image.x = position.x;
+      image.y = position.y;
+    },
+  };
+}
+
+/**
  * 移动整个钉集：钉子 + 全部成员一条命令，撤销时整集一起回退。
  * 「拖集内任一图片等价于拖动钉子本身」在 Board 里换算成这条命令。
  */
