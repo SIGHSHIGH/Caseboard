@@ -214,6 +214,64 @@ export function assignNodesToGroup(nodeIds: string[], groupId: string | null): C
   };
 }
 
+/**
+ * 把已经在画布上的卡片收进一个**已有**组框（H5-6）。
+ *
+ * 与 `assignNodesToGroup` 的区别：那个只写 `node.groupId`，卡片还留在原地，
+ * 于是「加入分组」后卡片可能飘在组框外面，看起来完全没进组。
+ * 这里把卡片按列摆进组框内容区（顶部留标题栏、四周留内边距），并且**只放大不缩小**组框，
+ * 覆盖住新成员——拖一张卡片进组框的用户预期就是「它在框里了」。
+ */
+export function addNodesToGroup(nodeIds: string[], groupId: string): Command {
+  const ids = nodeIds.filter((id, index) => nodeIds.indexOf(id) === index);
+  return {
+    label: `加入分组：${ids.length} 个卡片`,
+    apply(draft) {
+      const group = draft.groups.find((item) => item.id === groupId);
+      if (!group || ids.length === 0) return;
+      const moving = ids
+        .map((id) => draft.nodes.find((item) => item.id === id))
+        .filter((node): node is NonNullable<typeof node> => Boolean(node));
+      if (moving.length === 0) return;
+
+      const b = { ...group.bounds };
+      // 组框内边距与标题栏高度（与画布上组框的视觉留白保持一致）
+      const pad = 24;
+      const header = 40;
+      const gap = 16;
+      // 卡片高度是自适应的（BaseNode 由内容撑开），doc 里的 h 只是估计值，
+      // 太小时两张卡会视觉上叠在一起，所以给一个下限。
+      const heightOf = (node: (typeof moving)[number]) => Math.max(96, Math.round(node.h));
+      // 只放大组框，绝不把卡片收窄去迁就组框：卡片被压窄比框不够大更难看
+      const widest = Math.max(...moving.map((node) => node.w));
+
+      // 已有成员的最低点之下开始摆，避免压住框里原来的卡片
+      const stay = draft.nodes.filter((item) => item.groupId === groupId && !ids.includes(item.id));
+      let cursorY = b.y + header;
+      if (stay.length > 0) {
+        cursorY = Math.max(...stay.map((item) => item.y + Math.max(96, item.h))) + gap;
+      }
+
+      let right = Math.max(b.x + pad + widest, b.x + b.w - pad);
+      for (const node of moving) {
+        node.groupId = groupId;
+        node.x = Math.round(b.x + pad);
+        node.y = Math.round(cursorY);
+        cursorY += heightOf(node) + gap;
+        right = Math.max(right, node.x + node.w);
+      }
+
+      group.bounds = {
+        x: b.x,
+        y: b.y,
+        w: Math.max(b.w, Math.round(right + pad - b.x), MIN_GROUP_W),
+        h: Math.max(b.h, Math.round(cursorY - gap + pad - b.y), MIN_GROUP_H),
+      };
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
 /** 供 UI 判断某组能否作为另一组的上级（不能成环、不能是自己） */
 export function canParentGroup(doc: Parameters<typeof findGroup>[0], groupId: string, candidateParentId: string | null): boolean {
   if (!candidateParentId) return true;

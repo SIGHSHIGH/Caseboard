@@ -35,6 +35,7 @@ export const NODE_TYPE_META: Record<NodeType, { label: string; color: string; ic
   time: { label: '时间', color: '#5F6B7A', icon: '⏱' },
   note: { label: '便签', color: '#C8A02C', icon: '📝' },
   relation: { label: '关系', color: '#6E6862', icon: '◍' },
+  clusterPin: { label: '集中钉子', color: '#C0392B', icon: '📌' },
 };
 
 export const STATUS_META: Record<Status, { label: string; color: string }> = {

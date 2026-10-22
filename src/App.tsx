@@ -16,7 +16,9 @@ import { PresentationView } from './components/views/PresentationView';
 import { TimelineView } from './components/views/TimelineView';
 import { MapView } from './components/views/MapView';
 import { CommandPalette } from './components/panels/CommandPalette';
+import { GroupPickDialog } from './components/panels/GroupPickDialog';
 import { NewNodeDialog } from './components/panels/NewNodeDialog';
+import { NodePickerDialog } from './components/panels/NodePickerDialog';
 import { TagLinkDialog } from './components/panels/TagLinkDialog';
 import { usePaletteStore } from './store/paletteStore';
 import { ASSET_DND_TYPE } from './lib/dnd';
@@ -210,6 +212,8 @@ export default function App() {
       <ImportWizard />
       <NewNodeDialog />
       <TagLinkDialog />
+      <GroupPickDialog />
+      <NodePickerDialog />
       {viewMode === 'board' ? <CanvasLegend /> : null}
       {paletteOpen ? <CommandPalette /> : null}
     </div>

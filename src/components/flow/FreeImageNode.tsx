@@ -186,6 +186,60 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
   const offsetX = preview ? preview.x - image.x : 0;
   const offsetY = preview ? preview.y - image.y : 0;
 
+  /* 图钉自由落点（H5.3）：按下图钉后监听 window，指针移出图片也跟手；
+     松手时把 0–1 的比例坐标写回模型（限制在图片范围内）。 */
+  const pinFrameRef = useRef<DOMRect | null>(null);
+  const pinPosRef = useRef({ x: image.pinPos?.x ?? 0.5, y: image.pinPos?.y ?? 0.06 });
+  const [pinDragging, setPinDragging] = useState(false);
+  const [pinLive, setPinLive] = useState<{ x: number; y: number } | null>(null);
+
+  const startPinDrag = (event: React.PointerEvent<HTMLElement>) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const box = frameRef.current?.getBoundingClientRect();
+    if (!box || box.width === 0 || box.height === 0) return;
+    pinFrameRef.current = box;
+    pinPosRef.current = { x: image.pinPos?.x ?? 0.5, y: image.pinPos?.y ?? 0.06 };
+    setPinLive(pinPosRef.current);
+    setPinDragging(true);
+  };
+
+  useEffect(() => {
+    if (!pinDragging) return;
+    const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+    const move = (event: PointerEvent) => {
+      const box = pinFrameRef.current;
+      if (!box) return;
+      const next = {
+        x: clamp01((event.clientX - box.left) / box.width),
+        y: clamp01((event.clientY - box.top) / box.height),
+      };
+      pinPosRef.current = next;
+      setPinLive(next);
+    };
+    const finish = () => {
+      const next = pinPosRef.current;
+      pinFrameRef.current = null;
+      setPinDragging(false);
+      setPinLive(null);
+      dispatch(
+        updateImageNode(image.id, {
+          pinPos: { x: Math.round(next.x * 1000) / 1000, y: Math.round(next.y * 1000) / 1000 },
+        }),
+      );
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+    };
+  }, [pinDragging, dispatch, image.id]);
+
+  const pinPoint = pinLive ?? { x: image.pinPos?.x ?? 0.5, y: image.pinPos?.y ?? 0.06 };
+
   // M11（I6）：压缩成小圆点模式——只占 26×26，方便拖到卡片角吸附，双击圆点展开
   if (image.dotMode) {
     return (
@@ -223,11 +277,14 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
       <div
         ref={frameRef}
         className={`cb-free-image__frame cb-free-image__frame--${border}${isAi ? ' is-ai' : ''}`}
+        data-cluster-id={image.clusterId ?? ''}
         style={{
           width: rect.w,
           height: rect.h,
           transform: `translate(${offsetX}px, ${offsetY}px) rotate(${rotation}deg)`,
         }}
+        // 验收探针读角度用（绕钉旋转要能被机器断言，不能只靠肉眼）
+        data-rot={Math.round(rotation)}
         title={title}
       >
         {thumb ? (
@@ -273,7 +330,19 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
           );
         })}
 
-        {image.pinned ? <span className="cb-free-image__pin" title="图钉装饰" /> : null}
+        {image.pinned ? (
+          <span
+            className="cb-free-image__pin nodrag"
+            title="图钉（可以直接拖动改位置）"
+            style={{
+              left: `${pinPoint.x * 100}%`,
+              top: `${pinPoint.y * 100}%`,
+              background: image.pinColor ?? undefined,
+            }}
+            onPointerDown={startPinDrag}
+          />
+        ) : null}
+        {image.clusterId ? <span className="cb-free-image__cluster">钉集</span> : null}
         {image.linkedNodeId ? <span className="cb-free-image__linked">已吸附</span> : null}
         {isAi ? <span className="cb-free-image__ai">AI 生成 · 模拟图</span> : null}
 

@@ -1,5 +1,7 @@
 import type { CaseDoc, CaseNode, NodeComment, NodeType, Status } from '../types';
 import { blocksConfirmed } from '../lib/aiImage';
+import { CARD_LAYER_Z, reorderLayers, type LayerAction } from '../lib/imageNode';
+import { CLUSTER_PIN_H, CLUSTER_PIN_W } from '../lib/clusterPin';
 import { newId } from '../lib/id';
 import { NODE_TYPE_META } from '../lib/theme';
 import type { Command } from './types';
@@ -51,18 +53,31 @@ const DEFAULT_W = 208;
 export function addNode(input: AddNodeInput): Command {
   const type = input.type;
   const meta = NODE_TYPE_META[type];
+  // H5.3：集中钉子有自己的默认尺寸（钉在便利贴上的整体外框）与两个初始字段
+  const isPin = type === 'clusterPin';
   return {
     label: `新增节点：${input.title ?? meta.label}`,
     apply(draft) {
+      // H5.6.1：新节点和已有节点几乎重合时自动阶梯错开。
+      // 起因是两颗集中钉都建在画布中心、「红线」只有 0 像素长、藏在圆点底下看不见。
+      let x = input.x;
+      let y = input.y;
+      for (let guard = 0; guard < 12; guard++) {
+        const clash = draft.nodes.some((n) => Math.abs(n.x - x) < 12 && Math.abs(n.y - y) < 12);
+        if (!clash) break;
+        x += 32;
+        y += 32;
+      }
       const node: CaseNode = {
         id: input.id ?? newId(type),
         type,
         title: input.title ?? `新${meta.label}`,
-        x: input.x,
-        y: input.y,
-        w: input.w ?? DEFAULT_W,
-        h: input.h ?? 96,
-        fields: input.fields ?? {},
+        x,
+        y,
+        w: input.w ?? (isPin ? CLUSTER_PIN_W : DEFAULT_W),
+        h: input.h ?? (isPin ? CLUSTER_PIN_H : 96),
+        // H5.5：集中钉子默认**不带**便利贴（新建弹窗里问过），两个字段仍然预置好，随时可在右栏切「显示」
+        fields: input.fields ?? (isPin ? { 显示便利贴: '隐藏', 便利贴文字: '' } : {}),
         tags: input.tags ?? [],
         status: input.status ?? 'todo',
         confidence: input.confidence ?? 50,
@@ -112,8 +127,35 @@ export function moveNode(id: string, x: number, y: number): Command {
   };
 }
 
-/** 批量移动实体：多选后整体拖动只压一条历史（M4 人工验收 A4 修复）。 */
-export function moveNodes(positions: Array<{ id: string; x: number; y: number }>): Command {
+/**
+ * 卡片层级重排（H5.3）：所有节点类型都能像图片卡片一样置顶/上移/下移/置底。
+ *
+ * 卡片与自由图片共用同一套 zIndex 空间（见 lib/imageNode.ts 的 CARD_LAYER_Z），
+ * 所以这里直接复用图片那套 reorderLayers——缺省层级取 CARD_LAYER_Z。
+ * 集中钉子（clusterPin）不参与重排：它的层级由渲染层锁死在钉集之上。
+ */
+export function setNodeLayer(id: string, action: LayerAction): Command {
+  const label =
+    action === 'front' ? '卡片置顶' : action === 'back' ? '卡片置底' : action === 'up' ? '卡片上移一层' : '卡片下移一层';
+  return {
+    label,
+    apply(draft) {
+      const node = draft.nodes.find((item) => item.id === id);
+      if (!node || node.type === 'clusterPin') return;
+      const ordered = draft.nodes
+        .filter((item) => item.type !== 'clusterPin')
+        .map((item) => ({ id: item.id, zIndex: item.zIndex ?? CARD_LAYER_Z }));
+      const next = reorderLayers(ordered, id, action);
+      for (const [nodeId, zIndex] of Object.entries(next)) {
+        const target = draft.nodes.find((item) => item.id === nodeId);
+        if (target) target.zIndex = zIndex;
+      }
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
+/** 批量移动实体：多选后整体拖动只压一条历史（M4 人工验收 A4 修复）。 */export function moveNodes(positions: Array<{ id: string; x: number; y: number }>): Command {
   return {
     label: positions.length > 1 ? '移动 ' + positions.length + ' 个实体' : '移动节点',
     apply(draft) {

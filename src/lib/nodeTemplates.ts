@@ -153,6 +153,18 @@ export const NODE_TEMPLATES: Record<NodeType, NodeTemplate> = {
       { key: '说明', label: '说明', kind: 'textarea', wide: true, placeholder: '这个气泡代表哪一重关系，涉及哪些实体' },
     ],
   },
+  /* 集中钉子（H5.3）：一枚更大的图钉钉在一张规整的黄色便利贴上。
+     刻意只留两个字段——它是「占位用的钉子」，不是资料卡；
+     被它钉住的图片组成「钉集」，钉集对外永远置顶。 */
+  clusterPin: {
+    type: 'clusterPin',
+    label: '集中钉子',
+    hint: '把多张图片钉在一起：钉子带动整集移动，集内层级对外独立',
+    fields: [
+      { key: '显示便利贴', label: '显示黄色便利贴', kind: 'select', options: ['显示', '隐藏'] },
+      { key: '便利贴文字', label: '便利贴文字', kind: 'textarea', wide: true, placeholder: '写在黄色便利贴上的字，留空则只有便利贴' },
+    ],
+  },
 };
 
 export const NODE_TYPE_ORDER: NodeType[] = [
@@ -165,6 +177,7 @@ export const NODE_TYPE_ORDER: NodeType[] = [
   'time',
   'note',
   'relation',
+  'clusterPin',
 ];
 
 export function templateOf(type: NodeType): NodeTemplate {

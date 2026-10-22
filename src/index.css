@@ -1769,15 +1769,28 @@ button.cb-members__title--link:hover {
 
 .cb-free-image__pin {
   position: absolute;
-  top: -7px;
-  left: 50%;
   width: 14px;
   height: 14px;
   margin-left: -7px;
+  margin-top: -7px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #e06a5c, var(--cb-accent) 70%);
   box-shadow: 0 1px 3px rgba(43, 43, 43, 0.45);
+  cursor: grab;
 }
+
+.cb-free-image__cluster {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(43, 43, 43, 0.72);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
 
 .cb-free-image__linked {
   position: absolute;
@@ -5379,3 +5392,351 @@ button.cb-members__title--link:hover {
 .cb-form__row > .cb-btn {
   flex: 0 1 auto;
 }
+
+/* ===== 鸿蒙版回填（A1 集中钉子/钉集、A3 多选入组、A4 组框挑节点、A6 节点层级） ===== */
+.cb-multisel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-border-strong);
+  border-left: 3px solid var(--cb-accent);
+  border-radius: 6px;
+}
+
+.cb-multisel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cb-text);
+}
+
+.cb-multisel__hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--cb-muted);
+}
+
+.cb-multisel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 组框选择对话框（H5-6） */
+.cb-group-pick {
+  max-width: 460px;
+}
+
+.cb-group-pick__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.cb-group-pick__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--cb-bg);
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  color: var(--cb-text);
+  cursor: pointer;
+}
+
+.cb-group-pick__item:hover,
+.cb-group-pick__item:focus-visible {
+  border-color: var(--cb-accent);
+}
+
+.cb-group-pick__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.cb-group-pick__title {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cb-group-pick__meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+
+/* H5.5：集中钉子 = 一个圆点；便利贴挂在圆点正下方，上边中点对齐圆心，默认不显示 */
+.cb-pin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.cb-pin__dot {
+  /* 圆点尺寸写死、不随节点外框走：老文档里的钉子（H5.3 建的是 168×132）迁过来也不会被拉成椭圆 */
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--cb-accent);
+  border: 2px solid var(--cb-surface);
+  box-shadow: 0 2px 6px rgba(43, 43, 43, 0.45);
+  box-sizing: border-box;
+  /* 圆点小，手指按上去给个隐形外扩命中区，别让它难抓 */
+  position: relative;
+}
+
+/* 唯一的连接点：与圆点同心（Handle 默认贴在节点边上，这里强拉到圆心） */
+.cb-pin__handle {
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  width: 14px;
+  height: 14px;
+  min-width: 0;
+  min-height: 0;
+  border: 2px solid var(--cb-accent);
+  background: var(--cb-surface);
+  opacity: 0.9;
+}
+
+.cb-pin__paper {
+  position: absolute;
+  /* 钉子圆点钉在便利贴上边的正中：便签上沿与圆点下半部略重叠，视觉上像被钉住 */
+  top: calc(50% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  min-height: 84px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px;
+  border-radius: 4px;
+  background: #f6e58d;
+  border: 1px solid #e2cf72;
+  box-shadow: 0 6px 14px rgba(43, 43, 43, 0.18);
+  box-sizing: border-box;
+  overflow: hidden;
+  /* 便利贴只是给人看的装饰：不让它挡住下面卡片的点击/拖拽 */
+  pointer-events: none;
+}
+
+.cb-pin__paper-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #5a4a12;
+  text-align: center;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.cb-pin.is-selected .cb-pin__dot {
+  box-shadow: 0 0 0 3px var(--cb-accent-soft), 0 2px 6px rgba(43, 43, 43, 0.45);
+}
+
+.cb-pin.is-multi .cb-pin__dot {
+  outline: 2px dashed var(--cb-accent);
+  outline-offset: 3px;
+}
+
+/* H5.5：钉子的右栏里直接挑图片钉进来 */
+.cb-pinpick {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.cb-pinpick select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--cb-border);
+  background: var(--cb-surface);
+  color: var(--cb-text);
+  font: inherit;
+}
+
+/* 右栏：图钉颜色色板 */.cb-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cb-swatch {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(43, 43, 43, 0.18);
+  cursor: pointer;
+}
+
+.cb-swatch.is-active {
+  border-color: var(--cb-text);
+}
+
+/* 挑实体加入组框 */
+.cb-group-pick__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+
+.cb-group-pick__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cb-group-pick__dot {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #fff;
+}
+
+.cb-group-pick__title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cb-group-pick__type {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--cb-muted);
+}
+
+/* 分组总览每行的「＋」：直接挑实体加入 */
+.cb-gtree__add {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  background: var(--cb-surface);
+  color: var(--cb-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* H5.6：右栏「每个自由度一行」的滑块 + 数值输入 */
+.cb-field-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.cb-field-row__label {
+  font-size: 12px;
+  color: var(--cb-muted);
+  white-space: nowrap;
+}
+.cb-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cb-border);
+  outline: none;
+}
+.cb-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cb-accent);
+  border: 2px solid var(--cb-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.cb-range::-webkit-slider-thumb:active {
+  transform: scale(1.12);
+}
+.cb-input--num {
+  width: 64px;
+  text-align: right;
+  padding: 4px 6px;
+}
+
+/* H5.6：红线待连接提示条（点另一颗集中钉子完成） */
+.cb-redline-hint {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 92;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 999px;
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-accent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.cb-redline-hint__text {
+  font-size: 12px;
+  color: var(--cb-text);
+  white-space: nowrap;
+}
+.cb-redline-hint .cb-btn {
+  min-height: 30px;
+  padding: 0 12px;
+}
+
+/* H5.6.1：红线待连接态的全画布热区（钉子中心的手柄会吃掉 onNodeClick，
+   所以用一个透明层按坐标反查最近的钉子）。z-index 低于顶部提示条（92）。 */
+.cb-redline-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  cursor: crosshair;
+  background: transparent;
+}
+
+/* H5.6.3：集中钉子之间的红线——直线，不是关系线 */
+.cb-pinlinks { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.cb-pinlink { stroke: var(--cb-accent); stroke-width: 4; stroke-linecap: round; vector-effect: non-scaling-stroke; }

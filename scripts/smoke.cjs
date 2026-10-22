@@ -142,8 +142,12 @@ check('缺字段 JSON 会被拒绝', (() => {
 })());
 
 console.log('[8] M2-1 节点模板');
-check('9 类节点模板齐全（M17 加关系气泡）', NODE_TYPE_ORDER.length === 9 && NODE_TYPE_ORDER.every((t) => !!NODE_TEMPLATES[t]), NODE_TYPE_ORDER);
-check('每类模板至少 3 个字段', NODE_TYPE_ORDER.every((t) => NODE_TEMPLATES[t].fields.length >= 3), NODE_TYPE_ORDER.map((t) => NODE_TEMPLATES[t].fields.length));
+check('10 类节点模板齐全（H5.3 回填：加集中钉子）', NODE_TYPE_ORDER.length === 10 && NODE_TYPE_ORDER.every((t) => !!NODE_TEMPLATES[t]), NODE_TYPE_ORDER);
+check(
+  '每类模板至少 3 个字段（集中钉子例外：按需求只有 2 项）',
+  NODE_TYPE_ORDER.every((t) => (t === 'clusterPin' ? NODE_TEMPLATES[t].fields.length === 2 : NODE_TEMPLATES[t].fields.length >= 3)),
+  NODE_TYPE_ORDER.map((t) => NODE_TEMPLATES[t].fields.length),
+);
 check('证据模板含「证据种类」下拉', (NODE_TEMPLATES.evidence.fields.find((f) => f.key === '证据种类') || {}).kind === 'select');
 check('人物模板含前科长文本', (NODE_TEMPLATES.person.fields.find((f) => f.key === '前科记录') || {}).kind === 'textarea');
 const zhangFields = fieldEntriesOf('person', { 年龄: 42, 籍贯: '常州', 职业: '无业', 自定义备注: '有前科' });

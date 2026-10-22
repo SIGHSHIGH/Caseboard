@@ -1,8 +1,9 @@
 export type { Command } from './types';
-export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addComment, deleteComment } from './nodeCommands';
+export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addComment, deleteComment, setNodeLayer } from './nodeCommands';
 export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
+export { addPinLink, removePinLink, removePinLinksOf } from './pinLinkCommands';
 export { replaceDocument, updateSettings, setMapBackground, setCanvasSkin, setCanvasImage } from './docCommands';
 export {
   setTimelinePrefs,
@@ -30,6 +31,7 @@ export {
   moveGroup,
   resizeGroup,
   assignNodesToGroup,
+  addNodesToGroup,
   canParentGroup,
 } from './groupCommands';
 export type { AddGroupInput, GroupPatch } from './groupCommands';
@@ -54,6 +56,13 @@ export {
   deleteImageNodes,
   attachImageNode,
   applyImageLayout,
+  attachImageToCluster,
+  detachImageFromCluster,
+  rotateClusterMember,
+  nudgeClusterOffset,
+  setClusterOffset,
+  moveClusterBy,
+  syncClusterMembers,
 } from './imageNodeCommands';
 export type { AddImageNodeInput, ImageNodePatch } from './imageNodeCommands';
 export {

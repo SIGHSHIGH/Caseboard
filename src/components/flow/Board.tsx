@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -17,16 +17,22 @@ import {
   addGroup,
   addImageNode,
   addNode,
+  addPinLink,
   attachImageNode,
+  attachImageToCluster,
   addEdge,
   composeCommands,
   deleteGroup,
   deleteImageNode,
+  deleteNode,
+  detachImageFromCluster,
   moveGroup,
   moveImageNode,
   moveImageNodes,
+  moveClusterBy,
   moveNode,
   moveNodes,
+  removePinLinksOf,
 } from '../../commands';
 import { worldToScreen } from '../../lib/coords';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
@@ -64,6 +70,7 @@ import {
   type AlignGuide,
 } from '../../lib/imageNode';
 import { canvasGrid, DEFAULT_CANVAS, normalizeCanvasSkin, showsCanvasGrid } from '../../lib/canvasSkin';
+import { CLUSTER_PIN_Z, clusterMemberZ, findClusterTarget, memberPosition, offsetForCluster } from '../../lib/clusterPin';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodeStore } from '../../store/codeStore';
@@ -80,6 +87,7 @@ import { BezierEdge, type CaseFlowEdge } from './BezierEdge';
 import { FreeImageNode, type FreeImageFlowNode } from './FreeImageNode';
 import { GroupNode, type GroupFlowNode } from './GroupNode';
 import { GroupRectNode, type GroupRectFlowNode } from './GroupRectNode';
+import { PinLinkLayer } from './PinLinkLayer';
 import { LassoOverlay } from './LassoOverlay';
 
 /** 展开态分组在 React Flow 里的节点 id 前缀（与折叠超级节点区分） */
@@ -160,6 +168,13 @@ export function Board() {
   const requestNewNode = useUiStore((s) => s.requestNewNode);
   const setMode = useUiStore((s) => s.setMode);
   const setNodeSelection = useUiStore((s) => s.setNodeSelection);
+  const multiSelect = useUiStore((s) => s.multiSelect);
+  const toggleMultiSelect = useUiStore((s) => s.toggleMultiSelect);
+  const enterMultiSelect = useUiStore((s) => s.enterMultiSelect);
+  const redLineFrom = useUiStore((s) => s.redLineFrom);
+  const startRedLine = useUiStore((s) => s.startRedLine);
+  const cancelRedLine = useUiStore((s) => s.cancelRedLine);
+  const pushNotice = useUiStore((s) => s.pushNotice);
   const applyImageSelection = useUiStore((s) => s.applyImageSelection);
   const selectEdge = useUiStore((s) => s.selectEdge);
   const selectGroup = useUiStore((s) => s.selectGroup);
@@ -168,7 +183,7 @@ export function Board() {
   const setDragPos = useUiStore((s) => s.setDragPos);
   const focusRequest = useUiStore((s) => s.focusRequest);
   const graphLocked = useCodeStore((s) => s.state === 'error');
-  const { screenToFlowPosition, setCenter } = useReactFlow();
+  const { screenToFlowPosition, setCenter, setViewport, getViewport } = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
   // 代码侧请求居中时用 nonce 去重：文档后续变化不该把视口抢回去
   const lastFocusNonce = useRef(0);
@@ -181,6 +196,9 @@ export function Board() {
     flowY: number;
     nodeId: string | null;
   } | null>(null);
+  // H5.4：菜单在屏幕边缘会被切掉/压到栏外，实测后按视口夹一次位置
+  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
+  const [ctxPos, setCtxPos] = useState<{ left: number; top: number } | null>(null);
   // M11（J6）：卡片拖动时吸附在它上面的图片实时跟随（松手再落库，拖动过程中不再「等一等」
   const [dockPreview, setDockPreview] = useState<Record<string, { x: number; y: number }>>({});
   const themeMode = useThemeStore((s) => s.mode);
@@ -191,7 +209,12 @@ export function Board() {
   const canvasBg = canvasConfig.assetId ? doc.assets.find((item) => item.id === canvasConfig.assetId) : undefined;
   // M15（N7/N8/N12）：背景图以前用 useAssetThumb(id, 1600)，而缩略图只按 256/1024 两个
   // 固定尺寸生成，1600 永远查不到 ⇒ <img> 拿不到 src、背景图从不显示。
-  // 现在桌面端直接走原件 asset:// 地址，缩略图只在浏览器里兜底。
+  // 现在「素材落在沙箱文件里」的环境（桌面 Tauri / 鸿蒙 ArkWeb）直接走原件 URL，缩略图只在纯浏览器兜底。
+  // H5 修正：原来这里判 `isTauri()`，鸿蒙也跌进缩略图分支、assetFileUrl() 的鸿蒙实现从不执行。
+  // 现在改判 usesNativeAssetStore()（桌面 Tauri + 鸿蒙 ArkWeb 都算）。
+  // 注意：背景图空白**不是**自定义 scheme 的问题——scheme 里的图片能正常解码；
+  // 真凶是 Web 组件上的 .onlineImageAccess(false)，它把 ArkWeb 图片加载整体关掉
+  // （连 data: 图片都 complete=false）。该开关已在 Index.ets 摘除并写明原因。
   const canvasThumbUrl = useAssetThumb(canvasBg?.id, 1024);
   const canvasBgUrl = canvasBg && isTauri() ? assetFileUrl(canvasBg.path) : canvasThumbUrl;
 
@@ -312,28 +335,39 @@ export function Board() {
         },
         selected: selectedNodeIds.includes(node.id),
         // M10：卡片也进层级空间（固定 CARD_LAYER_Z），图片才能真的被压到卡片下面
-        zIndex: node.zIndex ?? CARD_LAYER_Z,
+        // H5.3：集中钉子固定压在钉集之上，不跟卡片抢层级
+        zIndex: node.type === 'clusterPin' ? CLUSTER_PIN_Z : (node.zIndex ?? CARD_LAYER_Z),
         style: { width: node.w },
         };
       });
 
     // 自由图片节点：不依附卡片，层级由自身 zIndex 决定（可压住/被压住）
-    const imageNodes: BoardFlowNode[] = doc.imageNodes.map((image) => ({
-      id: image.id,
-      type: 'freeImage',
-      position: dockPreview[image.id] ?? dragPos[image.id] ?? { x: image.x, y: image.y },
-      data: {
-        image,
-        asset: doc.assets.find((item) => item.id === image.assetId),
-        attachTarget: attachTargetId === image.id,
-      },
-      selected: selectedImageIds.includes(image.id),
-      zIndex: image.zIndex,
-      // M11（I6）：小圆点模式只占 26×26，方便拖到卡片角吸附
-      style: image.dotMode
-        ? { width: IMAGE_DOT_SIZE, height: IMAGE_DOT_SIZE }
-        : { width: image.w, height: image.h },
-    }));
+    // H5.3：钉集成员的坐标由「钉子位置 + clusterOffset」推导，层级也走集内独立空间（对外永远置顶）
+    const imageNodes: BoardFlowNode[] = doc.imageNodes.map((image) => {
+      const pin = image.clusterId
+        ? model.nodes.find((item) => item.id === image.clusterId && item.type === 'clusterPin')
+        : undefined;
+      const derived = pin ? memberPosition(pin, image.clusterOffset ?? { x: 0, y: 0 }, { w: image.w, h: image.h }) : null;
+      // H5.6：拖拽预览要压过「钉集推导坐标」，否则拖成员时它自己被 derived 钉在原地、
+      // 只有钉子和其它成员在动，松手后相对位置就跳了。
+      const preview = dockPreview[image.id] ?? dragPos[image.id];
+      return {
+        id: image.id,
+        type: 'freeImage',
+        position: preview ?? derived ?? { x: image.x, y: image.y },
+        data: {
+          image,
+          asset: doc.assets.find((item) => item.id === image.assetId),
+          attachTarget: attachTargetId === image.id,
+        },
+        selected: selectedImageIds.includes(image.id),
+        zIndex: pin ? clusterMemberZ(doc.imageNodes, pin.id, image.id) : image.zIndex,
+        // M11（I6）：小圆点模式只占 26×26，方便拖到卡片角吸附
+        style: image.dotMode
+          ? { width: IMAGE_DOT_SIZE, height: IMAGE_DOT_SIZE }
+          : { width: image.w, height: image.h },
+      };
+    });
 
     // 组矩形永远排在前面，保证 zIndex -1 生效时不被节点层打乱；
     // M11（I1）：整体按 zIndex 升序排一次，DOM 顺序与层级一致，点「上移/下移/置顶/置底」立刻看到效果
@@ -420,14 +454,22 @@ export function Board() {
         const dimmed =
           view.dimEdges.has(edge.id) || stateOf(edge.source).dim || stateOf(edge.target).dim;
         const auto = autoAnchors.get(edge.id);
+        // 集中钉子只有两个固定 handle（source: right / target: right-in），
+        // 自动锚点算出的 left/top/bottom 在它身上并不存在，React Flow 会算不出端点而直接不画线。
+        const isPin = (id: string): boolean =>
+          (doc.nodes.find((node) => node.id === id)?.type ?? '') === 'clusterPin';
         // M18：用户在右栏钉住连接点（autoAnchor === false）时只认存下来的 handle
         const pinned = edge.autoAnchor === false;
-        const sourceHandle = pinned
-          ? (edge.sourceHandle ?? auto?.source ?? 'right')
-          : (auto?.source ?? edge.sourceHandle ?? 'right');
-        const targetHandle = pinned
-          ? (edge.targetHandle ?? auto?.target ?? 'left')
-          : (auto?.target ?? edge.targetHandle ?? 'left');
+        const sourceHandle = isPin(edge.source)
+          ? (edge.sourceHandle ?? 'right')
+          : pinned
+            ? (edge.sourceHandle ?? auto?.source ?? 'right')
+            : (auto?.source ?? edge.sourceHandle ?? 'right');
+        const targetHandle = isPin(edge.target)
+          ? (edge.targetHandle ?? 'right-in')
+          : pinned
+            ? (edge.targetHandle ?? auto?.target ?? 'left')
+            : (auto?.target ?? edge.targetHandle ?? 'left');
         const curvature = edge.curvature ?? (pinned ? 0 : (auto?.curvature ?? 0));
         return {
           id: edge.id,
@@ -465,6 +507,14 @@ export function Board() {
       const store = useUiStore.getState();
       const imageIds = new Set(doc.imageNodes.map((item) => item.id));
       const images: Array<{ id: string; selected: boolean }> = [];
+      // 触屏多选态（H5-5）由 BaseNode 长按 + onNodeClick 的 toggle 独占：
+      // React Flow 的「点一张卡就把其它卡全取消选中」会和 toggle 互相打架（点第二张卡反而清空选择），
+      // 所以多选态下忽略卡片的 select 变更，只放图片的。
+      if (store.multiSelect) {
+        for (const change of selectChanges) if (imageIds.has(change.id)) images.push(change);
+        for (const change of images) applyImageSelection(change.id, change.selected);
+        return;
+      }
       let nodeIds = [...store.selectedNodeIds];
       for (const change of selectChanges) {
         if (imageIds.has(change.id)) {
@@ -500,6 +550,42 @@ export function Board() {
 
   const onNodeDrag = useCallback(
     (_event: unknown, node: BoardFlowNode) => {
+      // H5.3：钉集整体跟手——拖钉子时成员实时跟随；拖集内任一图片也等价于拖钉子
+      if (node.type === 'base' && node.data.node.type === 'clusterPin') {
+        const pin = node.data.node;
+        const dx = node.position.x - pin.x;
+        const dy = node.position.y - pin.y;
+        const next: Record<string, { x: number; y: number }> = {};
+        for (const member of doc.imageNodes) {
+          if (member.clusterId !== pin.id) continue;
+          const base = memberPosition(pin, member.clusterOffset ?? { x: 0, y: 0 }, { w: member.w, h: member.h });
+          next[member.id] = { x: base.x + dx, y: base.y + dy };
+        }
+        if (Object.keys(next).length > 0) setDockPreview(next);
+        return;
+      }
+      if (node.type === 'freeImage') {
+        const member = doc.imageNodes.find((item) => item.id === node.id);
+        const clusterPin = member?.clusterId
+          ? model.nodes.find((item) => item.id === member.clusterId && item.type === 'clusterPin')
+          : undefined;
+        if (member && clusterPin) {
+          const base = memberPosition(clusterPin, member.clusterOffset ?? { x: 0, y: 0 }, { w: member.w, h: member.h });
+          const peerDx = node.position.x - base.x;
+          const peerDy = node.position.y - base.y;
+          setDragPos(clusterPin.id, { x: clusterPin.x + peerDx, y: clusterPin.y + peerDy });
+          // H5.6：拖动中的这张图片也必须进预览表——否则它被「钉子位置 + 偏移」的推导坐标钉在原地，
+          // 只有钉子和同伴在跑，松手后整集平移，相对位置看起来就变了。
+          const next: Record<string, { x: number; y: number }> = { [member.id]: { x: node.position.x, y: node.position.y } };
+          for (const peer of doc.imageNodes) {
+            if (peer.clusterId !== clusterPin.id || peer.id === member.id) continue;
+            const peerBase = memberPosition(clusterPin, peer.clusterOffset ?? { x: 0, y: 0 }, { w: peer.w, h: peer.h });
+            next[peer.id] = { x: peerBase.x + peerDx, y: peerBase.y + peerDy };
+          }
+          if (Object.keys(next).length > 0) setDockPreview(next);
+          return;
+        }
+      }
       if (node.type === 'freeImage') {
         const image = doc.imageNodes.find((item) => item.id === node.id);
         if (!image) return;
@@ -535,6 +621,34 @@ export function Board() {
     (_event: unknown, node: BoardFlowNode) => {
       // 松手后位置由命令落库，实时预览清掉，避免和 Model 里的坐标打架
       setDockPreview({});
+      // H5.3：钉集只能整体移动——拖钉子本身或拖集内任意图片，都换算成整集平移
+      if (node.type === 'base') {
+        const pin = node.data.node;
+        if (pin.type === 'clusterPin') {
+          const dx = Math.round(node.position.x - pin.x);
+          const dy = Math.round(node.position.y - pin.y);
+          if (dx !== 0 || dy !== 0) dispatch(moveClusterBy(pin.id, dx, dy));
+          // H5.6：钉子自身的拖拽预览（dragPos）也要清，否则圆点会停在松手点
+          setDragPos(pin.id, null);
+          return;
+        }
+      }
+      if (node.type === 'freeImage') {
+        const dragged = doc.imageNodes.find((item) => item.id === node.id);
+        if (dragged?.clusterId) {
+          const pin = model.nodes.find((item) => item.id === dragged.clusterId && item.type === 'clusterPin');
+          if (pin) {
+            const base = memberPosition(pin, dragged.clusterOffset ?? { x: 0, y: 0 }, { w: dragged.w, h: dragged.h });
+            const dx = Math.round(node.position.x - base.x);
+            const dy = Math.round(node.position.y - base.y);
+            if (dx !== 0 || dy !== 0) dispatch(moveClusterBy(pin.id, dx, dy));
+            // H5.6：预览残留会让图片停在松手点、和推导坐标打架，两条分支都要清干净
+            setDragPos(node.id, null);
+            setDragPos(pin.id, null);
+            return;
+          }
+        }
+      }
       if (node.type === 'freeImage') {
         const image = doc.imageNodes.find((item) => item.id === node.id);
         if (image) {
@@ -560,6 +674,16 @@ export function Board() {
               };
             });
           const docking = findDockTarget(result.rect, model.nodes, DOCK_TOLERANCE);
+          // H5.3：拖到集中钉子上松手 → 收进钉集（之后只能整体移动、绕钉子转）
+          const imageCenter = { x: result.rect.x + image.w / 2, y: result.rect.y + image.h / 2 };
+          const clusterPin = image.clusterId ? null : findClusterTarget(model.nodes, imageCenter);
+          if (clusterPin) {
+            dispatch(attachImageToCluster(node.id, clusterPin.id, offsetForCluster(clusterPin, imageCenter)));
+            setDragPos(node.id, null);
+            setGuides([]);
+            setAttachTarget(null);
+            return;
+          }
           // 卡片被一起拖动时，吸在它们身上的图片由命令层随动，这里必须排除，否则位移两次
           const mixedNodeIds = new Set(mixedNodes.map((item) => item.id));
           const followIds = new Set(
@@ -694,6 +818,7 @@ export function Board() {
         requestNewNode({ x: Math.round(position.x), y: Math.round(position.y) });
         return;
       }
+      // clearSelection 同时会退出多选态（点空白即散选，符合触屏直觉）
       clearSelection();
     },
     [clearSelection, mode, requestNewNode, screenToFlowPosition],
@@ -762,6 +887,151 @@ export function Board() {
 
   const closeContextMenu = useCallback(() => setCtxMenu(null), []);
 
+  // H5.4：长按菜单贴着屏幕边缘时会有一半跑到视口外（平板右下角尤其明显），
+  // 所以渲染后量一次真实尺寸再夹进视口，留 8px 安全边。
+  // 两趟：第一趟用 offsetWidth/offsetHeight，第二趟在下一帧用真实 rect 再夹一次
+  //（文本换行 / 字体度量可能让最终宽度比首帧量到的大，实测在右下角会贴到屏幕边）。
+  useLayoutEffect(() => {
+    if (!ctxMenu) {
+      setCtxPos(null);
+      return;
+    }
+    const VIEWPORT_MARGIN = 8;
+    // ArkWeb 里 window.innerWidth 在首帧可能比布局视口大几个像素（实测 1448 对 1440），
+    // 只信 innerWidth 会让菜单贴死在屏幕右边，所以取两者较小值。
+    const viewport = () => ({
+      w: Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth),
+      h: Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight),
+    });
+    const clampTo = (x: number, y: number, width: number, height: number) => {
+      const view = viewport();
+      return {
+        left: Math.min(Math.max(x, VIEWPORT_MARGIN), Math.max(VIEWPORT_MARGIN, view.w - width - VIEWPORT_MARGIN)),
+        top: Math.min(Math.max(y, VIEWPORT_MARGIN), Math.max(VIEWPORT_MARGIN, view.h - height - VIEWPORT_MARGIN)),
+      };
+    };
+    const el = ctxMenuRef.current;
+    setCtxPos(clampTo(ctxMenu.clientX, ctxMenu.clientY, el?.offsetWidth ?? 240, el?.offsetHeight ?? 220));
+    const frame = window.requestAnimationFrame(() => {
+      const node = ctxMenuRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const next = clampTo(ctxMenu.clientX, ctxMenu.clientY, rect.width, rect.height);
+      setCtxPos((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
+    });
+    // 再来一趟：视口尺寸 / 文本换行稳定之后校正一次，避免首帧量到的是过渡尺寸。
+    const settle = window.setTimeout(() => {
+      const node = ctxMenuRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const next = clampTo(ctxMenu.clientX, ctxMenu.clientY, rect.width, rect.height);
+      setCtxPos((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
+    }, 260);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+    };
+  }, [ctxMenu]);
+
+  /* ---------------------------------------------------------------------------
+     H3：拖拽惯性。
+     平板上「一划到底就立刻停」很别扭——手指松开后视口应该按末段速度再滑一小段，
+     然后指数衰减停下（原生地图的手感）。只在触控模式下启用：
+     鼠标手势保持原样，桌面版不会出现「松手还在飘」的怪手感。
+
+     三个坑：
+       1) 惯性是靠 setViewport 驱动的，而 setViewport 又会回调 onMove，
+          所以必须能区分「用户划的」和「我们自己推的」，否则第一帧就把自己停掉；
+          这里用 appliedRef 记住上一帧推到的位置，位置对得上就跳过采样。
+       2) 速度只能用最近 120ms 的样本算：整段拖拽的平均速度会把末速算低，甩不起来。
+       3) τ 用指数衰减积分（v·τ·(1−e^{−Δt/τ})），这样帧率高低不影响滑行距离。
+     --------------------------------------------------------------------------- */
+  const inertiaRef = useRef<{ raf: number; vx: number; vy: number } | null>(null);
+  const panSamplesRef = useRef<Array<{ t: number; x: number; y: number }>>([]);
+  const appliedRef = useRef<{ x: number; y: number } | null>(null);
+
+  const stopInertia = useCallback(() => {
+    if (inertiaRef.current) {
+      cancelAnimationFrame(inertiaRef.current.raf);
+      inertiaRef.current = null;
+    }
+    appliedRef.current = null;
+  }, []);
+
+  useEffect(() => stopInertia, [stopInertia]);
+
+  const onBoardMoveStart = useCallback(() => {
+    panSamplesRef.current = [];
+    stopInertia();
+  }, [stopInertia]);
+
+  const onBoardMove = useCallback(
+    (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      const applied = appliedRef.current;
+      // 自己推的那一帧：位置对得上就当作噪声，别停惯性
+      if (applied && Math.abs(applied.x - viewport.x) < 0.6 && Math.abs(applied.y - viewport.y) < 0.6) return;
+      appliedRef.current = null;
+      if (inertiaRef.current) stopInertia();
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const samples = panSamplesRef.current;
+      samples.push({ t: now, x: viewport.x, y: viewport.y });
+      while (samples.length > 8) samples.shift();
+    },
+    [stopInertia],
+  );
+
+  const onBoardMoveEnd = useCallback(
+    (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      const samples = panSamplesRef.current;
+      panSamplesRef.current = [];
+      // 只给触控手势惯性；鼠标/触控笔保持桌面手感
+      if (typeof document !== 'undefined' && document.documentElement.dataset.input !== 'touch') return;
+      if (samples.length < 2) return;
+      const last = samples[samples.length - 1];
+      const recent = samples.filter((s) => last.t - s.t <= 120);
+      if (recent.length < 2) return;
+      const first = recent[0];
+      const dt = last.t - first.t;
+      if (dt <= 0) return;
+      let vx = (last.x - first.x) / dt;
+      let vy = (last.y - first.y) / dt;
+      const speed = Math.hypot(vx, vy);
+      const TAU = 190; // ms，速度衰减时间常数
+      if (speed < 0.12) return; // 慢慢挪一下不该起飞
+      if (speed > 3.2) {
+        // 超快多数是拖拽抖动或误触，压到上限，别让整块画布飞出去
+        const k = 3.2 / speed;
+        vx *= k;
+        vy *= k;
+      }
+      void viewport;
+      let prev = last.t;
+      const step = (now: number) => {
+        const cur = inertiaRef.current;
+        if (!cur) return;
+        const elapsed = Math.max(1, Math.min(48, now - prev));
+        prev = now;
+        const decay = Math.exp(-elapsed / TAU);
+        const dx = cur.vx * TAU * (1 - decay);
+        const dy = cur.vy * TAU * (1 - decay);
+        cur.vx *= decay;
+        cur.vy *= decay;
+        const current = getViewport();
+        const next = { x: current.x + dx, y: current.y + dy, zoom: current.zoom };
+        appliedRef.current = { x: next.x, y: next.y };
+        void setViewport(next, { duration: 0 });
+        if (Math.hypot(cur.vx, cur.vy) < 0.004) {
+          stopInertia();
+          return;
+        }
+        cur.raf = requestAnimationFrame(step);
+      };
+      inertiaRef.current = { raf: 0, vx, vy };
+      inertiaRef.current.raf = requestAnimationFrame(step);
+    },
+    [getViewport, setViewport, stopInertia],
+  );
+
   /**
    * 容器级右键兜底：与双击一样，React Flow 的 onPaneContextMenu 依赖完整的指针序列，
    * 自动化环境或部分输入设备只给到 contextmenu 事件，这里在画布容器上再判一次。
@@ -819,33 +1089,48 @@ export function Board() {
     setCtxMenu(null);
   }, [ctxMenu, requestNewNode]);
 
+  // 素材落点 → 自由图片节点（桌面走 HTML5 拖放的 onDrop，触屏走 uiStore 的落点请求，共用此处）
+  const dropAssetOnCanvas = useCallback(
+    (assetId: string, clientX: number, clientY: number) => {
+      const asset = doc.assets.find((item) => item.id === assetId);
+      if (!asset) return;
+      const size = fitImageSize(asset.width, asset.height);
+      const point = screenToFlowPosition({ x: clientX, y: clientY });
+      const id = newId('img');
+      const x = Math.round(point.x - size.w / 2);
+      const y = Math.round(point.y - size.h / 2);
+      dispatch(
+        addImageNode({
+          id,
+          assetId,
+          x,
+          y,
+          w: size.w,
+          h: size.h,
+          siblings: doc.imageNodes,
+        }),
+      );
+      // H5.3：素材直接落在集中钉子上 → 建好即入钉集（右栏提示的「拖到钉子本体上松手」就是这条）
+      const center = { x: x + size.w / 2, y: y + size.h / 2 };
+      const pin = findClusterTarget(model.nodes, center);
+      if (pin) dispatch(attachImageToCluster(id, pin.id, offsetForCluster(pin, center)));
+      selectImage(id);
+    },
+    [dispatch, doc.assets, doc.imageNodes, model.nodes, screenToFlowPosition, selectImage],
+  );
+
   // 素材库拖入画布 → 在落点中心生成自由图片节点
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       const assetId = event.dataTransfer.getData(ASSET_DND_TYPE);
       if (!assetId) return;
       event.preventDefault();
-      const asset = doc.assets.find((item) => item.id === assetId);
-      if (!asset) return;
-      const size = fitImageSize(asset.width, asset.height);
-      const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      const id = newId('img');
-      dispatch(
-        addImageNode({
-          id,
-          assetId,
-          x: Math.round(point.x - size.w / 2),
-          y: Math.round(point.y - size.h / 2),
-          w: size.w,
-          h: size.h,
-          siblings: doc.imageNodes,
-        }),
-      );
-      selectImage(id);
+      dropAssetOnCanvas(assetId, event.clientX, event.clientY);
     },
-    [dispatch, doc.assets, doc.imageNodes, screenToFlowPosition, selectImage],
+    [dropAssetOnCanvas],
   );
 
+  // H5：触屏长按起拖后的落点请求（手指不会产生 HTML5 dragstart，改由 AssetTile 上报坐标）
   const onDragOver = useCallback((event: React.DragEvent) => {
     if (event.dataTransfer.types.includes(ASSET_DND_TYPE)) {
       event.preventDefault();
@@ -860,6 +1145,12 @@ export function Board() {
     const center = rect
       ? screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
       : { x: 320, y: 240 };
+    // 集中钉子要先问「要不要便利贴」，所以借弹窗创建；其余类型仍然一键落在画布中心
+    if (addRequest === 'clusterPin') {
+      requestNewNode({ x: Math.round(center.x), y: Math.round(center.y) }, 'clusterPin');
+      consumeAdd();
+      return;
+    }
     const jitter = Math.round((Math.random() - 0.5) * 48);
     dispatch(
       addNode({
@@ -869,7 +1160,7 @@ export function Board() {
       }),
     );
     consumeAdd();
-  }, [addRequest, consumeAdd, dispatch, screenToFlowPosition]);
+  }, [addRequest, consumeAdd, dispatch, screenToFlowPosition, requestNewNode]);
 
   // 代码侧点击声明 → 画布居中到对应实体（同一 nonce 只消费一次）
   useEffect(() => {
@@ -958,6 +1249,53 @@ export function Board() {
     [dispatch, doc.groups.length, model.nodes, selectGroup, setMode],
   );
 
+  /** H5.6.1：红线待连接态下用一块全画布热区接管下一次点击。
+      钉子中心那颗连线手柄会吃掉 onNodeClick（实测点第二颗钉子只是发起了一次拖线，
+      连不成红线），所以这里按坐标反查最近的钉子，不依赖手柄命中。 */
+  const finishRedLineAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const from = redLineFrom;
+      if (!from) return;
+      const point = screenToFlowPosition({ x: clientX, y: clientY });
+      let bestId = '';
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const item of model.nodes) {
+        if (item.type !== 'clusterPin') continue;
+        // 起点那颗不参与「最近钉子」竞争：脏案卷里多颗钉子常常叠得很近，
+        // 若把起点算进来，点第二颗也会被判成「又点了自己」而取消。
+        if (item.id === from) continue;
+        const dx = item.x + item.w / 2 - point.x;
+        const dy = item.y + item.h / 2 - point.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = item.id;
+        }
+      }
+      // 命中半径按「屏幕像素」算，不能按世界坐标：画布缩到 0.2 倍时，
+      // 两颗钉子屏幕上只隔 140px，世界里却隔了 700 单位，用世界单位当阈值会永远点不中。
+      const zoom = Math.max(0.05, getViewport().zoom);
+      const hitFlow = 90 / zoom;
+      if (!bestId || bestDist > hitFlow) {
+        // 探针诊断用：点偏了/没点到钉子时能看出是哪一种
+        console.log(`[diag] redline tap x=${Math.round(clientX)} y=${Math.round(clientY)} best=${bestId} dist=${Math.round(bestDist)} hit=${Math.round(hitFlow)} zoom=${zoom.toFixed(2)} from=${from}`);
+        cancelRedLine();
+        return;
+      }
+      console.log(`[diag] redline connect from=${from} to=${bestId} dist=${Math.round(bestDist)}`);
+      // H5.6.3：红线不再是一条关系线，单独记进 doc.pinLinks，由 PinLinkLayer 画直线
+      dispatch(addPinLink(from, bestId));
+      cancelRedLine();
+      pushNotice('已用红线连起两颗集中钉子');
+      {
+        // 探针诊断：确认红线进了文档，且关系线数量没有被它污染
+        const docNow = useDocStore.getState().doc;
+        console.log(`[diag] redline added links=${docNow?.pinLinks?.length ?? -1} edges=${docNow?.edges.length ?? -1}`);
+      }
+    },
+    [cancelRedLine, dispatch, model.nodes, pushNotice, redLineFrom, screenToFlowPosition],
+  );
+
   return (
     <div
       className={'cb-canvas cb-canvas--' + canvasSkin}
@@ -988,6 +1326,41 @@ export function Board() {
         onEdgesDelete={onEdgesDelete}
         onNodeDrag={onNodeDrag}
         onNodeClick={(_event, node) => {
+          // H5.6：红线待连接态——点第二颗集中钉子就成线
+          if (redLineFrom) {
+            const target = model.nodes.find((item) => item.id === node.id);
+            if (target?.type === 'clusterPin') {
+              if (target.id === redLineFrom) {
+                cancelRedLine();
+                return;
+              }
+              dispatch(
+                addEdge({
+                  source: redLineFrom,
+                  target: target.id,
+                  sourceHandle: 'right',
+                  targetHandle: 'right-in',
+                  relType: 'related',
+                  label: '红线',
+                  style: 'solid',
+                  color: '#C0392B',
+                  thickness: 4,
+                  directed: false,
+                  confidence: 60,
+                }),
+              );
+              cancelRedLine();
+              pushNotice('已用红线连起两颗集中钉子');
+              return;
+            }
+            cancelRedLine();
+            return;
+          }
+          // 长按进了多选态：点卡片是加选/减选（触屏没有 Ctrl，靠这条补上）
+          if (multiSelect) {
+            if (parseBoardNodeId(node.id).kind === 'node') toggleMultiSelect(node.id);
+            return;
+          }
           // 卡片与图片的选中态由 select 变更驱动（支持框选与 Ctrl 多选），这里只补组
           const group = groupOfBoardNode(node);
           if (group) selectGroup(group.id);
@@ -999,6 +1372,9 @@ export function Board() {
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
+        onMoveStart={onBoardMoveStart}
+        onMove={onBoardMove}
+        onMoveEnd={onBoardMoveEnd}
         onConnect={onConnect}
         connectionMode={ConnectionMode.Loose}
         // A5：双击缩放交给我们自己的「新建节点」对话框，画布双击不再变焦
@@ -1008,6 +1384,9 @@ export function Board() {
         panOnDrag={[1, 2]}
         panActivationKeyCode="Space"
         multiSelectionKeyCode={['Meta', 'Control']}
+        // H5.3：钉集要求「对外永远置顶」，层级只能由我们算——关掉 React Flow 选中自动抬层
+        elevateNodesOnSelect={false}
+        elevateEdgesOnSelect={false}
         nodesDraggable={!graphLocked}
         nodesConnectable={!graphLocked}
         nodesFocusable={!graphLocked}
@@ -1028,6 +1407,8 @@ export function Board() {
         {showsCanvasGrid(canvasSkin) ? (
           <Background id="cb-grid" variant={BackgroundVariant.Lines} gap={80} size={0.6} color={grid.line} />
         ) : null}
+        {/* H5.6.3：集中钉子之间的红线——画直线，不是关系线 */}
+        <PinLinkLayer links={doc.pinLinks ?? []} nodes={doc.nodes} />
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
           pannable
@@ -1063,10 +1444,11 @@ export function Board() {
         <>
           <div className="cb-ctxmenu__mask" onPointerDown={closeContextMenu} onContextMenu={(event) => event.preventDefault()} />
           <div
+            ref={ctxMenuRef}
             className="cb-ctxmenu"
             role="menu"
             aria-label="画布右键菜单"
-            style={{ left: ctxMenu.clientX, top: ctxMenu.clientY }}
+            style={{ left: ctxPos?.left ?? ctxMenu.clientX, top: ctxPos?.top ?? ctxMenu.clientY }}
           >
             <button type="button" className="cb-ctxmenu__item" role="menuitem" onClick={createPlainNode}>
               新建节点…
@@ -1089,9 +1471,91 @@ export function Board() {
                 新建关系气泡并连到此实体
               </button>
             ) : null}
+            {ctxMenu.nodeId ? (
+              (() => {
+                const ctxNode = model.nodes.find((item) => item.id === ctxMenu.nodeId);
+                return ctxNode?.type === 'clusterPin' ? (
+                  <button
+                    type="button"
+                    className="cb-ctxmenu__item"
+                    role="menuitem"
+                    data-diag="ctx-redline"
+                    onClick={() => {
+                      const id = ctxMenu.nodeId;
+                      closeContextMenu();
+                      if (id) startRedLine(id);
+                    }}
+                  >
+                    创建红线（点另一颗集中钉子连起来）
+                  </button>
+                ) : null;
+              })()
+            ) : null}
+            {ctxMenu.nodeId ? (
+              // 触屏上「长按卡片」被 ArkWeb 抢去弹系统/页面右键菜单（实测模拟器上长按卡片
+              // 直接弹出这个菜单，BaseNode 自己的 480ms 计时器收不到完整的触摸序列），
+              // 所以多选在这里给一个明确入口：长按 → 多选卡片 → 再点其它卡片加选。
+              <button
+                type="button"
+                className="cb-ctxmenu__item"
+                role="menuitem"
+                data-diag="ctx-multiselect"
+                onClick={() => {
+                  const id = ctxMenu.nodeId;
+                  closeContextMenu();
+                  if (id) enterMultiSelect(id);
+                }}
+              >
+                多选卡片（选多张一起加进组框）
+              </button>
+            ) : null}
+            {ctxMenu.nodeId ? (
+              <button
+                type="button"
+                className="cb-ctxmenu__item cb-ctxmenu__item--danger"
+                role="menuitem"
+                data-diag="ctx-delete"
+                onClick={() => {
+                  const id = ctxMenu.nodeId;
+                  closeContextMenu();
+                  if (!id) return;
+                  const target = model.nodes.find((item) => item.id === id);
+                  if (target?.type === 'clusterPin') {
+                    // 删钉子前先把钉集成员放出来，免得留下指向已删钉子的悬空 clusterId
+                    for (const image of doc.imageNodes.filter((item) => item.clusterId === id)) {
+                      dispatch(detachImageFromCluster(image.id));
+                    }
+                    // 红线不是关系线，deleteNode 不会连带清理，这里单独收掉
+                    dispatch(removePinLinksOf(id));
+                  }
+                  dispatch(deleteNode(id));
+                  pushNotice(`已删除「${target?.title ?? '该节点'}」及其关系线（可撤销）`);
+                }}
+              >
+                删除此节点（连带其关系线，可撤销）
+              </button>
+            ) : null}
             <div className="cb-ctxmenu__hint">关系气泡是圆角矩形，可以把多条关系线汇到它上面</div>
           </div>
         </>
+      ) : null}
+      {redLineFrom ? (
+        <div
+          className="cb-redline-layer"
+          data-diag="redline-layer"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            finishRedLineAt(event.clientX, event.clientY);
+          }}
+        />
+      ) : null}
+      {redLineFrom ? (
+        <div className="cb-redline-hint" role="status" data-diag="redline-hint">
+          <span className="cb-redline-hint__text">红线：点另一颗集中钉子连起来</span>
+          <button type="button" className="cb-btn" onClick={cancelRedLine}>
+            取消
+          </button>
+        </div>
       ) : null}
     </div>
   );

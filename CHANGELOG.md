@@ -2,6 +2,37 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] · 鸿蒙 H5.x 功能回填（集中钉子 / 钉集 / 红线 / 多选入组 / 组框挑节点 / 节点层级）
+
+### 来源
+鸿蒙版 `platforms/harmony/web/src` 里为了触屏做的那批功能，按需求回填到桌面版；
+**剔除了所有触屏专属实现**（见下「没有回填的东西」）。
+
+### 回填了什么
+1. **A1 集中钉子 + 钉集**：`types/index.ts` 新增 `NodeType: 'clusterPin'`、`ImageNode.pinPos/pinColor/clusterId/clusterOffset`；
+   新增 `lib/clusterPin.ts`（几何与层级常量、`memberPosition`/`rotateOffset`/`clusterMemberZ` 等纯函数）、
+   `commands/imageNodeCommands.ts` 新增 `attachImageToCluster`/`detachImageFromCluster`/`rotateClusterMember`/`moveClusterBy`/`syncClusterMembers`/`setClusterOffset`。
+   钉子渲染成圆点 + 可选黄色便签，成员图随钉子走、只能绕钉子转，集内层级对外永远置顶（`CLUSTER_Z_BASE=1000`、`CLUSTER_PIN_Z=1600`）。
+2. **A2 红线**：不是关系线——新增 `CaseDoc.pinLinks` 与 `commands/pinLinkCommands.ts`（`addPinLink`/`removePinLink`/`removePinLinksOf`），
+   画在 `components/flow/PinLinkLayer.tsx` 的 `ViewportPortal` 里（4px 实线、无箭头、无标签、不进关系数）。
+3. **A3 长按多选 + 加入组框**：`store/uiStore.ts` 新增 `multiSelect`/`enterMultiSelect`/`toggleMultiSelect`/`exitMultiSelect`、
+   `groupPick` 通道；`commands/groupCommands.ts` 新增 `addNodesToGroup`（卡片竖排塞进框内、只把框放大不缩卡片）；
+   新面板 `components/panels/GroupPickDialog.tsx`；右栏「已选 N 个卡片」横幅 +「加入组框…」。
+   **桌面没有长按**：入口改成右键菜单里的「多选卡片（选多张一起加进组框）」。
+4. **A4 组框挑节点**：新面板 `components/panels/NodePickerDialog.tsx`，`GroupTree` 每组一个「＋」按钮、右栏组表单一个「选择实体加入…」。
+5. **A6 全节点层级控件**：`commands/nodeCommands.ts` 新增 `setNodeLayer`（置顶/上移/下移/置底，集中钉子豁免），右栏每个节点表单都有这一组按钮。
+
+### 没有回填的东西（触屏专属，故意不同步）
+- `AssetDragGhost` + `uiStore.assetDrag/assetDrop`（长按拖素材进画布的跟手影通道）；
+- `AssetLibrary` 的长按计时器与 `LONG_PRESS_MS`、`BaseNode` 的触屏长按多选（桌面改用右键菜单）；
+- `styles/responsive.css` 整份（触控分档/`pointer: coarse` 媒体查询），只把与功能相关的样式搬进 `src/index.css`；
+- `SystemDialogs`（应用内确认框/Toast，属 A5，本次不在范围内）、`OrientationGate`、`data-input` 触屏探测。
+
+### 验收
+- `pnpm typecheck` 0 错误；`pnpm smoke` 全部通过（节点模板断言从「9 类 / 每类 ≥3 字段」更新为「10 类 / 集中钉子按需求只有 2 字段」）；
+- `pnpm ui-smoke` 全部通过；
+- `pnpm build` 在本机被 esbuild 的临时文件删除权限挡住（`Access is denied`），未能出包，需在正常权限的机器上补一次。
+
 ## [未发布] · 顶栏收容修正（从鸿蒙移植回填）
 
 ### 症状

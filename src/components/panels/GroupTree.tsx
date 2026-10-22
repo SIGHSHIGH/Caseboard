@@ -17,6 +17,7 @@ function GroupRow({ group, depth }: { group: Group; depth: number }) {
   const selectNode = useUiStore((s) => s.selectNode);
   const focusEntity = useUiStore((s) => s.focusEntity);
   const selectedGroupId = useUiStore((s) => s.selectedGroupId);
+  const requestNodePick = useUiStore((s) => s.requestNodePick);
   const [open, setOpen] = useState(true);
 
   const children = doc.groups.filter((item) => item.parentId === group.id);
@@ -60,6 +61,15 @@ function GroupRow({ group, depth }: { group: Group; depth: number }) {
           onClick={() => dispatch(toggleGroupCollapsed(group.id))}
         >
           {group.collapsed ? '展开' : '折叠'}
+        </button>
+        {/* H5.3：分组总览直接挑实体加入，不用先多选再拖 */}
+        <button
+          type="button"
+          className="cb-gtree__add"
+          title="直接选择实体加入这个组框"
+          onClick={() => requestNodePick(group.id)}
+        >
+          ＋
         </button>
       </div>
 

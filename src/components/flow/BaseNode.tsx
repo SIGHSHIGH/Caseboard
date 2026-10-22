@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { updateNode } from '../../commands';
+import { CLUSTER_PIN_H, CLUSTER_PIN_W, stickyText, stickyVisible } from '../../lib/clusterPin';
 import { NODE_TYPE_META, STATUS_META } from '../../lib/theme';
 import { fieldEntriesOf } from '../../lib/nodeTemplates';
 import type { EdgeAnchor } from '../../lib/edgeCurve';
@@ -31,6 +32,7 @@ const SIDES: Array<{ id: EdgeAnchor; position: Position; left?: string }> = [
   { id: 'br', position: Position.Bottom, left: '100%' },
 ];
 
+
 function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const node = data.node;
   const attachTarget = data.attachTarget === true;
@@ -40,6 +42,7 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
   const status = STATUS_META[node.status];
   const dispatch = useDocStore((s) => s.dispatch);
   const setHoverNode = useUiStore((s) => s.setHoverNode);
+  const multiSelect = useUiStore((s) => s.multiSelect);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.title);
@@ -63,16 +66,50 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
     setEditing(false);
   };
 
+  /* 集中钉子（H5.3 首版 → H5.5 改进）：节点本体就是一个圆点，
+     关系线连接点与圆点同心（只有一个，画在圆点中心）；
+     黄色便利贴是挂在圆点正下方（上边中点对齐圆点）的装饰层，默认不显示，可显隐+写字。 */
+  if (node.type === 'clusterPin') {
+    const paperVisible = stickyVisible(node);
+    const text = stickyText(node);
+    return (
+      <div
+        className={`cb-pin${selected ? ' is-selected' : ''}${multiSelect && selected ? ' is-multi' : ''}`}
+        style={{ width: CLUSTER_PIN_W, height: CLUSTER_PIN_H }}
+        onMouseEnter={() => setHoverNode(node.id)}
+        onMouseLeave={() => setHoverNode(null)}
+        data-type="clusterPin"
+      >
+        {/* 唯一连接点：与圆点同心（Position.Top + CSS 拉到圆心）。
+            H5.6.1：source 负责从这里拖出连线，target 只做几何锚点、不接收指针事件——
+            缺了 target 侧时，以钉子为终点的线（例如「红线」）算不出终点，React Flow 直接不画。 */}
+        <Handle
+          id="right-in"
+          type="target"
+          position={Position.Top}
+          className="cb-handle cb-handle--target cb-pin__handle"
+          isConnectable={false}
+        />
+        <Handle id="right" type="source" position={Position.Top} className="cb-handle cb-pin__handle" />
+        <div className="cb-pin__dot" data-pin-id={node.id} title="集中钉子：拖动它带动整个钉集" />
+        {paperVisible ? (
+          <div className="cb-pin__paper">
+            <span className="cb-pin__paper-text">{text}</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}${data.dimmed ? ' is-dim' : ''}${onPath ? ' is-path' : ''}`}
+      className={`cb-node${selected ? ' is-selected' : ''}${attachTarget ? ' is-attach-target' : ''}${data.dimmed ? ' is-dim' : ''}${onPath ? ' is-path' : ''}${multiSelect && selected ? ' is-multi' : ''}`}
       data-heat={heat > 0 ? heat.toFixed(2) : undefined}
       onMouseEnter={() => setHoverNode(node.id)}
       onMouseLeave={() => setHoverNode(null)}
       style={{ width: node.w }}
       data-type={node.type}
-    >
-      {/* 每个连接点放两个：target 只做几何锚点（React Flow 计算连线路径需要 target 侧边界），
+    >      {/* 每个连接点放两个：target 只做几何锚点（React Flow 计算连线路径需要 target 侧边界），
           source 负责拖拽发起；两者重叠，target 不接收指针事件，避免抢走拖拽。
           M10：一共八处（四边中点 + 四角），关系线不再只能从四条边中间出来。 */}
       {SIDES.map((side) => (
