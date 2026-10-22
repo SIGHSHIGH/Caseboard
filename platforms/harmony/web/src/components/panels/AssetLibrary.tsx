@@ -94,10 +94,19 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
     const cancel = () => {
       // 不当作「放弃」：放弃等于缩略影凭空消失、这次拖动白做。按「就地松手」收尾，
       // 落点还在画布上就照常建图片节点，不在画布上就什么也不发生。
+      // 阈值改成 100ms 后要更保守：手指还停在素材栏里就被内核判成滚动（典型的竖向滑动），
+      // 这种情况必须按取消处理，否则会误建一张图片节点。
       detachWindow();
       if (!draggingRef.current) return;
       draggingRef.current = false;
-      useUiStore.getState().endAssetDrag(lastPosRef.current.x, lastPosRef.current.y);
+      const point = lastPosRef.current;
+      const target = document.elementFromPoint(point.x, point.y);
+      const overCanvas = !!(target && target.closest('.cb-work__canvas'));
+      if (overCanvas) {
+        useUiStore.getState().endAssetDrag(point.x, point.y);
+      } else {
+        useUiStore.getState().cancelAssetDrag();
+      }
     };
     winRef.current = { move, up, cancel };
     window.addEventListener('pointermove', move);
