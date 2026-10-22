@@ -133,3 +133,12 @@
 20. **素材从左侧栏拖进画布会「卡住」**：手指跨出左栏时 ArkWeb 把这一串触摸判成滚动，对卡片派 `pointercancel`，绑在卡片上的监听随即断掉，缩略影停在画布边上、素材再也拖不动。改法：起拖后把 `pointermove` / `pointerup` / `pointercancel` 挂到 `window`（元素离开手指也不丢），并且 `pointercancel` 不再当「放弃」，而是按「就地松手」收尾（落点在画布上就照常建节点）。同时 `.cb-asset` 加 `touch-action: pan-y`，只让竖向滚动被内核认领。
 21. **长按起拖阈值要跟着「误触容忍」调**：320ms 在平板上太灵敏（手指还没稳住就起拖），实测反馈要求「长按久一点」→ 480ms。
 22. **长按/右键菜单贴边会被视口切掉**：菜单原来直接用 `clientX/clientY` 定位，在右下角打开时有一半在屏幕外。改法：`useLayoutEffect` 里量一次真实尺寸，按「视口 − 8px」夹住；用 `useLayoutEffect` 而不是 `useEffect`，首帧就落在正确位置、不会闪一下。
+
+## H5.4.1 补记（菜单夹取精度 + 产物纯净）
+
+23. **`position: fixed` 只给 `left` 的盒子会按「右侧剩余空间」shrink-to-fit**：夹取一次→盒子变窄→可用空间变大→下一次又贴边，实测永远 `right=1440`（=视口宽）。修法是让宽度与 `left` 解耦：`.cb-ctxmenu { width: max-content; max-width: min(300px, calc(100vw - 16px)) }`，夹取随即一次到位（实测 `left=1145 right=1432 vw=1440`）。
+24. **ArkWeb 里 `window.innerWidth` 在首帧可能比布局视口大 8px**（实测 1448 对 1440）：只用 `innerWidth` 做夹取会吃掉那 8px 安全边。取 `Math.min(window.innerWidth, document.documentElement.clientWidth)`，并在 260ms 后再校正一次。
+25. **探针断言必须能重复跑**：phase 20 的图钉拖拽原来固定往「右下 +60/+40」，图钉一旦已被上一次运行拖到 100% 角，再往右下就被 clamp 住、`move=0` 假失败。改成朝图片中心方向拖（`pct > 50 ? -70 : +70`）。
+26. **rawfile 同步必须用 `/MIR`**：robocopy 只 `/E` 会把历史 hash 的 `assets/index-*` 留在 DevEco 侧，HAP 从 4.9MB 一路涨到 46MB。同步 `resources/rawfile` 子树要 `/MIR`，并清掉 `index.html` 未引用的旧 `index-*` 产物。
+27. **验收命令（一条可复现）**：`powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"` → 25/25。
+

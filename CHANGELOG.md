@@ -21,6 +21,13 @@
 ### 验收
 `accept-h5.ps1 -Target 127.0.0.1:5555` → **25/25 PASS**：`H5-24 inside=1 left=1224 top=818 right=1440 bottom=952 vw=1440 vh=960`；拖拽链路 `H5-21 hold=17 move=17 up=17 ghost=1 nodes=22`、`H5-19 maxGap=67ms`、`H5-16 pins=5 made=1 cluster=9`。
 
+### H5.4.1 补记：菜单夹取精度与产物纯净
+1. **菜单仍然贴死屏幕右边**：`position: fixed` 只给 `left` 的盒子会按「右侧剩余空间」shrink-to-fit —— 夹一次变窄、可用空间变大、下次又贴边，实测恒为 `right = 视口宽`。修法：`.cb-ctxmenu { width: max-content; max-width: min(300px, calc(100vw - 16px)) }` 让宽度与 `left` 解耦，夹取随即一次到位（`left=1145 right=1432 vw=1440`）。
+2. **ArkWeb 首帧的 `window.innerWidth` 比布局视口大 8px**（1448 对 1440），只用 innerWidth 会吃掉安全边。改为 `Math.min(window.innerWidth, document.documentElement.clientWidth)`，并在 260ms 后再校正一次。
+3. **探针可重复性**：phase 20 的图钉拖拽改成「朝图片中心方向拖」（`pct > 50 ? -70 : +70`），避免图钉已在 100% 角时被 clamp 住假失败；phase 17 只挑「完整落在视口内」的素材卡，避免素材变多后选到滚动区外的卡。
+4. **HAP 产物膨胀**：robocopy 同步 `resources/rawfile` 只用 `/E`，历史 hash 的 `assets/index-*` 一直堆在 DevEco 侧，HAP 从 4.9MB 涨到 46MB。同步该子树改用 `/MIR`，并清掉 `index.html` 未引用的旧 `index-*`。
+5. 验收：`accept-h5.ps1` → **25/25 PASS**（`H5-22 pin=1 move=1 color=rgb(47,111,78)`、`H5-24 inside=1 right=1432`）。
+
 
 ## [未发布] · 鸿蒙 H5.3：集中钉子与钉集（把多张图片钉在一颗钉子上）
 

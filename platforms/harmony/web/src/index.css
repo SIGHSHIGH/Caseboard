@@ -5345,6 +5345,10 @@ button.cb-members__title--link:hover {
   position: fixed;
   z-index: 1201;
   min-width: 208px;
+  /* 宽度必须由内容决定：position:fixed 只给 left 时盒子会按「右侧剩余空间」shrink-to-fit，
+     于是越往右贴越窄，夹取后又会再变窄，永远贴死在屏幕边上（H5.4 实测）。 */
+  width: max-content;
+  max-width: min(300px, calc(100vw - 16px));
   padding: 4px;
   display: flex;
   flex-direction: column;

@@ -865,21 +865,48 @@ export function Board() {
 
   // H5.4：长按菜单贴着屏幕边缘时会有一半跑到视口外（平板右下角尤其明显），
   // 所以渲染后量一次真实尺寸再夹进视口，留 8px 安全边。
+  // 两趟：第一趟用 offsetWidth/offsetHeight，第二趟在下一帧用真实 rect 再夹一次
+  //（文本换行 / 字体度量可能让最终宽度比首帧量到的大，实测在右下角会贴到屏幕边）。
   useLayoutEffect(() => {
     if (!ctxMenu) {
       setCtxPos(null);
       return;
     }
     const VIEWPORT_MARGIN = 8;
-    const el = ctxMenuRef.current;
-    const width = el?.offsetWidth ?? 240;
-    const height = el?.offsetHeight ?? 220;
-    const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN);
-    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN);
-    setCtxPos({
-      left: Math.min(Math.max(ctxMenu.clientX, VIEWPORT_MARGIN), maxLeft),
-      top: Math.min(Math.max(ctxMenu.clientY, VIEWPORT_MARGIN), maxTop),
+    // ArkWeb 里 window.innerWidth 在首帧可能比布局视口大几个像素（实测 1448 对 1440），
+    // 只信 innerWidth 会让菜单贴死在屏幕右边，所以取两者较小值。
+    const viewport = () => ({
+      w: Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth),
+      h: Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight),
     });
+    const clampTo = (x: number, y: number, width: number, height: number) => {
+      const view = viewport();
+      return {
+        left: Math.min(Math.max(x, VIEWPORT_MARGIN), Math.max(VIEWPORT_MARGIN, view.w - width - VIEWPORT_MARGIN)),
+        top: Math.min(Math.max(y, VIEWPORT_MARGIN), Math.max(VIEWPORT_MARGIN, view.h - height - VIEWPORT_MARGIN)),
+      };
+    };
+    const el = ctxMenuRef.current;
+    setCtxPos(clampTo(ctxMenu.clientX, ctxMenu.clientY, el?.offsetWidth ?? 240, el?.offsetHeight ?? 220));
+    const frame = window.requestAnimationFrame(() => {
+      const node = ctxMenuRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const next = clampTo(ctxMenu.clientX, ctxMenu.clientY, rect.width, rect.height);
+      setCtxPos((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
+    });
+    // 再来一趟：视口尺寸 / 文本换行稳定之后校正一次，避免首帧量到的是过渡尺寸。
+    const settle = window.setTimeout(() => {
+      const node = ctxMenuRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const next = clampTo(ctxMenu.clientX, ctxMenu.clientY, rect.width, rect.height);
+      setCtxPos((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
+    }, 260);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+    };
   }, [ctxMenu]);
 
   /* ---------------------------------------------------------------------------
