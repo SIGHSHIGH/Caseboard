@@ -128,3 +128,18 @@ export function pinLinkId(source: string, target: string): string {
   return 'pinlink_' + source + '__' + target;
 }
 
+/**
+ * 红线粗细（doc.settings.pinLinkWidth，案件级全局设置）。
+ * 画布右下角没有单独的设置面板，滑块放在右栏「案件概览」里。
+ */
+export const PIN_LINK_WIDTH_DEFAULT = 4;
+export const PIN_LINK_WIDTH_MIN = 1;
+export const PIN_LINK_WIDTH_MAX = 12;
+
+/** 把任意来源的粗细夹到合法区间；缺省或非法一律回默认值 */
+export function normalizePinLinkWidth(value: unknown): number {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) return PIN_LINK_WIDTH_DEFAULT;
+  return Math.min(PIN_LINK_WIDTH_MAX, Math.max(PIN_LINK_WIDTH_MIN, Math.round(num)));
+}
+

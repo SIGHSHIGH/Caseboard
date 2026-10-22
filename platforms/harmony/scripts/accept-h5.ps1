@@ -484,6 +484,24 @@ Add-Result 'H5-36' '红线在画布上真的有长度（不是两端重合的隐
 Add-Result 'H5-38' '红线待连接态有全画布热区，点第二颗钉子能落在热区上（不被手柄吃掉）' ($p23Layer -eq 1) ('layer=' + $p23Layer)
 Add-Result 'H5-39' '红线是一条直线，且没有变成关系线（关系数不变）' (($p23Straight -eq 1) -and ($p23EdgesDelta -eq 0)) ('straight=' + $p23Straight + ' edgesDelta=' + $p23EdgesDelta)
 
+# ---------- 静态断言：H5.9 红线粗细的全局滑块 ----------
+$srcRoot9 = Join-Path $root 'platforms\harmony\web\src'
+$sliderFile = Join-Path $srcRoot9 'components\panels\CanvasBackdropForm.tsx'
+$layerFile = Join-Path $srcRoot9 'components\flow\PinLinkLayer.tsx'
+$boardFile = Join-Path $srcRoot9 'components\flow\Board.tsx'
+$settingsFile = Join-Path $srcRoot9 'types\index.ts'
+$cssFile = Join-Path $srcRoot9 'styles\responsive.css'
+$sliderText = if (Test-Path $sliderFile) { Get-Content -Raw -Path $sliderFile } else { '' }
+$layerText = if (Test-Path $layerFile) { Get-Content -Raw -Path $layerFile } else { '' }
+$boardText = if (Test-Path $boardFile) { Get-Content -Raw -Path $boardFile } else { '' }
+$settingsText = if (Test-Path $settingsFile) { Get-Content -Raw -Path $settingsFile } else { '' }
+$cssText = if (Test-Path $cssFile) { Get-Content -Raw -Path $cssFile } else { '' }
+$sliderOk = ($sliderText -match 'pinLinkWidth') -and ($sliderText -match 'type="range"') -and ($sliderText -match 'updateSettings')
+$pipeOk = ($layerText -match 'strokeWidth') -and ($boardText -match 'normalizePinLinkWidth') -and ($settingsText -match 'pinLinkWidth')
+$cssOk = -not ($cssText -match '\.cb-pinlink\s*\{[^}]*stroke-width')
+Add-Result 'H5-40' '右栏有红线粗细滑块，且写进 doc.settings.pinLinkWidth' $sliderOk ('slider=' + $sliderOk)
+Add-Result 'H5-41' '线宽一路传到 SVG（Board → PinLinkLayer.strokeWidth），CSS 不再写死覆盖' (($pipeOk) -and ($cssOk)) ('pipe=' + $pipeOk + ' css=' + $cssOk)
+
 # ---------- 动态断言：phase=24（H5.6.1 右键菜单删除节点） ----------
 $lines24 = Invoke-Cb '24' 20
 $sum24Line = ''
