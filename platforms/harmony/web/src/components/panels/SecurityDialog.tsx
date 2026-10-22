@@ -57,7 +57,7 @@ export function SecurityDialog({ onClose }: { onClose: () => void }) {
           </section>
           <section className="cb-security__block">
             <h3>脱敏</h3>
-            <p className="cb-security__note">导出与打印默认脱敏身份证号、手机号、银行卡号；素材上的马赛克导出不可逆（像素级复核）。</p>
+            <p className="cb-security__note">导出/打印默认脱敏证件号、手机号、银行卡号；马赛克不可逆。</p>
           </section>
         </div>
         <footer className="cb-security__foot">

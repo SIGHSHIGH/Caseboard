@@ -586,7 +586,7 @@ function NodeForm({ node }: { node: CaseNode }) {
         <div className="cb-form__section">
           <h3 className="cb-form__subtitle">钉集成员（{clusterImgs.length}）</h3>
           {clusterImgs.length === 0 ? (
-            <p className="cb-form__subtle">把画布上的图片拖到钉子上松手，它就会被钉住，整集一起移动。</p>
+            <p className="cb-form__subtle">把图片拖到钉子上松手即钉住，整集一起移动。</p>
           ) : (
             <ul className="cb-members">
               {clusterImgs.map((image) => {
@@ -724,8 +724,7 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
         <p className="cb-form__relation">
           {sourceTitle} <span className="cb-arrow">—</span> {targetTitle}
         </p>
-        <p className="cb-form__meta">集中钉子之间的红线：红色实线，无箭头、无标签。</p>
-        <label className="cb-field">
+                <label className="cb-field">
           <span>线宽：{thickness} px（1–8）</span>
           <input
             type="range"
@@ -1096,7 +1095,7 @@ function AssetForm({ asset }: { asset: Asset }) {
       {thumb ? (
         <img className="cb-form__preview" src={thumb} alt={asset.name ?? '素材预览'} />
       ) : (
-        <p className="cb-form__subtle">原件不在当前环境（IndexedDB 未初始化或素材来自其他设备）。</p>
+        <p className="cb-form__subtle">原件不在本机。</p>
       )}
 
       <label className="cb-field">
@@ -1321,7 +1320,7 @@ function AssetForm({ asset }: { asset: Asset }) {
       <div className="cb-form__section">
         <h3 className="cb-form__subtitle">关联对象（{related.length}）</h3>
         {related.length === 0 ? (
-          <p className="cb-form__subtle">导入向导里选择「关联实体」，或在节点属性中手动挂接。</p>
+          <p className="cb-form__subtle">在导入向导里选「关联实体」，或在节点属性里手动挂接。</p>
         ) : (
           <ul className="cb-members">
             {related.map((node) => (
@@ -1394,7 +1393,7 @@ function ImageForm({ image }: { image: ImageNode }) {
       {thumb ? (
         <img className="cb-form__preview" src={thumb} alt={asset?.name ?? '图片预览'} />
       ) : (
-        <p className="cb-form__subtle">预览不可用：原件不在本机 IndexedDB，或缩略图尚未生成。</p>
+        <p className="cb-form__subtle">预览不可用：原件不在本机。</p>
       )}
 
       <div className="cb-fields">
@@ -1528,8 +1527,7 @@ function ImageForm({ image }: { image: ImageNode }) {
       ) : doc.nodes.some((node) => node.type === 'clusterPin') ? (
         <div className="cb-form__section">
           <h3 className="cb-form__subtitle">钉到集中钉子</h3>
-          <p className="cb-form__subtle">也可以直接把图片拖到钉子本体上松手；钉住后整集一起移动、只能绕钉子旋转。</p>
-          <div className="cb-assets__actions">
+                    <div className="cb-assets__actions">
             {doc.nodes
               .filter((node) => node.type === 'clusterPin')
               .map((pin, pinIndex) => (
@@ -1638,9 +1636,7 @@ function ImageForm({ image }: { image: ImageNode }) {
               </button>
             </li>
           </ul>
-        ) : (
-          <p className="cb-form__subtle">把图片拖到某张卡片上松手，即可吸附为该卡片的头像或附件。</p>
-        )}
+        ) : null}
       </div>
 
       <div className="cb-form__section">
@@ -1689,7 +1685,7 @@ export function RightPanel() {
       <section className="cb-multisel" aria-label="多选操作">
         <p className="cb-multisel__head">
           已选 {selectedNodeIds.length} 个卡片
-          <span className="cb-multisel__hint">继续点卡片加选 / 再长按取消某张</span>
+          <span className="cb-multisel__hint">继续点卡片加选 / 再点一次取消</span>
         </p>
         <div className="cb-multisel__actions">
           <button type="button" className="cb-btn" onClick={requestGroupPick}>

@@ -120,7 +120,7 @@ export function GroupTree() {
   const roots = doc.groups.filter((group) => !group.parentId);
 
   if (roots.length === 0) {
-    return <p className="cb-panel__note">还没有分组。先「新建矩形组」或「圈选成组」，之后这里会出现整棵组树。</p>;
+    return <p className="cb-panel__note">还没有分组。</p>;
   }
 
   return (

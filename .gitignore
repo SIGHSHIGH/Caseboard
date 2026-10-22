@@ -36,3 +36,5 @@ release/
 
 # DSH 本地工具状态（含会话缓存，不入库）
 .dsh/
+.tmp-win/
+CaseBoard-win-test.exe

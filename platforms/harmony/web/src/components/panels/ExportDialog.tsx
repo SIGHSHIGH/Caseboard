@@ -139,7 +139,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
             在标注编辑器里对区域勾选「导出时打码」，这里即可导出脱敏图。马赛克按格子取平均色后整格覆盖，导出的是全新 PNG，原图不被修改。
           </p>
           {redactables.length === 0 ? (
-            <p className="cb-export__empty">还没有标记为脱敏的素材：打开素材的标注编辑器，选中区域并勾选「导出时打码」。</p>
+            <p className="cb-export__empty">没有标记为脱敏的素材：在素材「标注」里勾选「导出时打码」。</p>
           ) : (
             <ul className="cb-export__redactlist">
               {redactables.map((asset) => (

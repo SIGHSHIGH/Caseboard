@@ -79,7 +79,7 @@ export function TagLinkDialog() {
           <div className="cb-taglink__side">
             <h3 className="cb-form__subtitle">选择标签</h3>
             {stats.length === 0 ? (
-              <p className="cb-form__subtle">还没有任何标签：先在右栏给实体加标签（如「团伙成员」「资金链」）。</p>
+              <p className="cb-form__subtle">还没有标签：先在右栏给实体加标签。</p>
             ) : (
               <ul className="cb-taglink__tags">
                 {stats.map((item) => (

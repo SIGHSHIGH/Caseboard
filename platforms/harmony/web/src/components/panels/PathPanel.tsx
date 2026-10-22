@@ -134,7 +134,7 @@ export function PathPanel() {
           ))}
         </div>
         {metric === 'off' ? (
-          <p className="cb-filter__hint">打开后画布上的实体按分数深浅着色，越深越处于关系网络的关键位置。</p>
+          <p className="cb-filter__hint">颜色越深，越处在关系网络的关键位置。</p>
         ) : (
           <ol className="cb-path__ranks">
             {top.map((entry, index) => (

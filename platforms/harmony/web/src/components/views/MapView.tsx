@@ -183,7 +183,7 @@ export function MapView() {
       <div className="cb-map__head">
         <div>
           <h2>离线示意地图</h2>
-          <p>按右栏「地图坐标」摆放实体；拖动图钉即可改坐标。不请求任何在线瓦片。</p>
+          <p>按右栏「地图坐标」摆放；拖动图钉改坐标，不联网。</p>
         </div>
         <div className="cb-map__meta">
           <span>{points.length} 个带坐标的实体</span>
