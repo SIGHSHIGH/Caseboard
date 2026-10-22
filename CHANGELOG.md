@@ -2,6 +2,26 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>` / 鸿蒙侧 `hs/H<n>`。
 
+## [未发布] · 鸿蒙 H5.4：素材跨栏拖拽不再卡住 + 长按阈值 480ms + 长按菜单贴边
+
+### 反馈
+1. 拖动素材进画布要「长按久一点」，否则从左栏进入画布范围时会卡住。
+2. 打开长按菜单时若在屏幕边缘会被遮挡。
+
+### 根因
+1. **跨栏卡住**：手指从左栏移进画布时，ArkWeb 把这一串触摸判成滚动并对卡片派 `pointercancel`；监听绑在卡片上，一收到 cancel 就 `cancelAssetDrag()`，缩略影凭空消失、这次拖动白做。同时 320ms 阈值在平板上偏灵敏，手指没稳就起拖，更容易触发上面那条。
+2. **菜单被切**：菜单原样用 `clientX/clientY` 当 left/top，在右下角打开时有一半落在视口外。
+
+### 改了什么
+- `components/panels/AssetLibrary.tsx`：`LONG_PRESS_MS` 320 → **480**；起拖后把 `pointermove`/`pointerup`/`pointercancel` 挂到 `window`（`winRef` 保存引用，清理时逐个 remove），元素自身的 handler 在拖拽中直接返回避免双处理；`pointercancel` 不再当放弃，而是按「就地松手」用最后一次位置完成落点。
+- `index.css`：`.cb-asset` 加 `touch-action: pan-y`（竖向滚动仍归内核，横向拖拽不再被抢）。
+- `components/flow/Board.tsx`：新增 `ctxMenuRef` + `ctxPos`，`useLayoutEffect` 里量菜单真实尺寸并按「视口 − 8px」夹住 left/top（首帧即正确，不闪）。
+- 验收：探针新增 phase=21（在视口右下 12px 处合成 `contextmenu`，量菜单是否完整落在视口内），`accept-h5.ps1` 新增 H5-24，共 **25 条**。
+
+### 验收
+`accept-h5.ps1 -Target 127.0.0.1:5555` → **25/25 PASS**：`H5-24 inside=1 left=1224 top=818 right=1440 bottom=952 vw=1440 vh=960`；拖拽链路 `H5-21 hold=17 move=17 up=17 ghost=1 nodes=22`、`H5-19 maxGap=67ms`、`H5-16 pins=5 made=1 cluster=9`。
+
+
 ## [未发布] · 鸿蒙 H5.3：集中钉子与钉集（把多张图片钉在一颗钉子上）
 
 ### 需求

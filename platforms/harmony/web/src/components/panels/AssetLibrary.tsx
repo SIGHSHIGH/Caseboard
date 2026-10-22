@@ -33,8 +33,8 @@ function useThumb(assetId: string, size: number = 256): string | null {
   return url;
 }
 
-/** 长按起拖：450ms 内移动超过 8px 就当作滚动 / 点选，不再起拖（H5 触屏） */
-const LONG_PRESS_MS = 320;
+/** 长按起拖：阈值之内移动超过 8px 就当作滚动 / 点选，不再起拖（H5 触屏） */
+const LONG_PRESS_MS = 480;
 const LONG_PRESS_SLOP = 8;
 
 function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: boolean; onSelect: () => void }) {
@@ -44,6 +44,12 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
   const draggingRef = useRef(false);
   const [pressing, setPressing] = useState(false);
   const suppressClickRef = useRef(false);
+  const lastPosRef = useRef({ x: 0, y: 0 });
+  const winRef = useRef<{
+    move: ((event: PointerEvent) => void) | null;
+    up: ((event: PointerEvent) => void) | null;
+    cancel: (() => void) | null;
+  }>({ move: null, up: null, cancel: null });
 
   const clearTimer = () => {
     if (timerRef.current !== null) {
@@ -52,7 +58,53 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
     }
   };
 
-  useEffect(() => clearTimer, []);
+  // H5.4：起拖之后手势跟着 window 走，而不是绑在这张卡上。
+  // 原因：手指从左侧素材栏移进画布时，ArkWeb 会在这里把这一串触摸判成滚动并派 pointercancel，
+  // 卡片上的监听随即断掉，缩略影就「卡」在画布边上、素材再也拖不动。挂到 window 上不怕元素离开手指。
+  const detachWindow = () => {
+    const bound = winRef.current;
+    if (!bound.move) return;
+    window.removeEventListener('pointermove', bound.move);
+    if (bound.up) window.removeEventListener('pointerup', bound.up);
+    if (bound.cancel) window.removeEventListener('pointercancel', bound.cancel);
+    winRef.current = { move: null, up: null, cancel: null };
+  };
+
+  const attachWindow = () => {
+    if (winRef.current.move) return;
+    const move = (event: PointerEvent) => {
+      if (!draggingRef.current) return;
+      lastPosRef.current = { x: event.clientX, y: event.clientY };
+      useUiStore.getState().moveAssetDrag(event.clientX, event.clientY);
+    };
+    const up = (event: PointerEvent) => {
+      lastPosRef.current = { x: event.clientX, y: event.clientY };
+      detachWindow();
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      useUiStore.getState().endAssetDrag(event.clientX, event.clientY);
+    };
+    const cancel = () => {
+      // 不当作「放弃」：放弃等于缩略影凭空消失、这次拖动白做。按「就地松手」收尾，
+      // 落点还在画布上就照常建图片节点，不在画布上就什么也不发生。
+      detachWindow();
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      useUiStore.getState().endAssetDrag(lastPosRef.current.x, lastPosRef.current.y);
+    };
+    winRef.current = { move, up, cancel };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  };
+
+  useEffect(
+    () => () => {
+      clearTimer();
+      detachWindow();
+    },
+    [],
+  );
 
   // H5：HTML5 拖放不会由手指触发（Chromium 只从鼠标事件起 dragstart），
   // 所以触屏下改走「长按起拖 + 跟手缩略图影」，落点由 Board 换算成画布坐标。
@@ -61,6 +113,7 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
     // H5.3：按下立刻给反馈（缩放 + 描边），长按阈值期间不再像没响应
     setPressing(true);
     originRef.current = { x: event.clientX, y: event.clientY };
+    lastPosRef.current = { x: event.clientX, y: event.clientY };
     const pointerId = event.pointerId;
     const target = event.currentTarget;
     clearTimer();
@@ -75,14 +128,12 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
         // 指针已经抬起：放弃捕获，后面的 pointerup 仍会到元素上
       }
       useUiStore.getState().startAssetDrag(asset.id, originRef.current.x, originRef.current.y);
+      attachWindow();
     }, LONG_PRESS_MS);
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (draggingRef.current) {
-      useUiStore.getState().moveAssetDrag(event.clientX, event.clientY);
-      return;
-    }
+    if (draggingRef.current) return;
     if (timerRef.current === null) return;
     const dx = event.clientX - originRef.current.x;
     const dy = event.clientY - originRef.current.y;
@@ -92,20 +143,16 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
     }
   };
 
-  const onPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+  const onPointerUp = () => {
     clearTimer();
     setPressing(false);
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    useUiStore.getState().endAssetDrag(event.clientX, event.clientY);
+    if (draggingRef.current) return;
   };
 
   const onPointerCancel = () => {
     clearTimer();
     setPressing(false);
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    useUiStore.getState().cancelAssetDrag();
+    if (draggingRef.current) return;
   };
 
   return (

@@ -1485,6 +1485,8 @@ button.cb-members__title--link:hover {
   border-radius: 6px;
   cursor: pointer;
   text-align: left;
+  /* 只让竖着滑列表滚动：横向往画布拖时内核不会把这一串手势判成滚动而中途 pointercancel */
+  touch-action: pan-y;
 }
 
 .cb-asset--selected {
@@ -1492,7 +1494,7 @@ button.cb-members__title--link:hover {
   box-shadow: 0 0 0 1px var(--cb-accent-soft);
 }
 
-/* H5.3：手指按下立刻反馈，长按阈值（320ms）期间不再是「没动静」 */
+/* H5.3：手指按下立刻反馈，长按阈值（480ms）期间不再是「没动静」 */
 .cb-asset--pressing {
   transform: scale(0.96);
   border-color: var(--cb-border-strong);

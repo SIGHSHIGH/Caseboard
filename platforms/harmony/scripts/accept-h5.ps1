@@ -397,6 +397,18 @@ if ($sum20Line -match 'color=(rgba?\([^)]*\)|#[0-9a-fA-F]+)') { $p20Color = $Mat
 Add-Result 'H5-22' '图钉可在图片范围内任意落点并换色' (($p20Pin -eq 1) -and ($p20Move -eq 1) -and ($p20Active -ge 1) -and ($p20Color -ne '')) ('pin=' + $p20Pin + ' move=' + $p20Move + ' active=' + $p20Active + ' color=' + $p20Color + ' ' + (Short $sum20Line))
 Add-Result 'H5-23' '卡片右栏「置底 / 置顶」真的改了层级（先降后升）' (($p20Btn -ge 2) -and ($p20Z1 -le $p20Z0) -and ($p20Z2 -gt $p20Z1)) ('btn=' + $p20Btn + ' z0=' + $p20Z0 + ' bottom=' + $p20Z1 + ' top=' + $p20Z2)
 
+# ---------- 动态断言：phase=21（菜单贴边不被视口切掉） ----------
+$lines21 = Invoke-Cb '21' 14
+$sum21Line = ''
+if ($lines21 -and $lines21.Count -gt 0) {
+  $lines21 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase21.log') -Encoding utf8
+  $hit21 = @($lines21 | Select-String -Pattern '\[diag\] summary21')
+  if ($hit21.Count -gt 0) { $sum21Line = $hit21[-1].Line }
+}
+$m21Inside = 0
+if ($sum21Line -match 'inside=(\d+)') { $m21Inside = [int]$Matches[1] }
+Add-Result 'H5-24' '长按/右键菜单在屏幕右下角也不被视口切掉' ($m21Inside -eq 1) (Short $sum21Line)
+
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })
 $report = [ordered]@{

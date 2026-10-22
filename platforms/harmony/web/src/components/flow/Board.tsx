@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -189,6 +189,9 @@ export function Board() {
     flowY: number;
     nodeId: string | null;
   } | null>(null);
+  // H5.4：菜单在屏幕边缘会被切掉/压到栏外，实测后按视口夹一次位置
+  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
+  const [ctxPos, setCtxPos] = useState<{ left: number; top: number } | null>(null);
   // M11（J6）：卡片拖动时吸附在它上面的图片实时跟随（松手再落库，拖动过程中不再「等一等」
   const [dockPreview, setDockPreview] = useState<Record<string, { x: number; y: number }>>({});
   const themeMode = useThemeStore((s) => s.mode);
@@ -860,6 +863,25 @@ export function Board() {
 
   const closeContextMenu = useCallback(() => setCtxMenu(null), []);
 
+  // H5.4：长按菜单贴着屏幕边缘时会有一半跑到视口外（平板右下角尤其明显），
+  // 所以渲染后量一次真实尺寸再夹进视口，留 8px 安全边。
+  useLayoutEffect(() => {
+    if (!ctxMenu) {
+      setCtxPos(null);
+      return;
+    }
+    const VIEWPORT_MARGIN = 8;
+    const el = ctxMenuRef.current;
+    const width = el?.offsetWidth ?? 240;
+    const height = el?.offsetHeight ?? 220;
+    const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN);
+    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN);
+    setCtxPos({
+      left: Math.min(Math.max(ctxMenu.clientX, VIEWPORT_MARGIN), maxLeft),
+      top: Math.min(Math.max(ctxMenu.clientY, VIEWPORT_MARGIN), maxTop),
+    });
+  }, [ctxMenu]);
+
   /* ---------------------------------------------------------------------------
      H3：拖拽惯性。
      平板上「一划到底就立刻停」很别扭——手指松开后视口应该按末段速度再滑一小段，
@@ -1294,10 +1316,11 @@ export function Board() {
         <>
           <div className="cb-ctxmenu__mask" onPointerDown={closeContextMenu} onContextMenu={(event) => event.preventDefault()} />
           <div
+            ref={ctxMenuRef}
             className="cb-ctxmenu"
             role="menu"
             aria-label="画布右键菜单"
-            style={{ left: ctxMenu.clientX, top: ctxMenu.clientY }}
+            style={{ left: ctxPos?.left ?? ctxMenu.clientX, top: ctxPos?.top ?? ctxMenu.clientY }}
           >
             <button type="button" className="cb-ctxmenu__item" role="menuitem" onClick={createPlainNode}>
               新建节点…
