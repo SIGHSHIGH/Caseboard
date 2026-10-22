@@ -2,15 +2,15 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "CaseBoard for HarmonyOS"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "CaseBoard main screen"
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "CaseBoard"
     },
     {
       "name": "EntryFormAbility_desc",

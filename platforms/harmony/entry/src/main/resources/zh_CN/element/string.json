@@ -2,15 +2,15 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "模块描述"
+      "value": "案情板 CaseBoard 鸿蒙版"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "案情板主界面"
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "案情板 CaseBoard"
     },
     {
       "name": "EntryFormAbility_desc",
