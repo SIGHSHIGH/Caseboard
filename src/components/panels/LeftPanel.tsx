@@ -62,7 +62,7 @@ export function LeftPanel() {
               );
             })}
           </div>
-          <p className="cb-panel__note">右栏按类型给出专属字段模板，模板外的字段也可自行添加。</p>
+          <p className="cb-panel__note">右栏按类型给出字段模板。</p>
         </>
       ) : null}
 
@@ -86,9 +86,9 @@ export function LeftPanel() {
             </button>
           </div>
           {mode === 'lasso' ? (
-            <p className="cb-panel__note">圈选中：在画布拖框选择对象，Esc 取消</p>
+            <p className="cb-panel__note">圈选中：在画布拖框选择，Esc 取消</p>
           ) : (
-            <p className="cb-panel__note">拖组标题栏移动整组，右下角调整大小，折叠后变成超级节点</p>
+            <p className="cb-panel__note">拖标题栏移动整组，右下角调大小</p>
           )}
           <GroupTree />
         </>
@@ -96,16 +96,11 @@ export function LeftPanel() {
 
       <details className="cb-panel__hint">
         <summary>操作提示（点击展开）</summary>
-        <p>· 双击画布空白处：新建节点（先选类型）</p>
-        <p>· 空白处拖框：框选多个实体；Ctrl + 点选：加选/减选</p>
-        <p>· 按住空格 / 右键拖动：平移画布，滚轮缩放</p>
-        <p>· 拖动节点四边中点或四角圆点：拉出关系（八个方向都能连）</p>
-        <p>· 双击节点标题 / 关系标签：就地改名</p>
-        <p>· 选中后按 Delete 删除</p>
+                <p>· 空白处拖框：框选多个实体</p>
+                                <p>· 选中后按 Delete 删除</p>
         <p>· 图片可直接拖进画布，Ctrl+V 粘贴截图</p>
-        <p>· 图片拖到卡片四角：吸附成头像 / 附件，之后跟着卡片走</p>
-        <p>· 画布右下角「图示」可展开线型语义与图例</p>
-      </details>
+        <p>· 图片拖到卡片四角：吸附成头像 / 附件</p>
+              </details>
     </aside>
   );
 }

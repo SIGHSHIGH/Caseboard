@@ -128,10 +128,10 @@ export function TimelineView() {
       <div className="cb-timeline cb-timeline--empty">
         <div className="cb-timeline__head">
           <strong>时间线</strong>
-          <span className="cb-timeline__hint">当前案件还没有可解析的时间，先把「时间」填进实体属性或事件节点。</span>
+          <span className="cb-timeline__hint">还没有可解析的时间：先给实体或事件填「时间」。</span>
         </div>
         <div className="cb-timeline__empty">
-          <p>支持 2026 / 2026-09 / 2026-09-03 / 2026-09-03 20:10 四种写法（按本机 UTC 口径归一）。</p>
+          <p>例：2026 / 2026-09 / 2026-09-03 20:10（UTC）</p>
           {unscheduled.length > 0 ? (
             <>
               <p className="cb-timeline__hint">未排期实体 {unscheduled.length} 个：</p>

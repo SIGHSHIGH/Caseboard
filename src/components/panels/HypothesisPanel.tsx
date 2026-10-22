@@ -288,7 +288,7 @@ export function HypothesisPanel({ onClose }: HypothesisPanelProps) {
       <div className="cb-hyp__head">
         <div>
           <h2>假设与证据链</h2>
-          <p className="cb-hyp__sub">支持与反驳都作用在现有实体/关系/素材上；分差 = 支持权重 − 反驳权重 × 0.6。</p>
+          <p className="cb-hyp__sub">支持 − 反驳 × 0.6 = 分差</p>
         </div>
         <div className="cb-hyp__tabs">
           <button type="button" className={'cb-btn' + (tab === 'compare' ? ' is-active' : '')} onClick={() => setTab('compare')}>

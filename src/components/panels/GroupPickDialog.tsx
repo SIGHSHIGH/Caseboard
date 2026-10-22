@@ -59,7 +59,7 @@ export function GroupPickDialog() {
           把已选的 {count} 个卡片放进一个已有组框；卡片会按顺序排在框内，组框自动撑大。
         </p>
         {doc.groups.length === 0 ? (
-          <p className="cb-panel__hint">当前还没有组框。先在左栏「分组」页签新建矩形组，再回来把卡片收进去。</p>
+          <p className="cb-panel__hint">还没有组框，先在左栏「分组」新建。</p>
         ) : (
           <ul className="cb-group-pick__list">
             {doc.groups.map((group) => (
