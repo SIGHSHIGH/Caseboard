@@ -457,7 +457,7 @@ if ($lines23 -and $lines23.Count -gt 0) {
 $p23KeptPin = -1; $p23KeptMem = -1; $p23Follow = -1
 $p23Alias = -1; $p23Map = -1; $p23Comment = -1
 $p23Rows = 0; $p23Nums = 0; $p23Slide = -1
-$p23Hint = -1; $p23Red = -1; $p23RedW = -1; $p23RedLen = -1; $p23Layer = -1; $p23Attach = 0
+$p23Hint = -1; $p23Red = -1; $p23RedW = -1; $p23RedLen = -1; $p23Layer = -1; $p23Attach = 0; $p23Straight = -1; $p23EdgesDelta = 99
 if ($sum23Line -match 'keptPin=(-?\d+)') { $p23KeptPin = [int]$Matches[1] }
 if ($sum23Line -match 'keptMem=(-?\d+)') { $p23KeptMem = [int]$Matches[1] }
 if ($sum23Line -match 'follow=(-?\d+)') { $p23Follow = [int]$Matches[1] }
@@ -472,6 +472,8 @@ if ($sum23Line -match 'red=(-?\d+)') { $p23Red = [int]$Matches[1] }
 if ($sum23Line -match 'redW=(-?\d+)') { $p23RedW = [int]$Matches[1] }
 if ($sum23Line -match 'redLen=(-?\d+)') { $p23RedLen = [int]$Matches[1] }
 if ($sum23Line -match 'layer=(-?\d+)') { $p23Layer = [int]$Matches[1] }
+if ($sum23Line -match 'straight=(-?\d+)') { $p23Straight = [int]$Matches[1] }
+if ($sum23Line -match 'edgesDelta=(-?\d+)') { $p23EdgesDelta = [int]$Matches[1] }
 if ($sum23Line -match 'attach=(\d+)') { $p23Attach = [int]$Matches[1] }
 Add-Result 'H5-31' '拖动集中钉子后，钉子与成员图片的相对位置不变' ($p23KeptPin -eq 1) ('keptPin=' + $p23KeptPin + ' 贴入=' + $p23Attach + ' ' + ((($sum23Line -split 'keptPin=')[1]) -replace ' keptMem=.*', ''))
 Add-Result 'H5-32' '拖动钉集成员时成员跟手走、松手后相对位置不变' (($p23KeptMem -eq 1) -and ($p23Follow -eq 1)) ('keptMem=' + $p23KeptMem + ' follow=' + $p23Follow)
@@ -480,6 +482,7 @@ Add-Result 'H5-34' '相对位置与旋转是「每行一个滑块 + 可输入数
 Add-Result 'H5-35' '长按集中钉 → 创建红线 → 点另一钉子，出现略宽红色实心线' (($p23Hint -eq 1) -and ($p23Red -ge 1) -and ($p23RedW -ge 3)) ('hint=' + $p23Hint + ' red=' + $p23Red + ' redW=' + $p23RedW)
 Add-Result 'H5-36' '红线在画布上真的有长度（不是两端重合的隐形线）' ($p23RedLen -ge 40) ('redLen=' + $p23RedLen)
 Add-Result 'H5-38' '红线待连接态有全画布热区，点第二颗钉子能落在热区上（不被手柄吃掉）' ($p23Layer -eq 1) ('layer=' + $p23Layer)
+Add-Result 'H5-39' '红线是一条直线，且没有变成关系线（关系数不变）' (($p23Straight -eq 1) -and ($p23EdgesDelta -eq 0)) ('straight=' + $p23Straight + ' edgesDelta=' + $p23EdgesDelta)
 
 # ---------- 动态断言：phase=24（H5.6.1 右键菜单删除节点） ----------
 $lines24 = Invoke-Cb '24' 20

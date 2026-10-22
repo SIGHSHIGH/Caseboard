@@ -273,3 +273,19 @@ powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Ta
 - 样式不变：`#C0392B`、4px、solid。
 
 验收：`accept-h5.ps1` 39 条全绿；真机截图 `dsh-shot-84`（只有一条红线，无箭头无标签）。
+
+## H5.6.3（红线改成直线，且不再是关系线；新建弹窗不抢焦点）
+
+用户口径：「红线不要贝塞尔曲线，只需要直线；红线也不被视作关系线；新建节点时不要默认点标题框（会弹键盘）」。
+
+- **红线不是关系线**：新增 `types/index.ts` 的 `PinLink { id, source, target }` 与 `CaseDoc.pinLinks?: PinLink[]`，
+  命令在 `commands/pinLinkCommands.ts`（`addPinLink` / `removePinLink` / `removePinLinksOf`）。
+  红线不再写进 `doc.edges`，因此**关系数不变**，也不进时间线 / 地图 / 导出 / 代码视图。
+- **画法**：新组件 `components/flow/PinLinkLayer.tsx`，在 `<ViewportPortal>` 里按世界坐标画
+  `<line class="cb-pinlink">`，`vector-effect: non-scaling-stroke` 保证任何缩放下都是 4px。
+- **待连接态命中半径改为屏幕像素**：`finishRedLineAt` 原先把 90 当世界单位，画布缩到 0.2 倍时
+  两颗钉子屏幕上只隔 140px、世界里却隔 700 单位，永远点不中（真机实测 `dist=704` 被取消）。
+  现在 `hitFlow = 90 / getViewport().zoom`。
+- **新建节点弹窗不再自动聚焦标题框**：删掉 `NewNodeDialog` 里的 `setTimeout(() => inputRef.current?.focus(), 0)`。
+
+验收：`accept-h5.ps1` **40 条全绿**，新增 H5-39（`straight=1 && edgesDelta=0`）；真机截图 `dsh-shot-93`（两颗钉子之间一条红色直线，无箭头无标签）。

@@ -2,6 +2,25 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>` / 鸿蒙侧 `hs/H<n>`。
 
+## [未发布] · 鸿蒙 H5.6.3：红线就是一条直线，而且不算关系线
+
+### 反馈
+红线不要贝塞尔曲线，只要直线；红线也不该被当成一条关系线；新建节点时不要默认点进标题框（会弹键盘）。
+
+### 改了什么
+- 红线从「关系边」里彻底拿掉：新增 `CaseDoc.pinLinks?: PinLink[]`（`types/index.ts`），写入口是
+  `commands/pinLinkCommands.ts` 的 `addPinLink / removePinLink / removePinLinksOf`。
+  于是**关系数不会因为画红线而变化**，时间线 / 地图 / 导出 / 代码视图里也不会冒出红线。
+- 画法换成独立的 `components/flow/PinLinkLayer.tsx`：`<ViewportPortal>` 里按世界坐标画一条
+  `<line class="cb-pinlink">`，`vector-effect: non-scaling-stroke` 让它在任何缩放下都是 4px 红直线。
+- 待连接态的命中半径改成屏幕像素：`hitFlow = 90 / getViewport().zoom`。
+  （画布缩到 0.2 倍时两颗钉子屏幕隔 140px、世界里隔 700 单位，按世界单位判会永远点不中，真机实测过 `dist=704`。）
+- `NewNodeDialog` 删掉自动 `focus()`：触屏下弹出弹窗不再立刻弹键盘。
+
+### 验收
+- `scripts/accept-h5.ps1` → **40/40 PASS**，新增 H5-39「红线是一条直线且没有变成关系线」（`straight=1 edgesDelta=0`）。
+- 真机截图 `dsh-shot-93`：两颗集中钉之间是一条红色直线，无箭头、无标签；`dsh-shot-85`：新建节点弹窗打开时没有键盘。
+
 ## [未发布] · 鸿蒙 H5.6：钉集相对位置恒定 + 集中钉右栏瘦身 + 成员滑块 + 创建红线
 
 ### 反馈

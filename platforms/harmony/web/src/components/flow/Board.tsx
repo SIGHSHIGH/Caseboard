@@ -17,6 +17,7 @@ import {
   addGroup,
   addImageNode,
   addNode,
+  addPinLink,
   attachImageNode,
   attachImageToCluster,
   addEdge,
@@ -31,6 +32,7 @@ import {
   moveClusterBy,
   moveNode,
   moveNodes,
+  removePinLinksOf,
 } from '../../commands';
 import { worldToScreen } from '../../lib/coords';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
@@ -85,6 +87,7 @@ import { BezierEdge, type CaseFlowEdge } from './BezierEdge';
 import { FreeImageNode, type FreeImageFlowNode } from './FreeImageNode';
 import { GroupNode, type GroupFlowNode } from './GroupNode';
 import { GroupRectNode, type GroupRectFlowNode } from './GroupRectNode';
+import { PinLinkLayer } from './PinLinkLayer';
 import { LassoOverlay } from './LassoOverlay';
 
 /** 展开态分组在 React Flow 里的节点 id 前缀（与折叠超级节点区分） */
@@ -1279,34 +1282,25 @@ export function Board() {
           bestId = item.id;
         }
       }
-      if (!bestId || bestDist > 90) {
+      // 命中半径按「屏幕像素」算，不能按世界坐标：画布缩到 0.2 倍时，
+      // 两颗钉子屏幕上只隔 140px，世界里却隔了 700 单位，用世界单位当阈值会永远点不中。
+      const zoom = Math.max(0.05, getViewport().zoom);
+      const hitFlow = 90 / zoom;
+      if (!bestId || bestDist > hitFlow) {
         // 探针诊断用：点偏了/没点到钉子时能看出是哪一种
-        console.log(`[diag] redline tap x=${Math.round(clientX)} y=${Math.round(clientY)} best=${bestId} dist=${Math.round(bestDist)} from=${from}`);
+        console.log(`[diag] redline tap x=${Math.round(clientX)} y=${Math.round(clientY)} best=${bestId} dist=${Math.round(bestDist)} hit=${Math.round(hitFlow)} zoom=${zoom.toFixed(2)} from=${from}`);
         cancelRedLine();
         return;
       }
       console.log(`[diag] redline connect from=${from} to=${bestId} dist=${Math.round(bestDist)}`);
-      dispatch(
-        addEdge({
-          source: from,
-          target: bestId,
-          sourceHandle: 'right',
-          targetHandle: 'right-in',
-          relType: 'clusterLink',
-          style: 'solid',
-          color: '#C0392B',
-          thickness: 4,
-          directed: false,
-        }),
-      );
+      // H5.6.3：红线不再是一条关系线，单独记进 doc.pinLinks，由 PinLinkLayer 画直线
+      dispatch(addPinLink(from, bestId));
       cancelRedLine();
       pushNotice('已用红线连起两颗集中钉子');
       {
-        // 探针诊断：确认这条边真的进了文档，以及两端节点是否都在渲染集合里
+        // 探针诊断：确认红线进了文档，且关系线数量没有被它污染
         const docNow = useDocStore.getState().doc;
-        const last = docNow?.edges[docNow.edges.length - 1];
-        const inNodes = (id: string | undefined) => (id ? docNow?.nodes.some((n) => n.id === id) : false);
-        console.log(`[diag] redline added edges=${docNow?.edges.length ?? -1} id=${last?.id ?? 'none'} src=${last?.source ?? ''}(${inNodes(last?.source)}) tgt=${last?.target ?? ''}(${inNodes(last?.target)})`);
+        console.log(`[diag] redline added links=${docNow?.pinLinks?.length ?? -1} edges=${docNow?.edges.length ?? -1}`);
       }
     },
     [cancelRedLine, dispatch, model.nodes, pushNotice, redLineFrom, screenToFlowPosition],
@@ -1423,6 +1417,8 @@ export function Board() {
         {showsCanvasGrid(canvasSkin) ? (
           <Background id="cb-grid" variant={BackgroundVariant.Lines} gap={80} size={0.6} color={grid.line} />
         ) : null}
+        {/* H5.6.3：集中钉子之间的红线——画直线，不是关系线 */}
+        <PinLinkLayer links={doc.pinLinks ?? []} nodes={doc.nodes} />
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
           pannable
@@ -1539,6 +1535,8 @@ export function Board() {
                     for (const image of doc.imageNodes.filter((item) => item.clusterId === id)) {
                       dispatch(detachImageFromCluster(image.id));
                     }
+                    // 红线不是关系线，deleteNode 不会连带清理，这里单独收掉
+                    dispatch(removePinLinksOf(id));
                   }
                   dispatch(deleteNode(id));
                   pushNotice(`已删除「${target?.title ?? '该节点'}」及其关系线（可撤销）`);

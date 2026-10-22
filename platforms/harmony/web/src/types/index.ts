@@ -410,5 +410,19 @@ export interface CaseDoc {
   hypotheses: Hypothesis[];
   /** 自定义证据链（M12）：缺省表示只用自动证据链 */
   chains?: ChainDef[];
+  /**
+   * 集中钉子之间的红线（H5.6.3）：只是画在画布上的一条红色直线，
+   * **不是关系线**——不参与关系计数、不进时间线/地图/导出/代码视图，也不可被当成关系编辑。
+   */
+  pinLinks?: PinLink[];
   settings: Settings;
+}
+
+/** 集中钉子之间的红线：只有两端，没有类型、标签、置信度与箭头 */
+export interface PinLink {
+  id: string;
+  /** 起点集中钉子节点 id */
+  source: string;
+  /** 终点集中钉子节点 id */
+  target: string;
 }

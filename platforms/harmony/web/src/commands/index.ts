@@ -3,6 +3,7 @@ export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addC
 export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';
+export { addPinLink, removePinLink, removePinLinksOf } from './pinLinkCommands';
 export { replaceDocument, updateSettings, setMapBackground, setCanvasSkin, setCanvasImage } from './docCommands';
 export {
   setTimelinePrefs,

@@ -32,9 +32,8 @@ export function NewNodeDialog() {
       setTitle('');
       setPinPaper(false);
       setPinText('');
-      // 等遮罩挂上再聚焦，避免 focus 被 mask 的首次渲染打断
-      const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
-      return () => window.clearTimeout(timer);
+      // 不再自动聚焦标题框：触屏上会直接弹出软键盘挡住对话框，用户点一下就能编辑。
+      return undefined;
     }
     return undefined;
   }, [at, preset]);
