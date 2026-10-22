@@ -1,8 +1,8 @@
-import type { CaseDoc, CaseEdge, CaseNode, Group, View } from '../types';
+import type { CaseDoc, CaseEdge, CaseNode, Group, PinLink, View } from '../types';
 import type { DocChange, EntityKind } from '../dsl/diff';
 import type { Command } from './types';
 
-type Entity = CaseNode | CaseEdge | Group | View;
+type Entity = CaseNode | CaseEdge | Group | View | PinLink;
 
 function listOf(doc: CaseDoc, kind: EntityKind): Entity[] {
   switch (kind) {
@@ -14,6 +14,8 @@ function listOf(doc: CaseDoc, kind: EntityKind): Entity[] {
       return doc.groups as unknown as Entity[];
     case 'view':
       return doc.views as unknown as Entity[];
+    case 'pinLink':
+      return (doc.pinLinks ?? (doc.pinLinks = [])) as unknown as Entity[];
   }
 }
 
@@ -45,6 +47,11 @@ export function applyDslChanges(changes: DocChange[]): Command {
           continue;
         }
         listOf(draft, change.kind).push(JSON.parse(JSON.stringify(change.entity)) as Entity);
+      }
+      // 删掉端钉子已不存在的红线，避免留下指向空气的隐形线
+      if (draft.pinLinks && draft.pinLinks.length > 0) {
+        const ids = new Set(draft.nodes.map((node) => node.id));
+        draft.pinLinks = draft.pinLinks.filter((link) => ids.has(link.source) && ids.has(link.target));
       }
       if (changes.length > 0) draft.meta.updatedAt = new Date().toISOString();
     },

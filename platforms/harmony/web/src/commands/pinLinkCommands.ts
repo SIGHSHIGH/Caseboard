@@ -1,4 +1,4 @@
-import { newId } from '../lib/id';
+import { pinLinkId } from '../lib/clusterPin';
 import type { Command } from './types';
 
 /**
@@ -17,7 +17,7 @@ export function addPinLink(source: string, target: string): Command {
           (link.source === target && link.target === source),
       );
       if (exists) return;
-      links.push({ id: newId('pinlink'), source, target });
+      links.push({ id: pinLinkId(source, target), source, target });
       draft.meta.updatedAt = new Date().toISOString();
     },
   };

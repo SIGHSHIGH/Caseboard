@@ -1,4 +1,4 @@
-import type { CaseDoc, CaseEdge, CaseNode, Group, View } from '../types';
+import type { CaseDoc, CaseEdge, CaseNode, Group, PinLink, View } from '../types';
 import { stableJson } from './serialize';
 
 /**
@@ -15,7 +15,7 @@ import { stableJson } from './serialize';
  * - 两侧都改了同一字段且值不同 → 保留图形侧（用户眼前的画布不跳），记入 conflicts。
  */
 
-export type EntityKind = 'node' | 'edge' | 'group' | 'view';
+export type EntityKind = 'node' | 'edge' | 'group' | 'view' | 'pinLink';
 
 export interface DocChange {
   kind: EntityKind;
@@ -27,7 +27,7 @@ export interface DocChange {
   before?: unknown;
   after?: unknown;
   /** op === 'add' 时携带实体快照 */
-  entity?: CaseNode | CaseEdge | Group | View;
+  entity?: CaseNode | CaseEdge | Group | View | PinLink;
 }
 
 export interface MergeReport {
@@ -39,7 +39,7 @@ export interface MergeReport {
   conflicts: DocChange[];
 }
 
-type Entity = CaseNode | CaseEdge | Group | View;
+type Entity = CaseNode | CaseEdge | Group | View | PinLink;
 
 /** DSL 能表达的字段（与 src/dsl/serialize.ts 的输出面保持一致，D20）。 */
 export const DSL_NODE_KEYS = [
@@ -88,6 +88,7 @@ const KEY_SETS: Record<EntityKind, readonly string[]> = {
   edge: DSL_EDGE_KEYS,
   group: DSL_GROUP_KEYS,
   view: DSL_VIEW_KEYS,
+  pinLink: ['id', 'source', 'target'] as const,
 };
 
 function entitiesOf(doc: CaseDoc, kind: EntityKind): Entity[] {
@@ -100,6 +101,8 @@ function entitiesOf(doc: CaseDoc, kind: EntityKind): Entity[] {
       return doc.groups;
     case 'view':
       return doc.views;
+    case 'pinLink':
+      return (doc.pinLinks ?? []) as unknown as Entity[];
   }
 }
 
@@ -119,7 +122,7 @@ export function sameValue(a: unknown, b: unknown): boolean {
 /** 只比较 DSL 可见字段，得到 before → after 的字段级差异。 */
 export function diffDocs(before: CaseDoc, after: CaseDoc): DocChange[] {
   const changes: DocChange[] = [];
-  for (const kind of ['node', 'edge', 'group', 'view'] as const) {
+  for (const kind of ['node', 'edge', 'group', 'view', 'pinLink'] as const) {
     const beforeMap = new Map(entitiesOf(before, kind).map((entity) => [entity.id, entity]));
     const afterMap = new Map(entitiesOf(after, kind).map((entity) => [entity.id, entity]));
     for (const [id, entity] of afterMap) {
