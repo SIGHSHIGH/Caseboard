@@ -70,7 +70,14 @@ import {
   type AlignGuide,
 } from '../../lib/imageNode';
 import { canvasGrid, DEFAULT_CANVAS, normalizeCanvasSkin, showsCanvasGrid } from '../../lib/canvasSkin';
-import { CLUSTER_PIN_Z, clusterMemberZ, findClusterTarget, memberPosition, offsetForCluster } from '../../lib/clusterPin';
+import {
+  CLUSTER_PIN_Z,
+  clusterMemberZ,
+  findClusterTarget,
+  memberPosition,
+  normalizePinLinkWidth,
+  offsetForCluster,
+} from '../../lib/clusterPin';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodeStore } from '../../store/codeStore';
@@ -1408,7 +1415,11 @@ export function Board() {
           <Background id="cb-grid" variant={BackgroundVariant.Lines} gap={80} size={0.6} color={grid.line} />
         ) : null}
         {/* H5.6.3：集中钉子之间的红线——画直线，不是关系线 */}
-        <PinLinkLayer links={doc.pinLinks ?? []} nodes={doc.nodes} />
+        <PinLinkLayer
+          links={doc.pinLinks ?? []}
+          nodes={doc.nodes}
+          width={normalizePinLinkWidth(doc.settings.pinLinkWidth)}
+        />
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
           pannable

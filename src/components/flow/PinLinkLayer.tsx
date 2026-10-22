@@ -12,7 +12,16 @@ import type { CaseNode, PinLink } from '../../types';
  * 渲染放在 React Flow 的 `ViewportPortal` 里：直接用世界坐标画，
  * 平移缩放由 viewport 变换负责，pointer-events 关掉不挡卡片点击。
  */
-function PinLinkLayerInner({ links, nodes }: { links: PinLink[]; nodes: CaseNode[] }) {
+function PinLinkLayerInner({
+  links,
+  nodes,
+  width,
+}: {
+  links: PinLink[];
+  nodes: CaseNode[];
+  /** 线宽（案件级设置 H5.9），右栏滑块可调 */
+  width: number;
+}) {
   if (links.length === 0) return null;
   const centerOf = (id: string): { x: number; y: number } | null => {
     const node = nodes.find((item) => item.id === id && item.type === 'clusterPin');
@@ -31,10 +40,12 @@ function PinLinkLayerInner({ links, nodes }: { links: PinLink[]; nodes: CaseNode
               key={link.id}
               className="cb-pinlink"
               data-pinlink-id={link.id}
+              data-pinlink-width={width}
               x1={from.x}
               y1={from.y}
               x2={to.x}
               y2={to.y}
+              strokeWidth={width}
             />
           );
         })}

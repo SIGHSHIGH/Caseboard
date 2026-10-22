@@ -1,11 +1,16 @@
 import { useDocStore } from '../../store/docStore';
-import { setCanvasImage, setCanvasSkin } from '../../commands';
+import { setCanvasImage, setCanvasSkin, updateSettings } from '../../commands';
 import {
   CANVAS_OPACITY_DEFAULT,
   CANVAS_SKINS,
   CANVAS_SKIN_META,
   normalizeCanvasSkin,
 } from '../../lib/canvasSkin';
+import {
+  normalizePinLinkWidth,
+  PIN_LINK_WIDTH_MAX,
+  PIN_LINK_WIDTH_MIN,
+} from '../../lib/clusterPin';
 import type { CanvasSkin } from '../../types';
 import { useCanvasImagePicker } from '../hooks/useCanvasImage';
 
@@ -22,6 +27,7 @@ export function CanvasBackdropForm() {
   const skin = normalizeCanvasSkin(canvas?.skin);
   const asset = canvas?.assetId ? doc.assets.find((item) => item.id === canvas.assetId) ?? null : null;
   const opacity = Math.round((canvas?.opacity ?? CANVAS_OPACITY_DEFAULT) * 100);
+  const lineWidth = normalizePinLinkWidth(doc.settings.pinLinkWidth);
 
   return (
     <div className="cb-form__section cb-canvasopt">
@@ -61,6 +67,20 @@ export function CanvasBackdropForm() {
         </label>
       ) : null}
       {asset ? <p className="cb-form__subtle">当前背景图：{asset.name ?? asset.path}</p> : null}
+      <span className="cb-form__subtitle">集中钉子之间的红线</span>
+      <label className="cb-field">
+        <span>线宽 {lineWidth}px</span>
+        <input
+          type="range"
+          min={PIN_LINK_WIDTH_MIN}
+          max={PIN_LINK_WIDTH_MAX}
+          step={1}
+          value={lineWidth}
+          data-diag="pinlink-width"
+          onChange={(event) => dispatch(updateSettings({ pinLinkWidth: Number(event.target.value) }))}
+        />
+      </label>
+      <p className="cb-form__subtle">这是全局设置，画布上所有红线一起变粗变细。</p>
     </div>
   );
 }

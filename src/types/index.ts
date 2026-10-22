@@ -326,6 +326,8 @@ export interface Settings {
   mapBackground?: MapBackground;
   /** 画布底衬与背景图（M14） */
   canvas?: CanvasConfig;
+  /** 集中钉子之间红线的粗细（H5.9，案件级全局；缺省 4） */
+  pinLinkWidth?: number;
 }
 
 /** 多假设里的证据立场（M7）：同一证据在不同假设中可支持或反驳 */
