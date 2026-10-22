@@ -2,6 +2,44 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>` / 鸿蒙侧 `hs/H<n>`。
 
+## [未发布] · 鸿蒙 H5.5：集中钉子圆点化 + 钉集跟手 + 清掉 ArkWeb 原生拖影 + 右栏开关归位
+
+### 反馈
+1. 长按阈值改短到 100ms。
+2. 长按图片会「先出现方形缩略图，随后整个图片跟手、屏幕还高斯模糊」。
+3. 集中钉子改成圆点，关系线连接点与该圆点重合，便签在圆点上边正中；默认无便签；新建该节点时弹窗询问。
+4. 钉集图片要跟着钉子一起被拖动。
+5. 绕钉旋转此前只是绕钉平移，要真的转。
+6. 钉子右栏要能增减钉集成员；成员右栏要能改相对钉子的位置。
+7. 右栏展开后的折叠箭头挡住右栏内容，挪到小地图左边。
+
+### 根因
+1. **双重拖影**：素材卡是 `draggable` 的 `<button>`（给桌面 HTML5 DnD 用），ArkWeb 触屏长按会自起一套原生拖拽——整块缩略图跟手 + 背景高斯模糊；我方 96×96 跟手影同时在跑，于是先方影后整图影。触屏下必须在 `onDragStart` 里 `preventDefault()`。
+2. **圆点与连接点不同心**：钉子原来按 168×132 的卡片渲染，Handle 挂在卡片边上，视觉上是一个大头针 + 徽章。改成 30×30 只渲染圆点，Handle 用 absolute + translate 强拉圆心。
+3. **绕钉旋转只改偏移**：`rotateClusterMember` 只重算了 `clusterOffset`，没写 `image.rotation`，所以图片只是绕圈平移。
+4. **新建集中钉子绕过了弹窗**：左栏类型按钮直接走 `addNode` 落在画布中心，便利贴开关没有询问时机。改为借 `NewNodeDialog`（预选类型 clusterPin）。
+5. **右栏开关固定在窗口右下角**：`position: fixed; right:12px`，右栏展开时正好压在右栏内容上。挪进画布容器（`position: relative`）并按小地图几何定位。
+
+### 改了什么
+- `lib/clusterPin.ts`：钉子尺寸 168×132 → 30×30；`stickyVisible` 缺省 false（只有写「显示」才显示便签）。
+- `components/flow/BaseNode.tsx`：钉子分支重写为「同心 Handle + 圆点 + 可选便签」，圆点带 `data-pin-id`；`styles/responsive.css` 加 `.cb-pin__dot` / `.cb-pin__handle` / `.cb-pin__paper`（便签上沿与圆点下半部重叠、`pointer-events:none` 不挡点击）。
+- `components/panels/NewNodeDialog.tsx`：集中钉子的「要不要便利贴 + 便签文字」勾选区；`commands/nodeCommands.ts` 默认字段改「隐藏」；`store/uiStore.ts` 新增 `newNodePreset`，`requestNewNode(at, preset)`；`components/flow/Board.tsx` 左栏点「集中钉子」改为开弹窗。
+- `commands/imageNodeCommands.ts`：`rotateClusterMember` 同时写 `image.rotation`；新增 `nudgeClusterOffset(id, dx, dy)`。
+- `components/panels/RightPanel.tsx`：钉子右栏「钉集成员」+「钉入」下拉；成员右栏「相对钉子的位置 + 四方向键 + 钉到钉心」；图钉颜色色板。
+- `components/panels/AssetLibrary.tsx`：`LONG_PRESS_MS` → 100；触屏下禁用原生拖拽；`index.css` 加 `-webkit-user-drag: none`。
+- `App.tsx` + `styles/responsive.css`：右栏开关移进 `.cb-work__canvas`，`right:175px`（小地图左侧）；地图视图退回 `.cb-collapse--stage`。
+- `components/flow/FreeImageNode.tsx`：图片框加 `data-cluster-id` / `data-rot`，便于机器断言。
+
+### 验收
+`scripts/accept-h5.ps1` 扩到 **31 条全绿**，新增 H5-25…H5-30：
+- H5-25 集中钉子建出来是圆点、新建弹窗会问便利贴（dlg=1 cb=1 dot=1）
+- H5-26 便签默认不显示、右栏切「显示」后才出现（paper0=0 → paperOn=1）
+- H5-27 连接点与圆点同心（hdx=0 hdy=0）
+- H5-28 拖钉子时成员同位移（pin=67,42 member=67,42）
+- H5-29 绕钉旋转带动图片自身角度（rot 0→15）、方向键可挪位置（nudge=6）
+- H5-30 右栏开关停在小地图左边、不压右栏（togX=953 < mmX=963 < rpX=1128）
+
+复现：`powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target 127.0.0.1:5555 -Hap F:dsh-projectharmonyentryuilddefaultoutputsdefaultentry-default-signed.hap`
 ## [未发布] · 鸿蒙 H5.4：素材跨栏拖拽不再卡住 + 长按阈值 480ms + 长按菜单贴边
 
 ### 反馈

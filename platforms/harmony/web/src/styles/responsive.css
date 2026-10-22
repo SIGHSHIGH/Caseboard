@@ -23,12 +23,17 @@
   gap: 8px;
 }
 
-/* ---------- 侧栏开关：竖向折叠条 → 面板左右下角圆形按钮 ----------
+/* ---------- 侧栏开关：竖向折叠条 → 圆形按钮 ----------
    原来两条 `.cb-collapse` 是 16px 宽的竖向长条（触控模式下放大到 36px），
    横向一共吃掉 32–72px，而这一条在平板上几乎按不准。
-   改成浮在窗口左右下角的 44px 圆形按钮：不再参与 flex 布局（position: fixed），
-   画布直接多出 32–72px；按钮自身达到 44×44 的触控最小命中尺寸。
-   图例按钮在 bottom: 126px，与这里的 bottom: 12px + 44px 不冲突。 */
+   改成浮在窗口左右下角的 44px 圆形按钮，画布直接多出 32–72px；
+   按钮自身达到 44×44 的触控最小命中尺寸。
+   图例按钮在 bottom: 126px，与这里的 bottom: 12px + 44px 不冲突。
+
+   右栏开关另作处理：它现在挂在 `.cb-work__canvas` 里（该容器 position: relative），
+   贴在小地图左侧 175px = 小地图右边距 15px + 宽度 150px + 间隔 10px，
+   这样右栏展开收窄画布时它跟着画布走，不会再压在右栏内容上。
+   地图视图没有小地图，退回窗口右下角（`.cb-collapse--stage`）。 */
 .cb-collapse {
   position: fixed;
   bottom: 12px;
@@ -49,7 +54,16 @@
 }
 
 .cb-collapse--right {
+  position: absolute;
+  right: 175px;
+  bottom: 15px;
+  z-index: 30;
+}
+
+.cb-collapse--stage {
+  position: fixed;
   right: 12px;
+  bottom: 12px;
 }
 
 /* 视图切换（画布/时间线/演示/地图）原本只有 22px 高，平板上一按就错行 */
@@ -478,28 +492,71 @@
   color: var(--cb-muted);
 }
 
-/* H5.3：集中钉子（大图钉 + 规整黄色便利贴），只有右侧一个连接点 */
+/* H5.5：集中钉子 = 一个圆点；便利贴挂在圆点正下方，上边中点对齐圆心，默认不显示 */
 .cb-pin {
   position: relative;
   display: grid;
   place-items: center;
-  border-radius: 6px;
+  border-radius: 999px;
   touch-action: none;
+}
+
+.cb-pin__dot {
+  /* 圆点尺寸写死、不随节点外框走：老文档里的钉子（H5.3 建的是 168×132）迁过来也不会被拉成椭圆 */
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--cb-accent);
+  border: 2px solid var(--cb-surface);
+  box-shadow: 0 2px 6px rgba(43, 43, 43, 0.45);
+  box-sizing: border-box;
+  /* 圆点小，手指按上去给个隐形外扩命中区，别让它难抓 */
+  position: relative;
+}
+
+.cb-pin__dot::after {
+  content: '';
+  position: absolute;
+  inset: -11px;
+  border-radius: 999px;
+}
+
+/* 唯一的连接点：与圆点同心（Handle 默认贴在节点边上，这里强拉到圆心） */
+.cb-pin__handle {
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  width: 14px;
+  height: 14px;
+  min-width: 0;
+  min-height: 0;
+  border: 2px solid var(--cb-accent);
+  background: var(--cb-surface);
+  opacity: 0.9;
 }
 
 .cb-pin__paper {
   position: absolute;
-  inset: 0;
+  /* 钉子圆点钉在便利贴上边的正中：便签上沿与圆点下半部略重叠，视觉上像被钉住 */
+  top: calc(50% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  min-height: 84px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 14px 12px 10px;
+  padding: 12px;
   border-radius: 4px;
   background: #f6e58d;
   border: 1px solid #e2cf72;
   box-shadow: 0 6px 14px rgba(43, 43, 43, 0.18);
   box-sizing: border-box;
   overflow: hidden;
+  /* 便利贴只是给人看的装饰：不让它挡住下面卡片的点击/拖拽 */
+  pointer-events: none;
 }
 
 .cb-pin__paper-text {
@@ -511,41 +568,36 @@
   white-space: pre-wrap;
 }
 
-.cb-pin__head {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--cb-surface);
-  border: 1px solid var(--cb-border-strong);
-  box-shadow: 0 4px 10px rgba(43, 43, 43, 0.32);
+.cb-pin.is-selected .cb-pin__dot {
+  box-shadow: 0 0 0 3px var(--cb-accent-soft), 0 2px 6px rgba(43, 43, 43, 0.45);
 }
 
-.cb-pin__glyph {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.cb-pin__label {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--cb-muted);
-}
-
-.cb-pin.is-selected .cb-pin__head {
-  border-color: var(--cb-accent);
-  box-shadow: 0 0 0 2px var(--cb-accent);
-}
-
-.cb-pin.is-multi .cb-pin__head {
+.cb-pin.is-multi .cb-pin__dot {
   outline: 2px dashed var(--cb-accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
-/* 右栏：图钉颜色色板 */
-.cb-swatches {
+/* H5.5：钉子的右栏里直接挑图片钉进来 */
+.cb-pinpick {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.cb-pinpick select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--cb-border);
+  background: var(--cb-surface);
+  color: var(--cb-text);
+  font: inherit;
+}
+
+/* 右栏：图钉颜色色板 */.cb-swatches {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

@@ -1129,6 +1129,12 @@ export function Board() {
     const center = rect
       ? screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
       : { x: 320, y: 240 };
+    // 集中钉子要先问「要不要便利贴」，所以借弹窗创建；其余类型仍然一键落在画布中心
+    if (addRequest === 'clusterPin') {
+      requestNewNode({ x: Math.round(center.x), y: Math.round(center.y) }, 'clusterPin');
+      consumeAdd();
+      return;
+    }
     const jitter = Math.round((Math.random() - 0.5) * 48);
     dispatch(
       addNode({
@@ -1138,7 +1144,7 @@ export function Board() {
       }),
     );
     consumeAdd();
-  }, [addRequest, consumeAdd, dispatch, screenToFlowPosition]);
+  }, [addRequest, consumeAdd, dispatch, screenToFlowPosition, requestNewNode]);
 
   // 代码侧点击声明 → 画布居中到对应实体（同一 nonce 只消费一次）
   useEffect(() => {

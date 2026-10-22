@@ -104,8 +104,9 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
     setEditing(false);
   };
 
-  /* 集中钉子（H5.3）：不画普通卡片，而是一枚更大的图钉钉在一张规整的黄色便利贴上。
-     需求明确「只有一个关系线连接点」，所以这里只保留右侧一对 Handle（target 做几何锚点）。 */
+  /* 集中钉子（H5.3 首版 → H5.5 改进）：节点本体就是一个圆点，
+     关系线连接点与圆点同心（只有一个，画在圆点中心）；
+     黄色便利贴是挂在圆点正下方（上边中点对齐圆点）的装饰层，默认不显示，可显隐+写字。 */
   if (node.type === 'clusterPin') {
     const paperVisible = stickyVisible(node);
     const text = stickyText(node);
@@ -121,25 +122,14 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
         onPointerCancel={clearPressTimer}
         data-type="clusterPin"
       >
-        <Handle
-          id="right"
-          type="target"
-          position={Position.Right}
-          className="cb-handle cb-handle--target"
-          isConnectable={false}
-        />
-        <Handle id="right" type="source" position={Position.Right} className="cb-handle cb-handle--source" />
+        {/* 唯一连接点：与圆点同心（Position.Top + CSS 拉到圆心），拖出一根线就从这里起 */}
+        <Handle id="right" type="source" position={Position.Top} className="cb-handle cb-pin__handle" />
+        <div className="cb-pin__dot" data-pin-id={node.id} title="集中钉子：拖动它带动整个钉集" />
         {paperVisible ? (
           <div className="cb-pin__paper">
             <span className="cb-pin__paper-text">{text}</span>
           </div>
         ) : null}
-        <div className="cb-pin__head" title="集中钉子：拖动它带动整个钉集">
-          <span className="cb-pin__glyph" aria-hidden="true">
-            {meta.icon}
-          </span>
-          <span className="cb-pin__label">集中钉子</span>
-        </div>
       </div>
     );
   }

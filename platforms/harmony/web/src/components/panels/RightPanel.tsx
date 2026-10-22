@@ -16,6 +16,7 @@ import {
   detachImageFromCluster,
   attachImageToCluster,
   rotateClusterMember,
+  nudgeClusterOffset,
   setImageLayer,
   setNodeLayer,
   updateImageNode,
@@ -197,6 +198,9 @@ function NodeForm({ node }: { node: CaseNode }) {
   const dispatch = useDocStore((s) => s.dispatch);
   const groups = useDocStore((s) => s.doc.groups);
   const clusterImgs = useDocStore((s) => s.doc.imageNodes).filter((item) => item.clusterId === node.id);
+  // H5.3/H5.5：还没被任何钉子钉住的图片，可以在钉子的右栏里直接挑进来
+  const freeImgs = useDocStore((s) => s.doc.imageNodes).filter((item) => !item.clusterId);
+  const [pinPickId, setPinPickId] = useState('');
   const [title, setTitle] = useState(node.title);
   const [aliases, setAliases] = useState((node.aliases ?? []).join('、'));
   const [notes, setNotes] = useState(node.notes ?? '');
@@ -587,7 +591,7 @@ function NodeForm({ node }: { node: CaseNode }) {
                       className="cb-link-btn"
                       onClick={() => useUiStore.getState().selectImage(image.id)}
                     >
-                      查看
+                      调整
                     </button>
                     <button
                       type="button"
@@ -601,6 +605,44 @@ function NodeForm({ node }: { node: CaseNode }) {
               })}
             </ul>
           )}
+          {/* H5.5：成员增减也能在钉子自己的右栏里做，不用先去画布上找那张图 */}
+          {freeImgs.length > 0 ? (
+            <div className="cb-pinpick">
+              <select
+                value={pinPickId}
+                onChange={(event) => setPinPickId(event.target.value)}
+                aria-label="选择要钉入的图片"
+              >
+                <option value="">选择要钉入的图片…</option>
+                {freeImgs.map((image) => {
+                  const asset = useDocStore.getState().doc.assets.find((item) => item.id === image.assetId);
+                  return (
+                    <option key={image.id} value={image.id}>
+                      {asset?.name ?? image.id}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                type="button"
+                className="cb-btn"
+                disabled={!pinPickId}
+                onClick={() => {
+                  const image = freeImgs.find((item) => item.id === pinPickId);
+                  if (!image) return;
+                  dispatch(
+                    attachImageToCluster(image.id, node.id, offsetForCluster(node, {
+                      x: image.x + image.w / 2,
+                      y: image.y + image.h / 2,
+                    })),
+                  );
+                  setPinPickId('');
+                }}
+              >
+                钉入
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1379,6 +1421,33 @@ function ImageForm({ image }: { image: ImageNode }) {
             </button>
             <button type="button" className="cb-btn" onClick={() => dispatch(detachImageFromCluster(image.id))}>
               移出钉集
+            </button>
+          </div>
+          {/* H5.5：成员相对钉子的位置也能在右栏里精确挪，不用靠拖 */}
+          <h4 className="cb-form__subtitle">
+            相对钉子的位置（{Math.round(image.clusterOffset?.x ?? 0)}, {Math.round(image.clusterOffset?.y ?? 0)}）
+          </h4>
+          <div className="cb-assets__actions">
+            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, -12, 0))}>
+              ← 左移
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, 12, 0))}>
+              右移 →
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, 0, -12))}>
+              ↑ 上移
+            </button>
+            <button type="button" className="cb-btn" onClick={() => dispatch(nudgeClusterOffset(image.id, 0, 12))}>
+              ↓ 下移
+            </button>
+            <button
+              type="button"
+              className="cb-btn"
+              onClick={() =>
+                dispatch(nudgeClusterOffset(image.id, -(image.clusterOffset?.x ?? 0), -(image.clusterOffset?.y ?? 0)))
+              }
+            >
+              钉到钉心
             </button>
           </div>
         </div>

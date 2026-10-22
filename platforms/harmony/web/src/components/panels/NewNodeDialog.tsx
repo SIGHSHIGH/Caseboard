@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { addNode } from '../../commands';
+import { CLUSTER_PIN_H, CLUSTER_PIN_W } from '../../lib/clusterPin';
 import { NODE_TYPE_META } from '../../lib/theme';
 import { NODE_TYPE_ORDER, templateOf } from '../../lib/nodeTemplates';
 import { newId } from '../../lib/id';
@@ -14,23 +15,29 @@ import type { NodeType } from '../../types';
  */
 export function NewNodeDialog() {
   const at = useUiStore((s) => s.newNodeAt);
+  const preset = useUiStore((s) => s.newNodePreset);
   const consumeNewNode = useUiStore((s) => s.consumeNewNode);
   const selectNode = useUiStore((s) => s.selectNode);
   const dispatch = useDocStore((s) => s.dispatch);
   const [type, setType] = useState<NodeType>('person');
   const [title, setTitle] = useState('');
+  // H5.5：集中钉子默认无便利贴，建的时候问一句要不要
+  const [pinPaper, setPinPaper] = useState(false);
+  const [pinText, setPinText] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (at) {
-      setType('person');
+      setType((preset as NodeType) ?? 'person');
       setTitle('');
+      setPinPaper(false);
+      setPinText('');
       // 等遮罩挂上再聚焦，避免 focus 被 mask 的首次渲染打断
       const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
       return () => window.clearTimeout(timer);
     }
     return undefined;
-  }, [at]);
+  }, [at, preset]);
 
   if (!at) return null;
 
@@ -39,14 +46,19 @@ export function NewNodeDialog() {
 
   const confirm = () => {
     const id = newId(type);
+    const isPin = type === 'clusterPin';
     dispatch(
       addNode({
         id,
         type,
         title: finalTitle,
-        // 落点对齐成「以双击点为中心」，视觉上不会甩到一边
-        x: Math.round(at.x - 104),
-        y: Math.round(at.y - 48),
+        // 集中钉子是一个圆点，落点直接对准双击点；其它卡片按 208×96 居中
+        x: isPin ? Math.round(at.x - CLUSTER_PIN_W / 2) : Math.round(at.x - 104),
+        y: isPin ? Math.round(at.y - CLUSTER_PIN_H / 2) : Math.round(at.y - 48),
+        w: isPin ? CLUSTER_PIN_W : undefined,
+        h: isPin ? CLUSTER_PIN_H : undefined,
+        // 便利贴是可选装饰：勾了才写「显示」，文字随手写进去；不勾就默认隐藏
+        fields: isPin ? { 显示便利贴: pinPaper ? '显示' : '隐藏', 便利贴文字: pinText.trim() } : undefined,
       }),
     );
     selectNode(id);
@@ -99,6 +111,30 @@ export function NewNodeDialog() {
             }}
           />
         </label>
+        {type === 'clusterPin' ? (
+          <div className="cb-form__section">
+            <label className="cb-check">
+              <input
+                type="checkbox"
+                checked={pinPaper}
+                onChange={(event) => setPinPaper(event.target.checked)}
+                aria-label="带黄色便利贴"
+              />
+              <span>带一张黄色便利贴（默认不带）</span>
+            </label>
+            {pinPaper ? (
+              <label className="cb-field">
+                <span>便利贴文字</span>
+                <textarea
+                  value={pinText}
+                  rows={3}
+                  placeholder="写在这张便利贴上的字"
+                  onChange={(event) => setPinText(event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+        ) : null}
         <div className="cb-modal__actions">
           <button type="button" className="cb-btn" onClick={consumeNewNode}>
             取消
@@ -106,8 +142,7 @@ export function NewNodeDialog() {
           <button type="button" className="cb-btn cb-btn--primary" onClick={confirm}>
             创建
           </button>
-        </div>
-      </div>
+        </div>      </div>
     </div>
   );
 }

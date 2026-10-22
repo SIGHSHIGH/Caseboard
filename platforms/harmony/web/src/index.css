@@ -1494,12 +1494,20 @@ button.cb-members__title--link:hover {
   box-shadow: 0 0 0 1px var(--cb-accent-soft);
 }
 
-/* H5.3：手指按下立刻反馈，长按阈值（480ms）期间不再是「没动静」 */
+/* H5.3：手指按下立刻反馈，长按阈值（H5.5 起 100ms）期间不再是「没动静」 */
 .cb-asset--pressing {
   transform: scale(0.96);
   border-color: var(--cb-border-strong);
   box-shadow: 0 0 0 1px var(--cb-accent-soft);
   transition: transform 120ms ease-out;
+}
+
+/* H5.5：触屏下禁掉原生拖拽。ArkWeb 长按 draggable 元素会自起一套拖影（整块缩略图跟手、
+   背景高斯模糊），与我们的方形缩略影重复；draggable 属性仍在，只让触摸不触发。 */
+html[data-input='touch'] .cb-asset,
+html[data-input='touch'] .cb-asset img {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .cb-asset__thumb {

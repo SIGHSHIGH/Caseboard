@@ -241,6 +241,18 @@ export default function App() {
               <ReactFlowProvider>
                 <Board />
               </ReactFlowProvider>
+              {/* 右栏开关挪进画布层、固定在小地图左侧：原先固定在窗口右下角，
+                  右栏展开时正好压在右栏内容上（用户反馈被挡住）。 */}
+              <button
+                type="button"
+                className="cb-collapse cb-collapse--right"
+                title={rightOpen ? '收起右栏' : '展开右栏'}
+                aria-label={rightOpen ? '收起右栏' : '展开右栏'}
+                aria-expanded={rightOpen}
+                onClick={() => setRightOpen((value) => !value)}
+              >
+                {rightOpen ? '›' : '‹'}
+              </button>
             </div>
           ) : null}
           {codeOpen && viewMode === 'board' ? (
@@ -274,11 +286,12 @@ export default function App() {
             </>
           ) : null}
         </div>
-        {/* M11（I7）：地图视图也要右栏，才能改经纬度、点选设坐标；时间线/演示保留大舞台 */}
-        {viewMode === 'board' || viewMode === 'map' ? (
+        {/* M11（I7）：地图视图也要右栏，才能改经纬度、点选设坐标；时间线/演示保留大舞台。
+            画布视图的开关已挪进画布层（小地图左侧），这里只剩地图视图用。 */}
+        {viewMode === 'map' ? (
           <button
             type="button"
-            className="cb-collapse cb-collapse--right"
+            className="cb-collapse cb-collapse--right cb-collapse--stage"
             title={rightOpen ? '收起右栏' : '展开右栏'}
             aria-label={rightOpen ? '收起右栏' : '展开右栏'}
             aria-expanded={rightOpen}

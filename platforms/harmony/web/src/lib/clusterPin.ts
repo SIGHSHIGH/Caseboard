@@ -18,9 +18,9 @@ export const CLUSTER_Z_BASE = 1000;
 /** 集中钉子本身永远比它的成员再高一层 */
 export const CLUSTER_PIN_Z = 1600;
 
-/** 集中钉子的默认尺寸（钉在便利贴上的整体外框） */
-export const CLUSTER_PIN_W = 168;
-export const CLUSTER_PIN_H = 132;
+/** 集中钉子的尺寸（H5.5：节点本体就是一个圆点，便利贴是挂在下方的装饰层，不占布局） */
+export const CLUSTER_PIN_W = 30;
+export const CLUSTER_PIN_H = 30;
 
 /** 图片中心是否落在钉子的吸附范围里（钉子外框向外扩 tolerance） */
 export function hitClusterPin(pin: CaseNode, center: XY, tolerance = 48): boolean {
@@ -97,12 +97,12 @@ export function clusterMemberZ(imageNodes: readonly ImageNode[], pinId: string, 
   return CLUSTER_Z_BASE + (index < 0 ? 0 : index);
 }
 
-/** 便利贴是否显示（fields 里存「显示 / 隐藏」，缺省显示） */
+/** 便利贴是否显示（fields 里存「显示 / 隐藏」；H5.5 起**默认不显示**，要便利贴得显式打开） */
 export function stickyVisible(node: Pick<CaseNode, 'fields'>): boolean {
   const value = node.fields['显示便利贴'];
   if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value !== '隐藏';
-  return true;
+  if (typeof value === 'string') return value === '显示';
+  return false;
 }
 
 /** 便利贴上的字 */

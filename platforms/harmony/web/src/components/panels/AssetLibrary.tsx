@@ -33,9 +33,16 @@ function useThumb(assetId: string, size: number = 256): string | null {
   return url;
 }
 
-/** 长按起拖：阈值之内移动超过 8px 就当作滚动 / 点选，不再起拖（H5 触屏） */
-const LONG_PRESS_MS = 480;
+/** 长按起拖：阈值之内移动超过 8px 就当作滚动 / 点选，不再起拖（H5 触屏）
+ *  H5.5：480ms 太长（用户手测「要按住久一点才动」），降到 100ms——
+ *  按下就已经给了缩放反馈（.cb-asset--pressing），100ms 后起拖手感更跟手。 */
+const LONG_PRESS_MS = 100;
 const LONG_PRESS_SLOP = 8;
+
+/** 触屏输入：ArkWeb 长按 draggable 元素会自起一套原生拖拽，必须挡掉（H5.5） */
+function isTouchInput(): boolean {
+  return document.documentElement.dataset.input === 'touch';
+}
 
 function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: boolean; onSelect: () => void }) {
   const url = useThumb(asset.id);
@@ -176,6 +183,12 @@ function AssetTile({ asset, selected, onSelect }: { asset: Asset; selected: bool
       onPointerCancel={onPointerCancel}
       draggable
       onDragStart={(event) => {
+        // H5.5：触屏长按过 draggable 元素时 ArkWeb 会额外起一套原生拖拽（整块缩略图跟着手指，
+        // 并把背后的页面做高斯模糊），和我们的方形缩略影重复。触屏一律掐掉原生拖拽。
+        if (isTouchInput()) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.setData(ASSET_DND_TYPE, asset.id);
         event.dataTransfer.effectAllowed = 'copy';
       }}

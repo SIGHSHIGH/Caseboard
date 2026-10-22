@@ -277,11 +277,14 @@ function FreeImageNodeInner({ data, selected }: NodeProps<FreeImageFlowNode>) {
       <div
         ref={frameRef}
         className={`cb-free-image__frame cb-free-image__frame--${border}${isAi ? ' is-ai' : ''}`}
+        data-cluster-id={image.clusterId ?? ''}
         style={{
           width: rect.w,
           height: rect.h,
           transform: `translate(${offsetX}px, ${offsetY}px) rotate(${rotation}deg)`,
         }}
+        // 验收探针读角度用（绕钉旋转要能被机器断言，不能只靠肉眼）
+        data-rot={Math.round(rotation)}
         title={title}
       >
         {thumb ? (

@@ -66,7 +66,8 @@ export function addNode(input: AddNodeInput): Command {
         y: input.y,
         w: input.w ?? (isPin ? CLUSTER_PIN_W : DEFAULT_W),
         h: input.h ?? (isPin ? CLUSTER_PIN_H : 96),
-        fields: input.fields ?? (isPin ? { 显示便利贴: '显示', 便利贴文字: '' } : {}),
+        // H5.5：集中钉子默认**不带**便利贴（新建弹窗里问过），两个字段仍然预置好，随时可在右栏切「显示」
+        fields: input.fields ?? (isPin ? { 显示便利贴: '隐藏', 便利贴文字: '' } : {}),
         tags: input.tags ?? [],
         status: input.status ?? 'todo',
         confidence: input.confidence ?? 50,

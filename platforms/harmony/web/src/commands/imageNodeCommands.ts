@@ -282,10 +282,12 @@ export function detachImageFromCluster(imageId: string): Command {
   };
 }
 
-/** 让成员图片绕钉子转一个角度（右栏「绕钉子转」按钮） */
+/** 让成员图片绕钉子转一个角度（右栏「绕钉子转」按钮）
+ *  H5.5：原来只转了 clusterOffset，看起来像「绕钉子挪了个位置」；现在图片自身也一起转，
+ *  才是「钉在钉子上的一张贴纸被拧了一下」的观感。 */
 export function rotateClusterMember(imageId: string, degrees: number): Command {
   return {
-    label: '绕钉子调整位置',
+    label: '绕钉子旋转',
     apply(draft) {
       const image = draft.imageNodes.find((item) => item.id === imageId);
       if (!image || !image.clusterId) return;
@@ -293,6 +295,25 @@ export function rotateClusterMember(imageId: string, degrees: number): Command {
       if (!pin) return;
       const offset = image.clusterOffset ?? { x: 0, y: 0 };
       image.clusterOffset = rotateOffset(offset, degrees);
+      image.rotation = Math.round((((image.rotation ?? 0) + degrees) % 360 + 360) % 360);
+      const position = memberPosition(pin, image.clusterOffset, { w: image.w, h: image.h });
+      image.x = position.x;
+      image.y = position.y;
+    },
+  };
+}
+
+/** 微调成员相对钉子的位置（右栏方向键 / 归位）；x/y 同步重算，保证渲染与模型一致 */
+export function nudgeClusterOffset(imageId: string, dx: number, dy: number): Command {
+  return {
+    label: '调整钉集内位置',
+    apply(draft) {
+      const image = draft.imageNodes.find((item) => item.id === imageId);
+      if (!image || !image.clusterId) return;
+      const pin = draft.nodes.find((item) => item.id === image.clusterId);
+      if (!pin) return;
+      const offset = image.clusterOffset ?? { x: 0, y: 0 };
+      image.clusterOffset = { x: Math.round(offset.x + dx), y: Math.round(offset.y + dy) };
       const position = memberPosition(pin, image.clusterOffset, { w: image.w, h: image.h });
       image.x = position.x;
       image.y = position.y;

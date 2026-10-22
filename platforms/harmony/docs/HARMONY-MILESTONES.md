@@ -17,6 +17,7 @@
 | H5.2 | 静默失败清账 + 触屏多选/组框收编 + 画布帧耗时实测 | `scripts/accept-h5.ps1` 16 条 | 见下方「H5.2 结项」 |
 | H5.3 | 集中钉子 + 钉集（图片钉在一颗钉子上整体移动/绕钉旋转）+ 图钉自由落点与换色 + 各节点层级控件 + 组框直接挑节点加入 + 拖入画布卡壳量化 | `scripts/accept-h5.ps1` 25 条 | 见下方「H5.3 结项」 |
 | H5.4 | 素材跨栏拖拽不再「卡住」+ 长按阈值 480ms + 长按菜单贴边自动夹进视口 | `scripts/accept-h5.ps1` 25 条（H5-24 菜单贴边） | 本节结论 20–22 |
+| H5.5 | 集中钉子改圆点（连接点同心、便签在圆点上边正中、默认无便签、新建时弹窗询问）+ 拖钉带动钉集 + 绕钉真旋转 + 钉子右栏成员增减 + 成员相对位置控件 + 长按阈值 100ms + 杀掉 ArkWeb 原生拖影（整图跟随 + 背景高斯模糊）+ 右栏开关挪到小地图左侧 | `scripts/accept-h5.ps1` 31 条（H5-25…H5-30） | 见下方「H5.5 结项」 |
 
 桌面回填（`main`）：`774fa62` 顶栏两处修正 + `.cb-btn{flex-shrink:0}`，已 cherry-pick 回 harmony（`4a6315c`）。
 
@@ -142,3 +143,33 @@
 26. **rawfile 同步必须用 `/MIR`**：robocopy 只 `/E` 会把历史 hash 的 `assets/index-*` 留在 DevEco 侧，HAP 从 4.9MB 一路涨到 46MB。同步 `resources/rawfile` 子树要 `/MIR`，并清掉 `index.html` 未引用的旧 `index-*` 产物。
 27. **验收命令（一条可复现）**：`powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"` → 25/25。
 
+
+## H5.5 结项（集中钉子圆点化 / 钉集跟手 / 拖影清理 / 右栏开关归位）
+
+用户此轮反馈六条，对应实现与断言：
+
+| 用户要求 | 实现 | 断言 |
+|---|---|---|
+| 长按阈值改短到 100ms | `AssetLibrary.tsx` 的 `LONG_PRESS_MS = 100` | H5-21（hold/move/up 均 ≤200ms） |
+| 长按先方影、后整图影 + 屏幕高斯模糊 | ArkWeb 对 `draggable` 元素自起原生拖拽：触屏下 `onDragStart` 直接 `preventDefault`，并加 `-webkit-user-drag:none` | H5-21（只应有我方 `.cb-asset-drag` 一个影） |
+| 集中钉子改成圆点、连接点与圆点同心、便签在圆点上边正中、默认无便签、新建时弹窗询问 | `clusterPin.ts` 尺寸 30×30 + `stickyVisible` 缺省 false；`BaseNode.tsx` 只渲染同心 Handle + `.cb-pin__dot`；`.cb-pin__paper { top: calc(50% + 8px) }`；左栏点「集中钉子」改为开 `NewNodeDialog`（带便利贴勾选） | H5-25（dlg=1 cb=1 dot=1）、H5-27（hdx=0 hdy=0） |
+| 便利贴默认不显示、右栏可切显示 | `addNode` 默认字段 `显示便利贴: '隐藏'`，右栏下拉写回 | H5-26（paper0=0 → paperOn=1） |
+| 钉集图片跟着钉子一起拖 | `Board.tsx` 的 `onNodeDragStop` 拖钉子走 `moveClusterBy`，成员由 `memberPosition` 重算 | H5-28（pin=67,42 member=67,42） |
+| 绕钉旋转要真的转（此前只是绕钉平移） | `rotateClusterMember` 同时写 `clusterOffset` 与 `image.rotation` | H5-29（rot 0→15） |
+| 钉子右栏可增减成员、成员右栏可调相对位置 | `RightPanel.tsx` 的 `.cb-pinpick`（未入集图片下拉 + 钉入）与「相对钉子的位置 + 四方向键 + 钉到钉心」 | H5-29（nudge=6）、H5-28（贴入链路） |
+| 右栏开关挡内容 → 挪到小地图左边 | `App.tsx` 把按钮移进 `.cb-work__canvas`，`responsive.css` 里 `.cb-collapse--right { position:absolute; right:175px; bottom:15px }`（=小地图右边距 15 + 宽 150 + 间距 10），地图视图退回 `.cb-collapse--stage` | H5-30（tog=1 togPanel=1，实测 togX=953 < mmX=963 < rpX=1128） |
+
+### 本轮新增的硬结论
+
+28. **ArkWeb 触屏长按 `draggable` 元素会自起一套原生拖拽**（整块缩略图跟手 + 背景高斯模糊），与我们自己的跟手影同时存在就是「先方影后整图影」；`draggable` 在触屏下要 `onDragStart` 直接 `preventDefault()`，光靠 CSS `-webkit-user-drag:none` 不够稳。
+29. **xyflow 节点拖拽吃 `mousedown`，不吃 `pointerdown`**：`@xyflow/system` 只监听 `mousedown/mousemove/pointermove`。合成拖拽必须派 `MouseEvent('mousedown', {button:0, buttons:1})`，且 `pointermove` 要派到 `window`。
+30. **抽探针注入块不能用「一行恰好是 `    }`」当终点**：相位 JS 里天然有内层收尾行，会提前截断（曾把块尾的数组逗号吃掉）。改为「`    }` 收尾行之后紧跟 `"  }",` 再跟 `"}catch(e)…"`」的尾部锚点，并在块尾写 `// end-of-phase` 标记；`check-probe.mjs` 同步按标记/尾部锚点判定，并跳过块间的 `//` 注释行。
+31. **`position: fixed` 的按钮要跟着「画布」而不是「窗口」走**：右栏开关原先 `right:12px` 固定在窗口右下角，右栏展开时正好压在右栏内容上。挪进 `position: relative` 的 `.cb-work__canvas` 里、按小地图几何量出 `right:175px`，画布收窄时它自动左移。
+32. **右栏层级/颜色控件需要 DOM 锚点才好做机器验收**：给 `.cb-pin__dot` 加 `data-pin-id`、给图片框加 `data-cluster-id` / `data-rot` 后，探针能精确定位「这颗钉子 / 这张成员图」，不再靠「取最后一个元素」瞎猜。
+
+### 一条可复现验收
+
+```
+powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
+```
+→ 31/31 PASS（报告落 `platforms/harmony/.tmp-esbuild/accept-h5.json`）。

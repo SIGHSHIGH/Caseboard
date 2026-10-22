@@ -79,6 +79,8 @@ interface UiStore {
   groupRequest: 'rect' | 'lasso' | null;
   /** A5：双击画布空白 → 记住世界坐标并弹出「新建节点」对话框（选类型 + 标题） */
   newNodeAt: XY | null;
+  /** 弹窗预选类型：左栏点「集中钉子」时要求先问便利贴，所以带着类型打开弹窗 */
+  newNodePreset: string | null;
   /** 画布交互模式：默认选择，圈选时临时进入 lasso */
   mode: CanvasMode;
   leftTab: LeftTab;
@@ -88,7 +90,7 @@ interface UiStore {
   consumeAdd: () => void;
   requestGroup: (kind: 'rect' | 'lasso') => void;
   consumeGroup: () => void;
-  requestNewNode: (at: XY) => void;
+  requestNewNode: (at: XY, preset?: string | null) => void;
   consumeNewNode: () => void;
   setMode: (mode: CanvasMode) => void;
   selectNode: (id: string | null) => void;
@@ -149,6 +151,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   focusRequest: null,
   groupRequest: null,
   newNodeAt: null,
+  newNodePreset: null,
   mode: 'select',
   leftTab: 'nodes',
   setLeftTab: (leftTab) => set({ leftTab }),
@@ -161,8 +164,8 @@ export const useUiStore = create<UiStore>((set, get) => ({
   consumeAdd: () => set({ addRequest: null }),
   requestGroup: (kind) => set({ groupRequest: kind }),
   consumeGroup: () => set({ groupRequest: null }),
-  requestNewNode: (at) => set({ newNodeAt: at }),
-  consumeNewNode: () => set({ newNodeAt: null }),
+  requestNewNode: (at, preset) => set({ newNodeAt: at, newNodePreset: preset ?? null }),
+  consumeNewNode: () => set({ newNodeAt: null, newNodePreset: null }),
   setMode: (mode) => set({ mode }),
   selectNode: (id) => set({ ...NO_SELECTION, selectedNodeId: id, selectedNodeIds: id ? [id] : [] }),
   setNodeSelection: (ids) =>

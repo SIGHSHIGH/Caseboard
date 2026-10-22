@@ -58,6 +58,7 @@ export {
   attachImageToCluster,
   detachImageFromCluster,
   rotateClusterMember,
+  nudgeClusterOffset,
   moveClusterBy,
   syncClusterMembers,
 } from './imageNodeCommands';

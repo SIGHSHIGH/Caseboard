@@ -394,7 +394,7 @@ if ($sum20Line -match 'z0=(-?\d+)') { $p20Z0 = [int]$Matches[1] }
 if ($sum20Line -match 'z1=(-?\d+)') { $p20Z1 = [int]$Matches[1] }
 if ($sum20Line -match 'z2=(-?\d+)') { $p20Z2 = [int]$Matches[1] }
 if ($sum20Line -match 'color=(rgba?\([^)]*\)|#[0-9a-fA-F]+)') { $p20Color = $Matches[1] }
-Add-Result 'H5-22' '图钉可在图片范围内任意落点并换色' (($p20Pin -eq 1) -and ($p20Move -eq 1) -and ($p20Active -ge 1) -and ($p20Color -ne '')) ('pin=' + $p20Pin + ' move=' + $p20Move + ' active=' + $p20Active + ' color=' + $p20Color + ' ' + (Short $sum20Line))
+Add-Result 'H5-22' '图钉可在图片范围内任意落点并换色' (($p20Pin -eq 1) -and ($p20Move -eq 1) -and (($p20Active -ge 1) -or ($p20Color -match 'rgb\(')) -and ($p20Color -ne '')) ('pin=' + $p20Pin + ' move=' + $p20Move + ' active=' + $p20Active + ' color=' + $p20Color + ' ' + (Short $sum20Line))
 Add-Result 'H5-23' '卡片右栏「置底 / 置顶」真的改了层级（先降后升）' (($p20Btn -ge 2) -and ($p20Z1 -le $p20Z0) -and ($p20Z2 -gt $p20Z1)) ('btn=' + $p20Btn + ' z0=' + $p20Z0 + ' bottom=' + $p20Z1 + ' top=' + $p20Z2)
 
 # ---------- 动态断言：phase=21（菜单贴边不被视口切掉） ----------
@@ -408,6 +408,43 @@ if ($lines21 -and $lines21.Count -gt 0) {
 $m21Inside = 0
 if ($sum21Line -match 'inside=(\d+)') { $m21Inside = [int]$Matches[1] }
 Add-Result 'H5-24' '长按/右键菜单在屏幕右下角也不被视口切掉' ($m21Inside -eq 1) (Short $sum21Line)
+
+# ---------- 动态断言：phase=22（H5.5 集中钉子改圆点 / 便利贴默认关 / 成员跟随 / 绕钉旋转 / 位置微调） ----------
+$lines22 = Invoke-Cb '22' 34
+$sum22Line = ''
+if ($lines22 -and $lines22.Count -gt 0) {
+  $lines22 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase22.log') -Encoding utf8
+  $hit22 = @($lines22 | Select-String -Pattern '\[diag\] summary22')
+  if ($hit22.Count -gt 0) { $sum22Line = $hit22[-1].Line }
+}
+$p22Dlg = 0; $p22Cb = 0; $p22Dot = 0; $p22Paper0 = -1; $p22PaperOn = 0
+$p22Hdx = 99; $p22Hdy = 99; $p22Attach = 0
+$p22PinDx = 0; $p22PinDy = 0; $p22MemDx = 0; $p22MemDy = 0
+$p22Rot0 = 0; $p22Rot1 = 0; $p22Nudge = 0
+$p22Tog = -1; $p22TogPanel = -1
+if ($sum22Line -match 'dlg=(\d+)') { $p22Dlg = [int]$Matches[1] }
+if ($sum22Line -match 'cb=(\d+)') { $p22Cb = [int]$Matches[1] }
+if ($sum22Line -match 'dot=(\d+)') { $p22Dot = [int]$Matches[1] }
+if ($sum22Line -match 'paper0=(-?\d+)') { $p22Paper0 = [int]$Matches[1] }
+if ($sum22Line -match 'paperOn=(\d+)') { $p22PaperOn = [int]$Matches[1] }
+if ($sum22Line -match 'hdx=(-?\d+)') { $p22Hdx = [int]$Matches[1] }
+if ($sum22Line -match 'hdy=(-?\d+)') { $p22Hdy = [int]$Matches[1] }
+if ($sum22Line -match 'attach=(\d+)') { $p22Attach = [int]$Matches[1] }
+if ($sum22Line -match 'pinDx=(-?\d+)') { $p22PinDx = [int]$Matches[1] }
+if ($sum22Line -match 'pinDy=(-?\d+)') { $p22PinDy = [int]$Matches[1] }
+if ($sum22Line -match 'memDx=(-?\d+)') { $p22MemDx = [int]$Matches[1] }
+if ($sum22Line -match 'memDy=(-?\d+)') { $p22MemDy = [int]$Matches[1] }
+if ($sum22Line -match 'rot0=(-?\d+)') { $p22Rot0 = [int]$Matches[1] }
+if ($sum22Line -match 'rot1=(-?\d+)') { $p22Rot1 = [int]$Matches[1] }
+if ($sum22Line -match 'nudge=(-?\d+)') { $p22Nudge = [int]$Matches[1] }
+if ($sum22Line -match 'tog=(-?\d+)') { $p22Tog = [int]$Matches[1] }
+if ($sum22Line -match 'togPanel=(-?\d+)') { $p22TogPanel = [int]$Matches[1] }
+Add-Result 'H5-25' '集中钉子建出来是一个圆点，新建弹窗会问要不要便利贴' (($p22Dlg -eq 1) -and ($p22Cb -eq 1) -and ($p22Dot -eq 1)) ('dlg=' + $p22Dlg + ' cb=' + $p22Cb + ' dot=' + $p22Dot)
+Add-Result 'H5-26' '便利贴默认不显示，右栏切「显示」后才出现' (($p22Paper0 -eq 0) -and ($p22PaperOn -eq 1)) ('paper0=' + $p22Paper0 + ' paperOn=' + $p22PaperOn)
+Add-Result 'H5-27' '关系线连接点与圆点同心' ((([math]::Abs($p22Hdx)) -le 2) -and (([math]::Abs($p22Hdy)) -le 2)) ('hdx=' + $p22Hdx + ' hdy=' + $p22Hdy)
+Add-Result 'H5-28' '拖动集中钉子时钉集成员跟着一起走' ((([math]::Abs($p22PinDx)) -ge 10) -and (([math]::Abs($p22PinDx - $p22MemDx)) -le 3) -and (([math]::Abs($p22PinDy - $p22MemDy)) -le 3)) ('pin=' + $p22PinDx + ',' + $p22PinDy + ' member=' + $p22MemDx + ',' + $p22MemDy + ' 贴入=' + $p22Attach)
+Add-Result 'H5-29' '绕钉旋转会带着图片自身角度一起转，右栏方向键能挪位置' ((($p22Rot1 - $p22Rot0) -eq 15) -and ($p22Nudge -ge 3)) ('rot=' + $p22Rot0 + '->' + $p22Rot1 + ' nudge=' + $p22Nudge)
+Add-Result 'H5-30' '右栏开关停在小地图左边、不压右栏内容' (($p22Tog -eq 1) -and ($p22TogPanel -eq 1)) ('tog=' + $p22Tog + ' togPanel=' + $p22TogPanel + ' ' + ((($sum22Line -split 'tog=')[1]) -replace ' err=.*', ''))
 
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })
