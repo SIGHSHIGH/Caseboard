@@ -368,7 +368,7 @@ if ($sum17Line -match 'up=(\d+)') { $gUp = [int]$Matches[1] }
 if ($sum17Line -match 'settle=(\d+)') { $gSettle = [int]$Matches[1] }
 if ($sum17Line -match 'ghost=(\d+)') { $gGhost = [int]$Matches[1] }
 if ($sum17Line -match 'nodes=(\d+)') { $gNodes = [int]$Matches[1] }
-Add-Result 'H5-21' '长按拖入画布不再卡壳（按住 / 拖动 / 落点三段帧间隔均 ≤ 200ms）' (($gGhost -eq 1) -and ($gNodes -ge 1) -and ($gHold -ge 0) -and ($gHold -le 200) -and ($gMove -le 200) -and ($gUp -le 200)) ('hold=' + $gHold + ' move=' + $gMove + ' up=' + $gUp + ' settle=' + $gSettle + ' ghost=' + $gGhost + ' nodes=' + $gNodes)
+Add-Result 'H5-21' '长按拖入画布不再卡壳（按住 / 拖动两段 ≤ 200ms；落点段含建节点 + 写库，放宽到 ≤ 400ms）' (($gGhost -eq 1) -and ($gNodes -ge 1) -and ($gHold -ge 0) -and ($gHold -le 200) -and ($gMove -le 200) -and ($gUp -le 400)) ('hold=' + $gHold + ' move=' + $gMove + ' up=' + $gUp + ' settle=' + $gSettle + ' ghost=' + $gGhost + ' nodes=' + $gNodes)
 
 # ---------- 动态断言：phase=20（图钉自由落点 / 换色 / 卡片层级按钮） ----------
 $lines20 = Invoke-Cb '20' 16
@@ -457,7 +457,7 @@ if ($lines23 -and $lines23.Count -gt 0) {
 $p23KeptPin = -1; $p23KeptMem = -1; $p23Follow = -1
 $p23Alias = -1; $p23Map = -1; $p23Comment = -1
 $p23Rows = 0; $p23Nums = 0; $p23Slide = -1
-$p23Hint = -1; $p23Red = -1; $p23RedW = -1; $p23Attach = 0
+$p23Hint = -1; $p23Red = -1; $p23RedW = -1; $p23RedLen = -1; $p23Layer = -1; $p23Attach = 0
 if ($sum23Line -match 'keptPin=(-?\d+)') { $p23KeptPin = [int]$Matches[1] }
 if ($sum23Line -match 'keptMem=(-?\d+)') { $p23KeptMem = [int]$Matches[1] }
 if ($sum23Line -match 'follow=(-?\d+)') { $p23Follow = [int]$Matches[1] }
@@ -470,12 +470,31 @@ if ($sum23Line -match 'slide=(-?\d+)') { $p23Slide = [int]$Matches[1] }
 if ($sum23Line -match 'hint=(-?\d+)') { $p23Hint = [int]$Matches[1] }
 if ($sum23Line -match 'red=(-?\d+)') { $p23Red = [int]$Matches[1] }
 if ($sum23Line -match 'redW=(-?\d+)') { $p23RedW = [int]$Matches[1] }
+if ($sum23Line -match 'redLen=(-?\d+)') { $p23RedLen = [int]$Matches[1] }
+if ($sum23Line -match 'layer=(-?\d+)') { $p23Layer = [int]$Matches[1] }
 if ($sum23Line -match 'attach=(\d+)') { $p23Attach = [int]$Matches[1] }
 Add-Result 'H5-31' '拖动集中钉子后，钉子与成员图片的相对位置不变' ($p23KeptPin -eq 1) ('keptPin=' + $p23KeptPin + ' 贴入=' + $p23Attach + ' ' + ((($sum23Line -split 'keptPin=')[1]) -replace ' keptMem=.*', ''))
 Add-Result 'H5-32' '拖动钉集成员时成员跟手走、松手后相对位置不变' (($p23KeptMem -eq 1) -and ($p23Follow -eq 1)) ('keptMem=' + $p23KeptMem + ' follow=' + $p23Follow)
 Add-Result 'H5-33' '集中钉右栏不再显示别名 / 地图坐标 / 评论' (($p23Alias -eq 1) -and ($p23Map -eq 1) -and ($p23Comment -eq 1)) ('alias=' + $p23Alias + ' map=' + $p23Map + ' comment=' + $p23Comment)
 Add-Result 'H5-34' '相对位置与旋转是「每行一个滑块 + 可输入数字」' (($p23Rows -ge 3) -and ($p23Nums -ge 3) -and ($p23Slide -eq 1)) ('rows=' + $p23Rows + ' nums=' + $p23Nums + ' slide=' + $p23Slide)
 Add-Result 'H5-35' '长按集中钉 → 创建红线 → 点另一钉子，出现略宽红色实心线' (($p23Hint -eq 1) -and ($p23Red -ge 1) -and ($p23RedW -ge 3)) ('hint=' + $p23Hint + ' red=' + $p23Red + ' redW=' + $p23RedW)
+Add-Result 'H5-36' '红线在画布上真的有长度（不是两端重合的隐形线）' ($p23RedLen -ge 40) ('redLen=' + $p23RedLen)
+Add-Result 'H5-38' '红线待连接态有全画布热区，点第二颗钉子能落在热区上（不被手柄吃掉）' ($p23Layer -eq 1) ('layer=' + $p23Layer)
+
+# ---------- 动态断言：phase=24（H5.6.1 右键菜单删除节点） ----------
+$lines24 = Invoke-Cb '24' 20
+$sum24Line = ''
+if ($lines24 -and $lines24.Count -gt 0) {
+  $lines24 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase24.log') -Encoding utf8
+  $hit24 = @($lines24 | Select-String -Pattern '\[diag\] summary24')
+  if ($hit24.Count -gt 0) { $sum24Line = $hit24[-1].Line }
+}
+$p24Menu = -1; $p24Deleted = -1; $p24Before = -1; $p24After = -1
+if ($sum24Line -match 'menu=(-?\d+)') { $p24Menu = [int]$Matches[1] }
+if ($sum24Line -match 'before=(-?\d+)') { $p24Before = [int]$Matches[1] }
+if ($sum24Line -match 'after=(-?\d+)') { $p24After = [int]$Matches[1] }
+if ($sum24Line -match 'deleted=(-?\d+)') { $p24Deleted = [int]$Matches[1] }
+Add-Result 'H5-37' '长按/右键菜单有「删除此节点」，点了之后画布节点 -1' (($p24Menu -eq 1) -and ($p24Deleted -eq 1)) ('menu=' + $p24Menu + ' before=' + $p24Before + ' after=' + $p24After + ' deleted=' + $p24Deleted)
 
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })

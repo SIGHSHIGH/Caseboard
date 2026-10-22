@@ -765,3 +765,13 @@
     min-height: 40px;
   }
 }
+
+/* H5.6.1：红线待连接态的全画布热区（钉子中心的手柄会吃掉 onNodeClick，
+   所以用一个透明层按坐标反查最近的钉子）。z-index 低于顶部提示条（92）。 */
+.cb-redline-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  cursor: crosshair;
+  background: transparent;
+}

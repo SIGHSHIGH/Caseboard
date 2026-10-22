@@ -122,7 +122,16 @@ function BaseNodeInner({ data, selected }: NodeProps<BaseFlowNode>) {
         onPointerCancel={clearPressTimer}
         data-type="clusterPin"
       >
-        {/* 唯一连接点：与圆点同心（Position.Top + CSS 拉到圆心），拖出一根线就从这里起 */}
+        {/* 唯一连接点：与圆点同心（Position.Top + CSS 拉到圆心）。
+            H5.6.1：source 负责从这里拖出连线，target 只做几何锚点、不接收指针事件——
+            缺了 target 侧时，以钉子为终点的线（例如「红线」）算不出终点，React Flow 直接不画。 */}
+        <Handle
+          id="right-in"
+          type="target"
+          position={Position.Top}
+          className="cb-handle cb-handle--target cb-pin__handle"
+          isConnectable={false}
+        />
         <Handle id="right" type="source" position={Position.Top} className="cb-handle cb-pin__handle" />
         <div className="cb-pin__dot" data-pin-id={node.id} title="集中钉子：拖动它带动整个钉集" />
         {paperVisible ? (

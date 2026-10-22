@@ -23,6 +23,8 @@ import {
   composeCommands,
   deleteGroup,
   deleteImageNode,
+  deleteNode,
+  detachImageFromCluster,
   moveGroup,
   moveImageNode,
   moveImageNodes,
@@ -451,14 +453,22 @@ export function Board() {
         const dimmed =
           view.dimEdges.has(edge.id) || stateOf(edge.source).dim || stateOf(edge.target).dim;
         const auto = autoAnchors.get(edge.id);
+        // 集中钉子只有两个固定 handle（source: right / target: right-in），
+        // 自动锚点算出的 left/top/bottom 在它身上并不存在，React Flow 会算不出端点而直接不画线。
+        const isPin = (id: string): boolean =>
+          (doc.nodes.find((node) => node.id === id)?.type ?? '') === 'clusterPin';
         // M18：用户在右栏钉住连接点（autoAnchor === false）时只认存下来的 handle
         const pinned = edge.autoAnchor === false;
-        const sourceHandle = pinned
-          ? (edge.sourceHandle ?? auto?.source ?? 'right')
-          : (auto?.source ?? edge.sourceHandle ?? 'right');
-        const targetHandle = pinned
-          ? (edge.targetHandle ?? auto?.target ?? 'left')
-          : (auto?.target ?? edge.targetHandle ?? 'left');
+        const sourceHandle = isPin(edge.source)
+          ? (edge.sourceHandle ?? 'right')
+          : pinned
+            ? (edge.sourceHandle ?? auto?.source ?? 'right')
+            : (auto?.source ?? edge.sourceHandle ?? 'right');
+        const targetHandle = isPin(edge.target)
+          ? (edge.targetHandle ?? 'right-in')
+          : pinned
+            ? (edge.targetHandle ?? auto?.target ?? 'left')
+            : (auto?.target ?? edge.targetHandle ?? 'left');
         const curvature = edge.curvature ?? (pinned ? 0 : (auto?.curvature ?? 0));
         return {
           id: edge.id,
@@ -1246,6 +1256,64 @@ export function Board() {
     [dispatch, doc.groups.length, model.nodes, selectGroup, setMode],
   );
 
+  /** H5.6.1：红线待连接态下用一块全画布热区接管下一次点击。
+      钉子中心那颗连线手柄会吃掉 onNodeClick（实测点第二颗钉子只是发起了一次拖线，
+      连不成红线），所以这里按坐标反查最近的钉子，不依赖手柄命中。 */
+  const finishRedLineAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const from = redLineFrom;
+      if (!from) return;
+      const point = screenToFlowPosition({ x: clientX, y: clientY });
+      let bestId = '';
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const item of model.nodes) {
+        if (item.type !== 'clusterPin') continue;
+        // 起点那颗不参与「最近钉子」竞争：脏案卷里多颗钉子常常叠得很近，
+        // 若把起点算进来，点第二颗也会被判成「又点了自己」而取消。
+        if (item.id === from) continue;
+        const dx = item.x + item.w / 2 - point.x;
+        const dy = item.y + item.h / 2 - point.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = item.id;
+        }
+      }
+      if (!bestId || bestDist > 90) {
+        // 探针诊断用：点偏了/没点到钉子时能看出是哪一种
+        console.log(`[diag] redline tap x=${Math.round(clientX)} y=${Math.round(clientY)} best=${bestId} dist=${Math.round(bestDist)} from=${from}`);
+        cancelRedLine();
+        return;
+      }
+      console.log(`[diag] redline connect from=${from} to=${bestId} dist=${Math.round(bestDist)}`);
+      dispatch(
+        addEdge({
+          source: from,
+          target: bestId,
+          sourceHandle: 'right',
+          targetHandle: 'right-in',
+          relType: 'related',
+          label: '红线',
+          style: 'solid',
+          color: '#C0392B',
+          thickness: 4,
+          directed: false,
+          confidence: 60,
+        }),
+      );
+      cancelRedLine();
+      pushNotice('已用红线连起两颗集中钉子');
+      {
+        // 探针诊断：确认这条边真的进了文档，以及两端节点是否都在渲染集合里
+        const docNow = useDocStore.getState().doc;
+        const last = docNow?.edges[docNow.edges.length - 1];
+        const inNodes = (id: string | undefined) => (id ? docNow?.nodes.some((n) => n.id === id) : false);
+        console.log(`[diag] redline added edges=${docNow?.edges.length ?? -1} id=${last?.id ?? 'none'} src=${last?.source ?? ''}(${inNodes(last?.source)}) tgt=${last?.target ?? ''}(${inNodes(last?.target)})`);
+      }
+    },
+    [cancelRedLine, dispatch, model.nodes, pushNotice, redLineFrom, screenToFlowPosition],
+  );
+
   return (
     <div
       className={'cb-canvas cb-canvas--' + canvasSkin}
@@ -1289,7 +1357,7 @@ export function Board() {
                   source: redLineFrom,
                   target: target.id,
                   sourceHandle: 'right',
-                  targetHandle: 'right',
+                  targetHandle: 'right-in',
                   relType: 'related',
                   label: '红线',
                   style: 'solid',
@@ -1457,9 +1525,43 @@ export function Board() {
                 多选卡片（选多张一起加进组框）
               </button>
             ) : null}
+            {ctxMenu.nodeId ? (
+              <button
+                type="button"
+                className="cb-ctxmenu__item cb-ctxmenu__item--danger"
+                role="menuitem"
+                data-diag="ctx-delete"
+                onClick={() => {
+                  const id = ctxMenu.nodeId;
+                  closeContextMenu();
+                  if (!id) return;
+                  const target = model.nodes.find((item) => item.id === id);
+                  if (target?.type === 'clusterPin') {
+                    // 删钉子前先把钉集成员放出来，免得留下指向已删钉子的悬空 clusterId
+                    for (const image of doc.imageNodes.filter((item) => item.clusterId === id)) {
+                      dispatch(detachImageFromCluster(image.id));
+                    }
+                  }
+                  dispatch(deleteNode(id));
+                  pushNotice(`已删除「${target?.title ?? '该节点'}」及其关系线（可撤销）`);
+                }}
+              >
+                删除此节点（连带其关系线，可撤销）
+              </button>
+            ) : null}
             <div className="cb-ctxmenu__hint">关系气泡是圆角矩形，可以把多条关系线汇到它上面</div>
           </div>
         </>
+      ) : null}
+      {redLineFrom ? (
+        <div
+          className="cb-redline-layer"
+          data-diag="redline-layer"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            finishRedLineAt(event.clientX, event.clientY);
+          }}
+        />
       ) : null}
       {redLineFrom ? (
         <div className="cb-redline-hint" role="status" data-diag="redline-hint">

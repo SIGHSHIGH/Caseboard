@@ -58,12 +58,22 @@ export function addNode(input: AddNodeInput): Command {
   return {
     label: `新增节点：${input.title ?? meta.label}`,
     apply(draft) {
+      // H5.6.1：新节点和已有节点几乎重合时自动阶梯错开。
+      // 起因是两颗集中钉都建在画布中心、「红线」只有 0 像素长、藏在圆点底下看不见。
+      let x = input.x;
+      let y = input.y;
+      for (let guard = 0; guard < 12; guard++) {
+        const clash = draft.nodes.some((n) => Math.abs(n.x - x) < 12 && Math.abs(n.y - y) < 12);
+        if (!clash) break;
+        x += 32;
+        y += 32;
+      }
       const node: CaseNode = {
         id: input.id ?? newId(type),
         type,
         title: input.title ?? `新${meta.label}`,
-        x: input.x,
-        y: input.y,
+        x,
+        y,
         w: input.w ?? (isPin ? CLUSTER_PIN_W : DEFAULT_W),
         h: input.h ?? (isPin ? CLUSTER_PIN_H : 96),
         // H5.5：集中钉子默认**不带**便利贴（新建弹窗里问过），两个字段仍然预置好，随时可在右栏切「显示」

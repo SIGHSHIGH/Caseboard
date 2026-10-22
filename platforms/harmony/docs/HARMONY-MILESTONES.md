@@ -222,3 +222,42 @@ powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Ta
 powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
 ```
 → 36/36 PASS（报告落 `platforms/harmony/.tmp-esbuild/accept-h5.json`）。
+
+## H5.6.1 补记（红线画不出来 / 长按菜单加删除）
+
+用户反馈两条：「红线看不到」「长按卡片右键列表要加删除」。红线是三个问题叠在一起：
+
+| 断言 | 修之前 | 修之后 |
+| --- | --- | --- |
+| H5-35 红线存在 | `hint=1 red=0 redW=-1` | `red=1 redW=4` |
+| H5-36 红线有长度 | 无此断言 | `redLen=317` |
+| H5-37 菜单删除生效 | 无此断言 | `menu=1 before=20 after=19 deleted=1` |
+| H5-38 点击命中热区 | 无此断言 | `layer=1` |
+
+三条根因：
+
+1. **钉子只有 source handle**：以钉子为终点的边算不出终点，React Flow 静默不画。
+2. **自动锚点覆盖了手柄 id**（真凶）：`targetHandle = auto?.target ?? edge.targetHandle ?? 'left'`，
+   自动锚点算出的 `left/top/bottom` 在钉子上并不存在 → 边照样进文档（关系数 +1）但画不出来。
+   修法：边任一端是 `clusterPin` 时强制用它自己的 handle（`right` / `right-in`），自动锚点不参与。
+3. **两颗新钉子同坐标**：红线长度 0 藏在圆点底下。`addNode` 加 12 单位撞位检测、每次 +32/+32 阶梯错开。
+
+另外两处配套改动：
+
+- target handle 的 id 必须是 `right-in`，不能与 source 的 `right` 重名——同 id 会让 React Flow 的 handle 映射互相覆盖。
+- 待连接态用全画布热区 `.cb-redline-layer` 接收点击（钉子中心的连线手柄会吃掉 `onNodeClick`），
+  取最近**另一颗**钉子（起点不参与竞争），90 世界单位内即连。
+
+### 新增硬结论（续 36 起）
+
+36. 边进文档 ≠ 边能画出来：handle id 在节点上不存在时 React Flow 不报错、直接不渲染。
+   排查顺序：先看 `doc.edges.length` 有没有 +1，再看 handle id 是否真实存在于两端节点。
+37. 同一个节点上的 source / target handle **不能用同一个 id**。
+38. 待连接态不要依赖 `onNodeClick`：节点中心的手柄会吃掉点击，用覆盖层接管指针事件最稳。
+
+### 一条可复现验收
+
+```
+powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
+```
+→ 39/39 PASS。

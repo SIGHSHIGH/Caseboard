@@ -23,6 +23,30 @@
 - `scripts/accept-h5.ps1` 扩到 36 条：新增 H5-31…H5-35，全绿；`summary23 … keptPin=1 keptMem=1 follow=1 alias=1 map=1 comment=1 rows=3 nums=3 slide=1 hint=1 red=1 redW=4`。
 - 截图：`dsh-shot-64/65`（成员面板三行滑块；真手势拖 X 滑块 −277 → 461，图片同步移动）、`dsh-shot-63`（集中钉右栏已无三栏）。
 
+## [未发布] · 鸿蒙 H5.6.1：红线终于画得出来 + 长按菜单删节点
+
+### 反馈
+1. 「红线看不到」。
+2. 鸿蒙版长按卡片，右键列表要有「删除」。
+
+### 根因（红线三条叠加）
+1. **钉子只有 source handle**：`BaseNode.tsx` 的集中钉只渲染了 `type="source"` 的 `Handle`，以钉子为**终点**的边算不出终点位置，React Flow 直接不画。
+2. **自动锚点把手柄 id 改掉了**：`Board.tsx` 组装边时 `targetHandle = auto?.target ?? edge.targetHandle ?? 'left'`，自动锚点优先级高于存下来的 handle；钉子身上根本没有 `left/top/bottom` 这些 handle，于是这条边**静默消失**。这是「连上了却看不见」的真凶。
+3. **两颗新钉子落在同一坐标**：左栏连点两次「集中钉子」都落在画布中心，红线长度 0，藏在圆点底下。`addNode` 加阶梯错开（12 单位内视为撞位，每次 +32/+32，最多试 12 次）。
+
+### 改了什么
+- `components/flow/BaseNode.tsx`：钉子补 `type="target"` 的几何锚点，id 用 `right-in`（与 source 的 `right` **必须不同 id**，同 id 会让 React Flow 的 handle 映射互相覆盖）。
+- `components/flow/Board.tsx`：
+  - 组装边时若任一端是 `clusterPin`，强制用它自己的 handle（`right` / `right-in`），不让自动锚点插手；
+  - 待连接态新增全画布热区 `.cb-redline-layer`（`z-index:26`），点击换算世界坐标取最近的**另一颗**钉子，90 单位内即连（起点不参与竞争——脏案卷里多颗钉子叠得很近时，把起点算进来会把「点第二颗」误判成「点自己」而取消）；
+  - 长按/右键菜单新增「删除此节点（连带其关系线，可撤销）」：删除集中钉前先把成员图全部 `detachImageFromCluster`，再 `deleteNode`（命令内部会连带删掉两端连着它的边）。
+- `commands/nodeCommands.ts`：`addNode` 阶梯错开。
+- `styles/responsive.css`：`.cb-redline-layer`。
+
+### 验收
+- `scripts/accept-h5.ps1` 扩到 **39 条全绿**：新增 H5-36（红线路径长度 ≥40，实测 317）、H5-37（菜单项存在且节点数 −1，`before=20 after=19`）、H5-38（点击命中热区 `layer=1`）。
+- 真机复现（截图 `dsh-shot-81`）：两颗分开的集中钉之间出现 **4px 红色实心曲线 + 「红线」标签**；`dsh-shot-71` 里长按菜单五项齐全，含「删除此节点（连带其关系线，可撤销）」。
+
 ## [未发布] · 鸿蒙 H5.5：集中钉子圆点化 + 钉集跟手 + 清掉 ArkWeb 原生拖影 + 右栏开关归位
 
 ### 反馈
