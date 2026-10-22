@@ -23,6 +23,22 @@
 - `scripts/accept-h5.ps1` 扩到 36 条：新增 H5-31…H5-35，全绿；`summary23 … keptPin=1 keptMem=1 follow=1 alias=1 map=1 comment=1 rows=3 nums=3 slide=1 hint=1 red=1 redW=4`。
 - 截图：`dsh-shot-64/65`（成员面板三行滑块；真手势拖 X 滑块 −277 → 461，图片同步移动）、`dsh-shot-63`（集中钉右栏已无三栏）。
 
+## [未发布] · 鸿蒙 H5.6.2：红线只保留「实线」本身
+
+### 反馈
+红线只需要是实线：不要箭头、不要置信度、不要关系类型，中间的字也不要。
+
+### 改了什么
+- 红线的 `relType` 改成专有值 `clusterLink`（`lib/clusterPin.ts` 的 `CLUSTER_LINK_REL`），不再把「红线」写进 `label`；
+  `isClusterLink(edge)` 同时兼容老数据（`label === '红线'`）。
+- `components/flow/BezierEdge.tsx`：`plainLink` 命中时不渲染 `EdgeLabelRenderer` 里的标签块（没有中间的字、也不给双击改名），并强制 `markerEnd={undefined}`（无箭头）。
+- `components/panels/RightPanel.tsx` 的 `EdgeForm`：`isClusterLink` 时只留「线宽 + ID」，去掉关系类型 / 关系标签 / 线型 / 有向 / 置信度 / 备注这些开关。
+- 线的样子不变：`#C0392B`、4px、solid、无箭头。
+
+### 验收
+- `scripts/accept-h5.ps1` 仍是 **39 条全绿**（H5-35 `red=1 redW=4`、H5-36 `redLen`、H5-38 `layer=1` 均通过）。
+- 真机截图 `dsh-shot-84`：两颗集中钉之间只有一条红色实心曲线，无箭头、无标签。
+
 ## [未发布] · 鸿蒙 H5.6.1：红线终于画得出来 + 长按菜单删节点
 
 ### 反馈

@@ -1292,13 +1292,11 @@ export function Board() {
           target: bestId,
           sourceHandle: 'right',
           targetHandle: 'right-in',
-          relType: 'related',
-          label: '红线',
+          relType: 'clusterLink',
           style: 'solid',
           color: '#C0392B',
           thickness: 4,
           directed: false,
-          confidence: 60,
         }),
       );
       cancelRedLine();

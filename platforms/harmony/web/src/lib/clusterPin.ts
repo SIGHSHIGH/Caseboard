@@ -110,3 +110,12 @@ export function stickyText(node: Pick<CaseNode, 'fields'>): string {
   const value = node.fields['便利贴文字'];
   return typeof value === 'string' ? value : '';
 }
+
+/** 集中钉子之间的「红线」：只画一条红色实线，无箭头、无标签、不看置信度与关系类型 */
+export const CLUSTER_LINK_REL = 'clusterLink';
+
+export function isClusterLink(edge: { relType?: string; label?: string }): boolean {
+  if (edge.relType === CLUSTER_LINK_REL) return true;
+  // 兼容旧数据：H5.6 / H5.6.1 存的是 related + 标签「红线」
+  return edge.label === '红线';
+}

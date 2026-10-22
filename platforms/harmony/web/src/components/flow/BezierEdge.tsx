@@ -9,6 +9,7 @@ import {
 } from '@xyflow/react';
 import { updateEdge } from '../../commands';
 import { CURVE_MIN, curveGeometry, curveOffsetFromHandle, curveOffsetOf, curvatureOffset, curvePath } from '../../lib/edgeCurve';
+import { isClusterLink } from '../../lib/clusterPin';
 import { LINE_STYLE_META, relColor } from '../../lib/theme';
 import { useDocStore } from '../../store/docStore';
 import type { CaseEdge, XY } from '../../types';
@@ -144,6 +145,8 @@ function BezierEdgeInner({
 
   const lineStyle = LINE_STYLE_META[edge.style];
   const stroke = edge.color ?? relColor(edge.relType);
+  /** 集中钉子之间的红线：只要一条实线本身，不要箭头、不要中间的字 */
+  const plainLink = isClusterLink(edge);
   const dash = lineStyle.dash;
   const highlighted = data?.highlighted === true;
   const width = strokeWidthOf(edge) + (selected ? 1 : 0) + (highlighted ? 1.8 : 0);
@@ -168,7 +171,7 @@ function BezierEdgeInner({
       <BaseEdge
         id={id}
         path={path}
-        markerEnd={markerEnd}
+        markerEnd={plainLink ? undefined : markerEnd}
         style={{
           stroke,
           strokeWidth: width,
@@ -185,6 +188,7 @@ function BezierEdgeInner({
         className="cb-edge-hit"
       />
       <EdgeLabelRenderer>
+        {plainLink ? null : (
         <div
           className={`cb-edge-label${selected ? ' is-selected' : ''}${highlighted ? ' is-path' : ''}`}
           style={{
@@ -219,6 +223,7 @@ function BezierEdgeInner({
             </span>
           )}
         </div>
+        )}
       </EdgeLabelRenderer>
       {selected ? (
         <EdgeLabelRenderer>

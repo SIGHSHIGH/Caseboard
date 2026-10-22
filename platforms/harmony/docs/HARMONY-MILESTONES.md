@@ -261,3 +261,15 @@ powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Ta
 powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
 ```
 → 39/39 PASS。
+
+## H5.6.2（红线瘦身：只要实线）
+
+按用户要求，红线不再带任何语义装饰：
+
+- `relType` 用专有值 `clusterLink`（`lib/clusterPin.ts` 的 `CLUSTER_LINK_REL`），不再借 `related`；
+  `isClusterLink(edge)` 兼容旧数据（`label === '红线'`）。
+- `BezierEdge.tsx`：命中 `plainLink` 时不渲染中间标签块、强制无箭头。
+- `RightPanel` 的 `EdgeForm`：红线只留「线宽 + ID」，关系类型 / 标签 / 线型 / 有向 / 置信度 / 备注全部不出现。
+- 样式不变：`#C0392B`、4px、solid。
+
+验收：`accept-h5.ps1` 39 条全绿；真机截图 `dsh-shot-84`（只有一条红线，无箭头无标签）。

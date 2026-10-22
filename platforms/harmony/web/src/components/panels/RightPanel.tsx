@@ -32,7 +32,7 @@ import {
 import { LINE_STYLE_META, NODE_TYPE_META, REL_PRESETS, STATUS_META, relLabel } from '../../lib/theme';
 import { memberNodeIds } from '../../lib/groups';
 import { CARD_LAYER_Z } from '../../lib/imageNode';
-import { offsetForCluster } from '../../lib/clusterPin';
+import { isClusterLink, offsetForCluster } from '../../lib/clusterPin';
 import { PLACE_LINK_EDGE, planPlaceRelink } from '../../lib/placeLink';
 import { NODE_TYPE_ORDER, NODE_TEMPLATES, templateOf, type NodeFieldDef } from '../../lib/nodeTemplates';
 import { useDocStore } from '../../store/docStore';
@@ -716,6 +716,32 @@ function EdgeForm({ edge, sourceTitle, targetTitle }: { edge: CaseEdge; sourceTi
     const clamped = Math.min(8, Math.max(1, Math.round(thickness * 2) / 2));
     if (clamped !== (edge.thickness ?? 1.6)) dispatch(updateEdge(edge.id, { thickness: clamped }));
   };
+
+  // 集中钉子之间的红线：只要一条实线本身，不给关系类型 / 标签 / 线型 / 箭头 / 置信度这些开关
+  if (isClusterLink(edge)) {
+    return (
+      <div className="cb-form">
+        <p className="cb-form__relation">
+          {sourceTitle} <span className="cb-arrow">—</span> {targetTitle}
+        </p>
+        <p className="cb-form__meta">集中钉子之间的红线：红色实线，无箭头、无标签。</p>
+        <label className="cb-field">
+          <span>线宽：{thickness} px（1–8）</span>
+          <input
+            type="range"
+            min={1}
+            max={8}
+            step={0.5}
+            value={thickness}
+            onChange={(event) => setThickness(Number(event.target.value))}
+            onPointerUp={commitThickness}
+            onBlur={commitThickness}
+          />
+        </label>
+        <p className="cb-form__meta">ID：{edge.id}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="cb-form">
