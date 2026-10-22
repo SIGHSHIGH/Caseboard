@@ -21,6 +21,7 @@ const {
   updateAnnotation,
 } = require(path.join(out, 'commands', 'annotationCommands.js'));
 const { addNode, deleteNode, moveNode, updateNode } = require(path.join(out, 'commands', 'nodeCommands.js'));
+const { addPinLink, removePinLink } = require(path.join(out, 'commands', 'pinLinkCommands.js'));
 const { addEdge, deleteEdge, updateEdge } = require(path.join(out, 'commands', 'edgeCommands.js'));
 const { toJson, fromJson } = require(path.join(out, 'serializers', 'json.js'));
 const { normalizeDoc } = require(path.join(out, 'serializers', 'migrate.js'));
@@ -4247,6 +4248,67 @@ check(
     })(),
   );
 }
+
+  // ===== DSL 往返（H5.6.4：集中钉子与红线不再被代码视图丢掉）=====
+  check(
+    'dsl 往返：集中钉子出现在文本里',
+    (() => {
+      state().dispatch(addNode({ type: 'clusterPin', title: '钉集 A', at: { x: 40, y: 40 } }));
+      const pin = doc().nodes.filter((node) => node.type === 'clusterPin').slice(-1)[0];
+      const text = serializeDoc(doc());
+      return text.includes('clusterPin') && text.includes('钉集 A') && Boolean(pin);
+    })(),
+  );
+  check(
+    'dsl 往返：红线进入文本并解析回 pinLinks（id 稳定）',
+    (() => {
+      state().dispatch(addNode({ type: 'clusterPin', title: '钉集 B', at: { x: 420, y: 40 } }));
+      const pins = doc().nodes.filter((node) => node.type === 'clusterPin');
+      const a = pins[pins.length - 2];
+      const b = pins[pins.length - 1];
+      state().dispatch(addPinLink(a.id, b.id));
+      const links = doc().pinLinks || [];
+      if (links.length !== 1) return false;
+      const text = serializeDoc(doc());
+      if (!text.includes('redline:')) return false;
+      const parsed = parseDsl(text);
+      const back = parsed.doc.pinLinks || [];
+      if (back.length !== 1) return false;
+      if (back[0].source !== a.id || back[0].target !== b.id) return false;
+      // 再序列化一次必须逐字节一致（幂等）
+      return serializeDoc(parsed.doc) === text;
+    })(),
+  );
+  check(
+    'dsl 还原：文本里删掉红线 → 合并后 pinLinks 归零',
+    (() => {
+      const current = doc();
+      const text = serializeDoc(current);
+      const removed = text.split(/\r?\n/).filter((line) => !line.trim().startsWith('redline:')).join('\n');
+      const parsed = parseDsl(removed);
+      const report = mergeDslEdit(current, parsed.doc, current);
+      state().dispatch(applyDslChanges(report.changes));
+      const after = doc();
+      const ok = (after.pinLinks || []).length === 0 && after.nodes.some((node) => node.type === 'clusterPin');
+      state().undo();
+      return ok;
+    })(),
+  );
+  check(
+    'dsl 还原：文本里删掉钉子 → 悬挂红线被一并清掉',
+    (() => {
+      const current = doc();
+      const text = serializeDoc(current);
+      const lines = text.split(/\r?\n/).filter((line) => !line.startsWith('  clusterPin '));
+      const parsed = parseDsl(lines.join('\n'));
+      const report = mergeDslEdit(current, parsed.doc, current);
+      state().dispatch(applyDslChanges(report.changes));
+      const after = doc();
+      const ok = !after.nodes.some((node) => node.type === 'clusterPin') && (after.pinLinks || []).length === 0;
+      state().undo();
+      return ok;
+    })(),
+  );
 
   console.log('');
   if (failures > 0) {

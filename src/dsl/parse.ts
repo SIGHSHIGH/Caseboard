@@ -1,5 +1,6 @@
 import type { SyntaxNode, Tree } from '@lezer/common';
 import type {
+  PinLink,
   CaseDoc,
   CaseEdge,
   CaseNode,
@@ -12,6 +13,7 @@ import type {
   View,
 } from '../types';
 import { NODE_TYPE_ORDER } from '../lib/nodeTemplates';
+import { pinLinkId } from '../lib/clusterPin';
 import { DEFAULT_NODE_H, DEFAULT_NODE_W, DEFAULT_SETTINGS } from '../serializers/migrate';
 import { parser } from './generated/caseboard.parser';
 
@@ -153,6 +155,8 @@ class Builder {
   private readonly accepted = new Set<number>();
   /** 组的成员先攒着，等所有实体都实例化后再绑定（文本里组可能写在实体前面） */
   private readonly pendingMembers: Array<{ group: Group; members: string[] }> = [];
+  /** 集中钉子块里的 redline: [另一颗钉子…] → 解析成 doc.pinLinks */
+  private readonly pendingRedlines: Array<{ from: string; targets: string[] }> = [];
   /** 边先存原始引用，等名字表齐了再解析（边可能写在实体前面） */
   private readonly rawEdges: Array<{
     source: string;
@@ -234,6 +238,17 @@ class Builder {
 
     for (const pending of this.pendingMembers) this.assignMembers(pending.group, pending.members);
     this.resolveEdges();
+    const pinLinks: PinLink[] = [];
+    for (const pending of this.pendingRedlines) {
+      const source = this.names.get(pending.from) ?? pending.from;
+      for (const raw of pending.targets) {
+        const target = this.names.get(raw) ?? raw;
+        if (source === target) continue;
+        const id = pinLinkId(source, target);
+        if (pinLinks.some((link) => link.id === id)) continue;
+        pinLinks.push({ id, source, target });
+      }
+    }
 
     const doc: CaseDoc = {
       meta: {
@@ -249,6 +264,7 @@ class Builder {
       assets: [],
       imageNodes: [],
       views: this.views,
+      pinLinks,
       hypotheses: [],
       settings: DEFAULT_SETTINGS,
     };
@@ -428,6 +444,19 @@ class Builder {
           case 'fields':
             result.fields = this.fieldsOf(value, field);
             break;
+          case 'redline': {
+            const targets: string[] = [];
+            for (const item of value.items ?? []) {
+              const ref = this.refOf(item);
+              if (ref) targets.push(ref);
+            }
+            if (type !== 'clusterPin') {
+              this.report('warning', 'redline 只属于集中钉子，已忽略', field.firstChild ?? field);
+            } else {
+              this.pendingRedlines.push({ from: id, targets });
+            }
+            break;
+          }
           case 'photo': {
             const photo = this.stringOf(value);
             if (photo) result.photo = photo;

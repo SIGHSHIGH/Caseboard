@@ -119,3 +119,12 @@ export function isClusterLink(edge: { relType?: string; label?: string }): boole
   // 兼容旧数据：H5.6 / H5.6.1 存的是 related + 标签「红线」
   return edge.label === '红线';
 }
+
+/**
+ * 红线（集中钉子之间的连线）的稳定 id：由两端 id 派生。
+ * 文本视图里不写 id，靠这条规则保证「序列化 → 解析」后 id 不变、diff 不抖动。
+ */
+export function pinLinkId(source: string, target: string): string {
+  return 'pinlink_' + source + '__' + target;
+}
+

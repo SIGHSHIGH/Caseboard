@@ -131,7 +131,7 @@ function idLine(originalId: string, name: string): string[] {
   return name === originalId ? [] : ['    id: ' + quoteString(originalId)];
 }
 
-function nodeBlock(node: CaseNode, table: DslNameTable): string[] {
+function nodeBlock(node: CaseNode, table: DslNameTable, redlines: Map<string, string[]>): string[] {
   const name = table.names.get(node.id) ?? sanitizeIdent(node.id);
   const lines: string[] = [];
   lines.push('  ' + node.type + ' ' + name + ' ' + quoteString(node.title) + ' {');
@@ -148,6 +148,10 @@ function nodeBlock(node: CaseNode, table: DslNameTable): string[] {
   const fields = presentFields(node);
   if (fields.length > 0) {
     lines.push('    fields: { ' + fields.map(([key, value]) => fieldKey(key) + ': ' + fieldLiteral(value)).join(', ') + ' }');
+  }
+  if (node.type === 'clusterPin') {
+    const outs = (redlines.get(node.id) ?? []).slice().sort();
+    if (outs.length > 0) lines.push('    redline: [' + outs.map((id) => ref(id, table)).join(', ') + ']');
   }
   if (node.photo) lines.push('    photo: ' + quoteString(node.photo));
   if (node.attachments.length > 0) {
@@ -250,6 +254,14 @@ export function serializeDoc(doc: CaseDoc): string {
   });
   const groups = [...doc.groups].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const views = [...doc.views].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // 红线（集中钉子之间的连线）：按起点分组，写在起点那颗钉子的块里
+  const redlines = new Map<string, string[]>();
+  for (const link of [...(doc.pinLinks ?? [])].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    const list = redlines.get(link.source) ?? [];
+    if (!list.includes(link.target)) list.push(link.target);
+    redlines.set(link.source, list);
+    if (!redlines.has(link.target)) redlines.set(link.target, redlines.get(link.target) ?? []);
+  }
 
   const lines: string[] = [];
   lines.push('// 案情板 CaseBoard · 文本视图');
@@ -261,7 +273,7 @@ export function serializeDoc(doc: CaseDoc): string {
   if (nodes.length > 0) {
     lines.push('  // ===== 实体 =====');
     for (const node of nodes) {
-      lines.push(...nodeBlock(node, table));
+      lines.push(...nodeBlock(node, table, redlines));
       lines.push('');
     }
   }
