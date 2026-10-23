@@ -875,6 +875,40 @@ button {
 
 .react-flow__minimap:hover { opacity: 1; }
 
+/* 窄档（<1180px）右栏是浮层抽屉，展开时会直接盖住画布右下角的小地图和「›」开关。
+   给画布挂上 is-drawer-right / is-drawer-left 后，把这两样东西整体让开一个面板宽度，
+   它们就始终停在“可见画布”的右下角，而不是藏在抽屉底下。 */
+:root {
+  --cb-drawer-right: 312px;
+  --cb-drawer-left: 208px;
+}
+
+.cb-work__canvas.is-drawer-right .cb-collapse--right {
+  right: calc(var(--cb-drawer-right) + 175px);
+}
+
+.cb-work__canvas.is-drawer-right .react-flow__minimap {
+  right: calc(var(--cb-drawer-right) + 15px);
+}
+
+.cb-work__canvas.is-drawer-left .cb-collapse--left {
+  left: calc(var(--cb-drawer-left) + 12px);
+}
+
+/* 可见画布 < 520px（双栏都开、或代码视图占用时）：小地图先让位，开关退回画布右下角，
+   两个都不再互相挤、也不会被任何面板压住。 */
+.cb-work__canvas.is-narrow .react-flow__minimap {
+  display: none;
+}
+
+.cb-work__canvas.is-narrow .cb-collapse--right {
+  right: 12px;
+}
+
+.cb-work__canvas.is-narrow.is-drawer-right .cb-collapse--right {
+  right: calc(var(--cb-drawer-right) + 12px);
+}
+
 .react-flow__edge.selected .react-flow__edge-path {
   filter: drop-shadow(0 0 2px rgba(192, 57, 43, 0.5));
 }

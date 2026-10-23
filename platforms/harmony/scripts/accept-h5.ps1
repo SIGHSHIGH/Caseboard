@@ -517,6 +517,23 @@ if ($sum24Line -match 'after=(-?\d+)') { $p24After = [int]$Matches[1] }
 if ($sum24Line -match 'deleted=(-?\d+)') { $p24Deleted = [int]$Matches[1] }
 Add-Result 'H5-37' '长按/右键菜单有「删除此节点」，点了之后画布节点 -1' (($p24Menu -eq 1) -and ($p24Deleted -eq 1)) ('menu=' + $p24Menu + ' before=' + $p24Before + ' after=' + $p24After + ' deleted=' + $p24Deleted)
 
+# ---------- 动态断言：phase=25（H5.11 右栏抽屉让位几何） ----------
+$lines25 = Invoke-Cb '25' 18
+$sum25Line = ''
+if ($lines25 -and $lines25.Count -gt 0) {
+  $lines25 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase25.log') -Encoding utf8
+  $hit25 = @($lines25 | Select-String -Pattern 'summary25')
+  if ($hit25.Count -gt 0) { $sum25Line = $hit25[-1].Line }
+}
+$p25DrawerOk = -1; $p25Shift = -1; $p25NarrowOk = -1; $p25Restored = -1; $p25Err = ''
+if ($sum25Line -match 'drawerOk=(-?\d+)') { $p25DrawerOk = [int]$Matches[1] }
+if ($sum25Line -match 'shift=(-?\d+)') { $p25Shift = [int]$Matches[1] }
+if ($sum25Line -match 'narrowOk=(-?\d+)') { $p25NarrowOk = [int]$Matches[1] }
+if ($sum25Line -match 'restored=(-?\d+)') { $p25Restored = [int]$Matches[1] }
+if ($sum25Line -match 'err=([^\s]*)') { $p25Err = $Matches[1] }
+Add-Result 'H5-42' '右栏变抽屉时，收起按钮与小地图整体让开一个面板宽度' (($p25DrawerOk -eq 1) -and ($p25Shift -gt 100)) ('drawerOk=' + $p25DrawerOk + ' shift=' + $p25Shift + ' err=' + $p25Err)
+Add-Result 'H5-43' '画布过窄时小地图隐藏、收起按钮退回画布右下角' (($p25NarrowOk -eq 1) -and ($p25Restored -eq 1)) ('narrowOk=' + $p25NarrowOk + ' restored=' + $p25Restored)
+
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })
 $report = [ordered]@{

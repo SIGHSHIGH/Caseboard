@@ -58,6 +58,9 @@ export default function App() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const workRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  // H5.11：可见画布太窄时小地图会挤掉「›」开关，也会被抽屉压住——按画布自身宽度决定显示
+  const [canvasW, setCanvasW] = useState(0);
   // H1：视口分档。桌面窗口够宽时永远落在 wide 档，行为与改造前完全一致；
   // 平板或窄窗才进 medium/compact，右栏/左栏改浮层抽屉。
   const [tier, setTier] = useState<ViewportTier>('wide');
@@ -65,6 +68,16 @@ export default function App() {
   // H1：不支持竖屏。竖屏或过窄视口直接由提示层接管（见 OrientationGate 注释）
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   useCodeSyncBridge();
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const read = () => setCanvasW(el.getBoundingClientRect().width);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     // 用 <html> 的 clientWidth（等于窗口宽度）：.cb-app 在首帧可能还没被内容撑开，
@@ -237,7 +250,15 @@ export default function App() {
           {viewMode === 'present' ? <PresentationView /> : null}
           {viewMode === 'map' ? <MapView /> : null}
           {viewMode === 'board' ? (
-            <div className="cb-work__canvas">
+            <div
+              ref={canvasRef}
+              className={
+                'cb-work__canvas' +
+                (rightDrawer ? ' is-drawer-right' : '') +
+                (leftDrawer ? ' is-drawer-left' : '') +
+                (canvasW > 0 && canvasW < 520 ? ' is-narrow' : '')
+              }
+            >
               <ReactFlowProvider>
                 <Board />
               </ReactFlowProvider>
