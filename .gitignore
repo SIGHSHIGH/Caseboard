@@ -42,3 +42,11 @@ CaseBoard-win-test2.exe
 CaseBoard-win-test3.exe
 CaseBoard-release-*.exe
 CaseBoard-*.hap
+
+# 项目文档只在本地保留（不参与构建，也不入库）
+/AGENTS.md
+/CHANGELOG.md
+/docs/**/*.md
+/platforms/harmony/CHANGELOG.md
+/platforms/harmony/README.md
+/platforms/harmony/docs/**/*.md
