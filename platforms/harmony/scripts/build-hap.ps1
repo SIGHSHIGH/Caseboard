@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   构建 HAP（复用 _env.ps1 定位 hvigorw）。
 .DESCRIPTION
@@ -27,8 +27,18 @@ Write-Host ("[env] hvigorw={0}" -f $envs.Hvigorw)
 
 $buildDir = Join-Path $ProjectRoot 'entry\build'
 if ($Clean -and (Test-Path $buildDir)) {
+  # 11204003 的另一个成因：rawfile 里的夹具是从仓库 robocopy 过来的只读文件，
+  # restool 删不掉只读文件。删目录前先把属性清掉，否则 -Clean 也会静默失败。
+  Get-ChildItem -Path $buildDir -Recurse -Force -File -ErrorAction SilentlyContinue |
+    ForEach-Object { if ($_.IsReadOnly) { $_.IsReadOnly = $false } }
   Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue
-  Write-Host '[clean] 已删 entry\build'
+  if (Test-Path $buildDir) {
+    Write-Host '[clean] 删除失败，仍有文件被占用或只读：'
+    Get-ChildItem -Path $buildDir -Recurse -Force -File -ErrorAction SilentlyContinue |
+      Select-Object -First 5 FullName, IsReadOnly | Format-Table -AutoSize | Out-String | Write-Host
+  } else {
+    Write-Host '[clean] 已删 entry\build'
+  }
 }
 
 Push-Location $ProjectRoot
