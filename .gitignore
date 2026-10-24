@@ -39,3 +39,5 @@ release/
 .tmp-win/
 CaseBoard-win-test.exe
 CaseBoard-win-test2.exe
+CaseBoard-win-test3.exe
+CaseBoard-release-*.exe
