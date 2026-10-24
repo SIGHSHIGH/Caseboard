@@ -57,6 +57,7 @@ export const DSL_NODE_KEYS = [
   'tags',
   'status',
   'confidence',
+  'zIndex',
   'time',
   'attachments',
   'notes',

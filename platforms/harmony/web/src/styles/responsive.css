@@ -777,6 +777,7 @@
 }
 
 /* H5.6.3：集中钉子之间的红线——直线，不是关系线 */
-.cb-pinlinks { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+/* H5.12：红线要压在卡片与普通图片之上（卡片 100 / 图片 1000+ / 钉子 1600），所以给它 1500 */
+.cb-pinlinks { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 1500; }
 /* H5.9：线宽**不写在这里**——由右栏滑块写进 SVG 的 stroke-width 属性（CSS 会盖掉属性，所以只能留默认值兜底） */
 .cb-pinlink { stroke: var(--cb-accent); stroke-linecap: round; vector-effect: non-scaling-stroke; }

@@ -91,6 +91,20 @@ export function addNode(input: AddNodeInput): Command {
   };
 }
 
+/** 直接指定卡片层级（H5.12）：数字框用；钉子按规则固定在最上层，不允许改 */
+export function setNodeZIndex(id: string, zIndex: number): Command {
+  const value = Math.max(0, Math.min(9999, Math.round(Number.isFinite(zIndex) ? zIndex : CARD_LAYER_Z)));
+  return {
+    label: `设置卡片层级 ${value}`,
+    apply(draft) {
+      const node = draft.nodes.find((item) => item.id === id);
+      if (!node || node.type === 'clusterPin') return;
+      node.zIndex = value;
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
 export function updateNode(id: string, patch: Partial<Omit<CaseNode, 'id'>>): Command {
   return {
     label: '修改节点属性',
@@ -230,6 +244,54 @@ export function restoreNode(node: CaseNode): Command {
 }
 
 /** 删除节点，同时清理挂在它身上的边与组成员引用。 */
+/**
+ * 集中钉子的精确层级（H5.12）：右栏给一个可直接输入的数字框，
+ * 不用一层层点「上移/下移」。夹在 0–9999，整数。
+ */
+export function setNodeZ(id: string, z: number): Command {
+  const value = Math.max(0, Math.min(9999, Math.round(Number.isFinite(z) ? z : 0)));
+  return {
+    label: `卡片层级 → ${value}`,
+    apply(draft) {
+      const node = draft.nodes.find((item) => item.id === id);
+      if (!node || node.type === 'clusterPin') return;
+      node.zIndex = value;
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
+/**
+ * 删掉一颗集中钉子（H5.12）：一条命令里办完三件事，撤销一步就完全还原。
+ *
+ * 原先是「解绑成员 → 删红线 → 删节点」三条独立命令，键盘 Delete 又完全不做清理，
+ * 于是出现过两种坏数据：撤销后钉子和红线对不上；按 Delete 后留下指向已删钉子的
+ * pinLinks 与悬空 clusterId（成员停在原地、右栏还写着「钉集内层级第 N 层」）。
+ */
+export function deleteClusterPin(id: string): Command {
+  return {
+    label: '删除集中钉子（连带钉集与红线）',
+    apply(draft) {
+      const index = draft.nodes.findIndex((item) => item.id === id && item.type === 'clusterPin');
+      if (index < 0) return;
+      // ① 成员放回自由状态：保留当前坐标（它们本来就写在 x/y 上），只摘掉钉集绑定
+      for (const image of draft.imageNodes) {
+        if (image.clusterId !== id) continue;
+        delete image.clusterId;
+        delete image.clusterOffset;
+      }
+      // ② 红线不是关系线，deleteNode 不会连带清理
+      if (draft.pinLinks && draft.pinLinks.length > 0) {
+        draft.pinLinks = draft.pinLinks.filter((link) => link.source !== id && link.target !== id);
+      }
+      // ③ 节点自身与它的关系线
+      draft.nodes.splice(index, 1);
+      draft.edges = draft.edges.filter((edge) => edge.source !== id && edge.target !== id);
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
 export function deleteNode(id: string): Command {
   return {
     label: '删除节点',

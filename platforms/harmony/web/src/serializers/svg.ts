@@ -168,7 +168,38 @@ function renderGroup(group: Group): string {
   return parts.join('\n');
 }
 
+/** 集中钉子（H5.12）：30px 圆点 + 可选黄色便签，导出与画布一致 */
+function renderClusterPin(node: CaseNode): string {
+  const cx = node.x + node.w / 2;
+  const cy = node.y + node.h / 2;
+  // 老文档里的钉子可能是 168×132，半径夹在 9–15
+  const r = Math.max(9, Math.min(15, Math.min(node.w, node.h) / 2));
+  const parts: string[] = [];
+  parts.push('  <g class="cb-svg-pin" data-node-id="' + esc(node.id) + '" data-node-type="clusterPin">');
+  const paper = String(node.fields['显示便利贴'] ?? '隐藏') === '显示';
+  const text = String(node.fields['便利贴文字'] ?? '').trim();
+  if (paper) {
+    const pw = 200;
+    const ph = 84;
+    const px = cx - pw / 2;
+    const py = node.y + node.h + 10;
+    parts.push('    <rect x="' + px + '" y="' + py + '" width="' + pw + '" height="' + ph + '" rx="4" fill="#FFE9A8" stroke="#E4CE86" stroke-width="1" />');
+    if (text) {
+      const lines: string[] = [];
+      for (let i = 0; i < text.length && lines.length < 4; i += 13) lines.push(text.slice(i, i + 13));
+      lines.forEach((line, index) => {
+        parts.push('    <text x="' + (px + 10) + '" y="' + (py + 20 + index * 17) + '" font-family="' + FONT + '" font-size="12" fill="#4A3B12">' + esc(line) + '</text>');
+      });
+    }
+  }
+  parts.push('    <circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="#C0392B" stroke="#FFFFFF" stroke-width="2" />');
+  parts.push('  </g>');
+  return parts.join(String.fromCharCode(10));
+}
+
 function renderNode(node: CaseNode): string {
+  // H5.12：钉子不是卡片
+  if (node.type === 'clusterPin') return renderClusterPin(node);
   const meta = NODE_TYPE_META[node.type];
   const status = STATUS_META[node.status];
   const parts: string[] = [];
@@ -294,6 +325,30 @@ function renderLegend(layout: BoardLayout, doc: CaseDoc): string {
 }
 
 /** 整板导出 SVG。纯函数：相同 doc 生成逐字节相同的字符串。 */
+/** 集中钉子之间的红线（H5.12）：直线、全局线宽、压在所有卡片之上 */
+function renderPinLinks(doc: CaseDoc): string {
+  const links = doc.pinLinks ?? [];
+  if (links.length === 0) return '';
+  const width = Math.max(1, Math.min(12, Math.round(doc.settings.pinLinkWidth ?? 4)));
+  const centerOf = (id: string): { x: number; y: number } | null => {
+    const node = doc.nodes.find((item) => item.id === id && item.type === 'clusterPin');
+    return node ? { x: node.x + node.w / 2, y: node.y + node.h / 2 } : null;
+  };
+  const parts: string[] = ['  <g class="cb-svg-pinlinks">'];
+  for (const link of links) {
+    const from = centerOf(link.source);
+    const to = centerOf(link.target);
+    if (!from || !to) continue;
+    parts.push(
+      '    <line class="cb-pinlink" data-pinlink-id="' + esc(link.id) + '" x1="' + from.x + '" y1="' + from.y +
+        '" x2="' + to.x + '" y2="' + to.y + '" stroke="#C0392B" stroke-width="' + width +
+        '" stroke-linecap="round" />',
+    );
+  }
+  parts.push('  </g>');
+  return parts.join(String.fromCharCode(10));
+}
+
 export function boardToSvg(doc: CaseDoc, options: BoardSvgOptions = {}): BoardSvgResult {
   const scale = options.scale && options.scale > 0 ? options.scale : 1;
   const layout = boardLayout(doc, options);
@@ -366,6 +421,9 @@ export function boardToSvg(doc: CaseDoc, options: BoardSvgOptions = {}): BoardSv
     parts.push(renderImage(image, asset, href));
   }
   for (const node of doc.nodes) parts.push(renderNode(node));
+  // H5.12：红线要进导出，并在卡片之上
+  const pinLinkSvg = renderPinLinks(doc);
+  if (pinLinkSvg) parts.push(pinLinkSvg);
   parts.push('  </g>');
   if (options.legend !== false) parts.push(renderLegend(layout, doc));
   if (options.footer) {

@@ -25,17 +25,17 @@ import {
   deleteGroup,
   deleteImageNode,
   deleteNode,
-  detachImageFromCluster,
+  deleteClusterPin,
   moveGroup,
   moveImageNode,
   moveImageNodes,
   moveClusterBy,
   moveNode,
   moveNodes,
-  removePinLinksOf,
 } from '../../commands';
 import { worldToScreen } from '../../lib/coords';
 import { ASSET_DND_TYPE } from '../../lib/dnd';
+import { diagLog } from '../../lib/diag';
 import { centralityMap } from '../../lib/analysis';
 import { applyView } from '../../lib/filter';
 import {
@@ -800,6 +800,12 @@ export function Board() {
           dispatch(deleteImageNode(node.id));
           continue;
         }
+        // H5.12：钉子要用复合命令，一次性把成员解绑 + 红线清掉，撤销一步就还原
+        // 注意：RF 里所有普通节点都是 type 'base'，真实类型在 data.node.type
+        if (node.type === 'base' && node.data.node.type === 'clusterPin') {
+          dispatch(deleteClusterPin(node.id));
+          continue;
+        }
         const group = groupOfBoardNode(node);
         if (group) dispatch(deleteGroup(group.id));
         else removeWithTrash('node', [node.id]);
@@ -1295,11 +1301,11 @@ export function Board() {
       const hitFlow = 90 / zoom;
       if (!bestId || bestDist > hitFlow) {
         // 探针诊断用：点偏了/没点到钉子时能看出是哪一种
-        console.log(`[diag] redline tap x=${Math.round(clientX)} y=${Math.round(clientY)} best=${bestId} dist=${Math.round(bestDist)} hit=${Math.round(hitFlow)} zoom=${zoom.toFixed(2)} from=${from}`);
+        diagLog(`[diag] redline tap x=${Math.round(clientX)} y=${Math.round(clientY)} best=${bestId} dist=${Math.round(bestDist)} hit=${Math.round(hitFlow)} zoom=${zoom.toFixed(2)} from=${from}`);
         cancelRedLine();
         return;
       }
-      console.log(`[diag] redline connect from=${from} to=${bestId} dist=${Math.round(bestDist)}`);
+      diagLog(`[diag] redline connect from=${from} to=${bestId} dist=${Math.round(bestDist)}`);
       // H5.6.3：红线不再是一条关系线，单独记进 doc.pinLinks，由 PinLinkLayer 画直线
       dispatch(addPinLink(from, bestId));
       cancelRedLine();
@@ -1307,7 +1313,7 @@ export function Board() {
       {
         // 探针诊断：确认红线进了文档，且关系线数量没有被它污染
         const docNow = useDocStore.getState().doc;
-        console.log(`[diag] redline added links=${docNow?.pinLinks?.length ?? -1} edges=${docNow?.edges.length ?? -1}`);
+        diagLog(`[diag] redline added links=${docNow?.pinLinks?.length ?? -1} edges=${docNow?.edges.length ?? -1}`);
       }
     },
     [cancelRedLine, dispatch, model.nodes, pushNotice, redLineFrom, screenToFlowPosition],
@@ -1541,15 +1547,9 @@ export function Board() {
                   closeContextMenu();
                   if (!id) return;
                   const target = model.nodes.find((item) => item.id === id);
-                  if (target?.type === 'clusterPin') {
-                    // 删钉子前先把钉集成员放出来，免得留下指向已删钉子的悬空 clusterId
-                    for (const image of doc.imageNodes.filter((item) => item.clusterId === id)) {
-                      dispatch(detachImageFromCluster(image.id));
-                    }
-                    // 红线不是关系线，deleteNode 不会连带清理，这里单独收掉
-                    dispatch(removePinLinksOf(id));
-                  }
-                  dispatch(deleteNode(id));
+                  // H5.12：钉子走一条复合命令（成员解绑 + 红线清理 + 删节点），撤销一步即还原
+                  if (target?.type === 'clusterPin') dispatch(deleteClusterPin(id));
+                  else dispatch(deleteNode(id));
                   pushNotice(`已删除「${target?.title ?? '该节点'}」及其关系线（可撤销）`);
                 }}
               >

@@ -86,9 +86,14 @@ function Short([string]$Line) {
   return $Line.Substring($i)
 }
 
-function Invoke-Cb([string]$phase, [int]$waitSec = 24) {
+function Invoke-Cb([string]$phase, [int]$waitSec = 24, [switch]$ResetData) {
   $tmp = Join-Path $env:TEMP ("cb-h5-" + $phase + "-" + [Guid]::NewGuid().ToString('N').Substring(0, 6) + ".txt")
   & $hdc @hdcArgs shell aa force-stop $bundleName 2>&1 | Out-Null
+  if ($ResetData) {
+    # 脏案卷会让「点第二颗钉子」「挑素材」这类探针步骤落空（H5-35/36 假失败），清库后重造演示案卷
+    & $hdc @hdcArgs shell bm clean -d -n $bundleName 2>&1 | Out-Null
+    Start-Sleep -Seconds 2
+  }
   & $hdc @hdcArgs shell hilog -r 2>&1 | Out-Null
   & $hdc @hdcArgs shell aa start -a $ability -b $bundleName --ps caseboardSelftest $phase 2>&1 | Out-Null
   Start-Sleep -Seconds $waitSec
@@ -447,6 +452,7 @@ Add-Result 'H5-29' '绕钉旋转会带着图片自身角度一起转，右栏能
 Add-Result 'H5-30' '右栏开关停在小地图左边、不压右栏内容' (($p22Tog -eq 1) -and ($p22TogPanel -eq 1)) ('tog=' + $p22Tog + ' togPanel=' + $p22TogPanel + ' ' + ((($sum22Line -split 'tog=')[1]) -replace ' err=.*', ''))
 
 # ---------- 动态断言：phase=23（H5.6 相对位置恒定 / 集中钉右栏瘦身 / 滑块数值输入 / 创建红线） ----------
+# 注意：phase 23 依赖前面相位留下的图片素材，清库会让它的导入步骤落空（noimg）→ 这里不能 ResetData
 $lines23 = Invoke-Cb '23' 52
 $sum23Line = ''
 if ($lines23 -and $lines23.Count -gt 0) {
@@ -533,6 +539,33 @@ if ($sum25Line -match 'restored=(-?\d+)') { $p25Restored = [int]$Matches[1] }
 if ($sum25Line -match 'err=([^\s]*)') { $p25Err = $Matches[1] }
 Add-Result 'H5-42' '右栏变抽屉时，收起按钮与小地图整体让开一个面板宽度' (($p25DrawerOk -eq 1) -and ($p25Shift -gt 100)) ('drawerOk=' + $p25DrawerOk + ' shift=' + $p25Shift + ' err=' + $p25Err)
 Add-Result 'H5-43' '画布过窄时小地图隐藏、收起按钮退回画布右下角' (($p25NarrowOk -eq 1) -and ($p25Restored -eq 1)) ('narrowOk=' + $p25NarrowOk + ' restored=' + $p25Restored)
+
+# ---------- 动态断言：phase=26（H5.12 红线层级 + 层级数字框） ----------
+$lines26 = Invoke-Cb '26' 16
+$sum26Line = ''
+if ($lines26 -and $lines26.Count -gt 0) {
+  $lines26 -join "`n" | Set-Content -Path (Join-Path $tmpDir 'accept-h5-phase26.log') -Encoding utf8
+  $hit26 = @($lines26 | Select-String -Pattern 'summary26')
+  if ($hit26.Count -gt 0) { $sum26Line = $hit26[-1].Line }
+}
+$p26LayerZ = -1; $p26CardZ = -1; $p26Input = -1; $p26After = ''; $p26Field = ''
+if ($sum26Line -match 'layerZ=(-?\d+)') { $p26LayerZ = [int]$Matches[1] }
+if ($sum26Line -match 'cardZ=(-?\d+)') { $p26CardZ = [int]$Matches[1] }
+if ($sum26Line -match 'input=(-?\d+)') { $p26Input = [int]$Matches[1] }
+if ($sum26Line -match 'after=(\S+)') { $p26After = $Matches[1] }
+if ($sum26Line -match 'field=(\S+)') { $p26Field = $Matches[1] }
+Add-Result 'H5-44' '红线压在所有卡片之上（pinlinks z-index 高于卡片）' (($p26LayerZ -ge 1000) -and ($p26LayerZ -gt $p26CardZ)) ('layerZ=' + $p26LayerZ + ' cardZ=' + $p26CardZ)
+$p26AfterNum = 0
+if ($p26After -match '^(\d+)$') { $p26AfterNum = [int]$Matches[1] }
+Add-Result 'H5-45' '层级控件带数字框，写入 333 后节点层级真的变成 333' (($p26Input -eq 1) -and ($p26AfterNum -ge 1) -and ($p26Field -eq '333')) ('input=' + $p26Input + ' hits333=' + $p26AfterNum + ' field=' + $p26Field)
+
+# 静态断言：导出与 DSL 也认钉子 / 红线 / 层级（H5.12 补漏）
+$svgSrc = Get-Content -Raw -Encoding utf8 -Path (Join-Path $srcRoot 'serializers\svg.ts')
+$pngSrc = Get-Content -Raw -Encoding utf8 -Path (Join-Path $srcRoot 'serializers\png.ts')
+$serSrc = Get-Content -Raw -Encoding utf8 -Path (Join-Path $srcRoot 'dsl\serialize.ts')
+$parSrc = Get-Content -Raw -Encoding utf8 -Path (Join-Path $srcRoot 'dsl\parse.ts')
+$layerOk = (($svgSrc -match 'renderPinLinks') -and ($svgSrc -match 'cb-pinlink') -and ($svgSrc -match 'renderClusterPin') -and ($pngSrc -match 'drawPinLinks') -and ($pngSrc -match 'drawClusterPin') -and ($serSrc -match "'    z: '") -and ($parSrc -match "case 'z':"))
+Add-Result 'H5-46' '导出（SVG/PNG）含钉子与红线，DSL 含 z 层级' ($layerOk) ('svg=' + [bool]($svgSrc -match 'cb-pinlink') + ' png=' + [bool]($pngSrc -match 'drawPinLinks') + ' dsl=' + [bool]($serSrc -match "'    z: '"))
 
 # ---------- 汇总 ----------
 $failed = @($results | Where-Object { -not $_.ok })

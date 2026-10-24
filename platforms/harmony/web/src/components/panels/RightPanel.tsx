@@ -20,6 +20,7 @@ import {
   setClusterOffset,
   setImageLayer,
   setNodeLayer,
+  setNodeZIndex,
   updateImageNode,
   toggleGroupCollapsed,
   moveAssetsToFolder,
@@ -659,6 +660,20 @@ function NodeForm({ node }: { node: CaseNode }) {
       {node.type === 'clusterPin' ? null : (
         <div className="cb-form__section">
           <h3 className="cb-form__subtitle">层级（zIndex {node.zIndex ?? CARD_LAYER_Z}）</h3>
+          <input
+            type="number"
+            className="cb-input cb-layer-input"
+            data-diag="layer-input"
+            min={0}
+            max={9999}
+            step={1}
+            value={node.zIndex ?? CARD_LAYER_Z}
+            aria-label="直接输入层级数值"
+            onChange={(event) => {
+              const next = Number.parseInt(event.target.value, 10);
+              if (Number.isFinite(next)) dispatch(setNodeZIndex(node.id, next));
+            }}
+          />
           <div className="cb-assets__actions">
             <button type="button" className="cb-btn" onClick={() => dispatch(setNodeLayer(node.id, 'front'))}>
               置顶

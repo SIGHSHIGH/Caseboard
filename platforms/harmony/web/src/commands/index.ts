@@ -1,5 +1,18 @@
 export type { Command } from './types';
-export { addNode, updateNode, moveNode, moveNodes, deleteNode, restoreNode, addComment, deleteComment, setNodeLayer } from './nodeCommands';
+export {
+  addNode,
+  updateNode,
+  moveNode,
+  moveNodes,
+  deleteNode,
+  deleteClusterPin,
+  restoreNode,
+  addComment,
+  deleteComment,
+  setNodeLayer,
+  setNodeZIndex,
+  setNodeZ,
+} from './nodeCommands';
 export type { AddNodeInput } from './nodeCommands';
 export { addEdge, updateEdge, deleteEdge, restoreEdge } from './edgeCommands';
 export type { AddEdgeInput } from './edgeCommands';

@@ -289,3 +289,35 @@ powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Ta
 - **新建节点弹窗不再自动聚焦标题框**：删掉 `NewNodeDialog` 里的 `setTimeout(() => inputRef.current?.focus(), 0)`。
 
 验收：`accept-h5.ps1` **40 条全绿**，新增 H5-39（`straight=1 && edgesDelta=0`）；真机截图 `dsh-shot-93`（两颗钉子之间一条红色直线，无箭头无标签）。
+
+## H5.12（红线压卡片 + 层级数字框 + 导出/DSL 补齐）
+
+用户点名的三件事，外加对上一轮「只做静态审查」的补课。
+
+### 改了什么
+| 项 | 位置 | 说明 |
+| --- | --- | --- |
+| 红线在卡片之上 | `platforms/harmony/web/src/styles/responsive.css` | `.cb-pinlinks { z-index: 1500 }`，夹在图片（1000+）与钉子（1600）之间，`pointer-events: none` |
+| 层级可直接输入 | `commands/nodeCommands.ts` 的 `setNodeZIndex`、`components/panels/RightPanel.tsx` | 数字框 `data-diag="layer-input"`，夹 0–9999，钉子不提供 |
+| 导出一致 | `serializers/svg.ts`、`serializers/png.ts` | 补钉子圆点（+便签）与红线；红线在卡片之后画；旧 168×132 钉子半径夹 9–15 |
+| DSL 不再丢层级 | `dsl/serialize.ts`、`dsl/parse.ts`、`dsl/diff.ts` | 固定输出 `z:`；等于默认 100 时不写回模型 |
+| 删钉子一步撤销 | `commands/nodeCommands.ts` 的 `deleteClusterPin` | 成员解绑 + 红线清理 + 删节点/关系线，右键与 Delete 都用它 |
+
+### 断言（accept-h5 47 条）
+H5-44 `layerZ=1500 > cardZ=102`；H5-45 数字框写 333 → 节点层级变 333；H5-46 SVG/PNG 含钉子与红线、DSL 含 `z:`。
+smoke 侧 3 条：SVG 钉子/红线、`setNodeZIndex` 夹取与钉子豁免、层级进出 DSL。
+
+### 对抗审查结论（硬结论 39–44）
+39. **探针也会骗人**：phase23 里遗留的「红边扫描」把 `.cb-pinlink` 的测量结果清零，`red` 恒为 0 —— 之前 37/40 的「红线失败」是探针 bug，不是产品 bug。
+40. **默认值进 DSL = 假 diff**：把 `zIndex` 写进文本后，`parse` 若把默认 100 也写回模型，`diffDocs` 会给每个节点冒一条 update（smoke 的「未表达字段不算删除」当场报红）。默认值必须在解析侧丢弃。
+41. **RF 的节点类型是 'base'**：`BoardFlowNode.type` 只有 `base/group/groupRect/freeImage`，判断「是不是集中钉子」要读 `node.data.node.type`。
+42. **导出走位图，CSS 不会跟过去**：PDF/PNG 用的是 `drawBoardToCanvas`，`.cb-pinlinks` 的 z-index 与 stroke 只在浏览器里生效，导出必须自己画。
+43. **老文档的尺寸会污染导出**：H5.5 之前钉子存的是 168×132，半径要夹 9–15，否则导出成大红球。
+44. **脏案卷下的探针 flake**：H5-32（拖成员跟手）依赖「视口内有成员」，多相位串跑后会偶发 `follow=0`；干净案卷下 `pin=67,42 member=67,42` 通过。要彻底稳定，得让 phase23 自己造素材。
+
+### 复现
+```
+powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Target "127.0.0.1:5555" `
+  -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
+```
+本轮结果 46/47（唯一失败见硬结论 44）。
