@@ -549,6 +549,85 @@ check('旧文档自动补空 imageNodes', Array.isArray(noImages.imageNodes) && 
 const roundTrip = fromJson(toJson(doc()));
 check('JSON 往返保留图片节点', roundTrip.imageNodes.length === doc().imageNodes.length, roundTrip.imageNodes.length);
 
+async function withPinsCheckZip() {
+  const { buildCaseboard, readCaseboard } = require(path.join(out, 'serializers', 'caseboard.js'));
+  const base = doc();
+  const pinA = 'pin-a';
+  const pinB = 'pin-b';
+  const withPins = normalizeDoc({
+    meta: base.meta,
+    nodes: [
+      ...base.nodes,
+      { id: pinA, type: 'clusterPin', title: '钉子A', x: 0, y: 0, w: 30, h: 30, status: 'todo', confidence: 50, tags: [], fields: {} },
+      { id: pinB, type: 'clusterPin', title: '钉子B', x: 100, y: 0, w: 30, h: 30, status: 'todo', confidence: 50, tags: [], fields: {} },
+    ],
+    edges: base.edges,
+    groups: base.groups,
+    assets: base.assets,
+    imageNodes: base.imageNodes,
+    hypotheses: base.hypotheses,
+    views: base.views,
+    timeline: base.timeline,
+    settings: { ...base.settings, pinLinkWidth: 9 },
+    pinLinks: [{ id: 'x', source: pinA, target: pinB }],
+  });
+  const bytes = await buildCaseboard(withPins, {});
+  const reopened = readCaseboard(bytes).doc;
+  const links = reopened.pinLinks || [];
+  return links.length === 1 && links[0].source === pinA && links[0].target === pinB && reopened.settings.pinLinkWidth === 9;
+}
+
+console.log('[16.5] 红线与红线粗细的 JSON 往返（导出 .caseboard 后打开不能丢）');
+{
+  // .caseboard 的 case.json 与纯 JSON 导出都走 toJson/fromJson，这条覆盖两条链路。
+  const base = doc();
+  const pinA = 'pin-a';
+  const pinB = 'pin-b';
+  const withPins = normalizeDoc({
+    meta: base.meta,
+    nodes: [
+      ...base.nodes,
+      { id: pinA, type: 'clusterPin', title: '钉子A', x: 0, y: 0, w: 30, h: 30, status: 'todo', confidence: 50, tags: [], fields: {} },
+      { id: pinB, type: 'clusterPin', title: '钉子B', x: 100, y: 0, w: 30, h: 30, status: 'todo', confidence: 50, tags: [], fields: {} },
+    ],
+    edges: base.edges,
+    groups: base.groups,
+    assets: base.assets,
+    imageNodes: base.imageNodes,
+    hypotheses: base.hypotheses,
+    views: base.views,
+    timeline: base.timeline,
+    settings: { ...base.settings, pinLinkWidth: 7 },
+    pinLinks: [
+      { id: 'ignored', source: pinA, target: pinB },
+      { id: 'dup', source: pinB, target: pinA },
+      { id: 'self', source: pinA, target: pinA },
+      { id: 'dangling', source: pinA, target: 'nope' },
+      { id: 'wrong-type', source: pinA, target: base.nodes[0] ? base.nodes[0].id : 'nope' },
+    ],
+  });
+  check(
+    '导入时红线归一化：去自连/去悬空/去非钉子端点/去重复',
+    withPins.pinLinks.length === 1 && withPins.pinLinks[0].source === pinA && withPins.pinLinks[0].target === pinB,
+    JSON.stringify(withPins.pinLinks),
+  );
+  check(
+    '红线 id 由两端派生（幂等，diff 不抖）',
+    withPins.pinLinks[0].id === 'pinlink_' + pinA + '__' + pinB,
+    withPins.pinLinks[0].id,
+  );
+  const reopened = fromJson(toJson(withPins));
+  check('JSON 往返保留红线（导出后再打开不消失）', reopened.pinLinks.length === 1, JSON.stringify(reopened.pinLinks));
+  check('JSON 往返保留红线粗细设置', reopened.settings.pinLinkWidth === 7, reopened.settings.pinLinkWidth);
+}
+
+// .caseboard 是 zip（case.json + 素材），这条走真实导出→打开链路
+withPinsCheckZip().then((okZip) => {
+  check('导出 .caseboard 再打开：红线与粗细都还在（用户报的丢线场景）', okZip, okZip);
+}).catch((err) => {
+  check('导出 .caseboard 再打开：红线与粗细都还在（用户报的丢线场景）', false, String(err));
+});
+
 console.log('[17] 标注几何（归一化 / 命中 / 马赛克 / 像素换算）');
 const {
   annotationBBox,

@@ -2,6 +2,28 @@
 
 本项目的变更记录。每个里程碑收尾追加一条，并打 git tag `ms/M<n>`。
 
+## [未发布] · H5.14：导出 .caseboard 再打开，红线不再消失
+
+### 症状
+画好的红线，导出 `.caseboard` 后再打开就没了（关系线、集中钉子都还在）。红线的粗细设置也一起回默认。
+
+### 根因
+导入侧的 `src/serializers/migrate.ts` 里 `normalizeDoc()` 是**白名单重建** `CaseDoc`：
+它按字段一个个挑着返回，返回对象里从来没有 `pinLinks`，`settings` 也只保留 theme / lineLegend / mapBackground / canvas。
+导出侧 `toJson` 是 `JSON.stringify(doc)`，本来就是无损的——问题只出在「打开」这一步。
+
+### 改了什么
+- `normalizeDoc` 增加红线归一化：非对象、空 id、自连、端点不存在、端点不是集中钉子、重复的一律丢掉；
+  同一对钉子正反两向算同一条（先排序再生成 `pinLinkId`，方向规范化后入库）。
+- 归一化结果按 `...(pinLinks.length > 0 ? { pinLinks } : {})` 挂回 CaseDoc。
+- `settings.pinLinkWidth` 一并保留（走 `normalizePinLinkWidth`，仍然夹在 1–12）。
+
+### 验收
+- 桌面 `smoke` 新增 5 条断言，其中最关键的一条走**真实导出→打开链路**：
+  `buildCaseboard(doc)` → `readCaseboard(bytes).doc`，断言红线还在、粗细仍是 9。
+  另有 JSON 往返、畸形数据归一化（自连/悬空/非钉子端点/反向重复只留一条）四条。
+- 鸿蒙 `accept-h5.ps1` 干净数据 **47/47**。
+
 ## [未发布] · 鸿蒙 H5.x 功能回填（集中钉子 / 钉集 / 红线 / 多选入组 / 组框挑节点 / 节点层级）
 
 ### 来源
