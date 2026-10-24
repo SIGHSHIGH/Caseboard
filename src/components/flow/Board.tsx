@@ -23,6 +23,7 @@ import {
   addEdge,
   composeCommands,
   deleteGroup,
+  deleteClusterPin,
   deleteImageNode,
   deleteNode,
   detachImageFromCluster,
@@ -796,6 +797,12 @@ export function Board() {
       for (const node of deleted) {
         if (node.type === 'freeImage') {
           dispatch(deleteImageNode(node.id));
+          continue;
+        }
+        // H5.12：钉子要用复合命令，一次性把成员解绑 + 红线清掉，撤销一步就还原
+        // 注意：RF 里所有普通节点都是 type 'base'，真实类型在 data.node.type
+        if (node.type === 'base' && node.data.node.type === 'clusterPin') {
+          dispatch(deleteClusterPin(node.id));
           continue;
         }
         const group = groupOfBoardNode(node);

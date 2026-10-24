@@ -162,7 +162,52 @@ function drawEdge(ctx: CanvasRenderingContext2D, edge: CaseEdge, geometry: { s: 
   ctx.restore();
 }
 
+/** 集中钉子（H5.12）：30px 圆点 + 可选黄色便签；导出里也要和画布长得一样 */
+function drawClusterPin(ctx: CanvasRenderingContext2D, node: CaseNode): void {
+  const cx = node.x + node.w / 2;
+  const cy = node.y + node.h / 2;
+  // 老文档里的钉子可能是 168×132，半径夹在 9–15，导出才是「圆点」而不是大红球
+  const r = Math.max(9, Math.min(15, Math.min(node.w, node.h) / 2));
+  // 便签先画，圆点压在上面
+  const paper = String(node.fields['显示便利贴'] ?? '隐藏') === '显示';
+  const text = String(node.fields['便利贴文字'] ?? '').trim();
+  if (paper) {
+    const pw = 200;
+    const ph = 84;
+    const px = cx - pw / 2;
+    const py = node.y + node.h + 10;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(px, py, pw, ph, 4);
+    ctx.fillStyle = '#FFE9A8';
+    ctx.fill();
+    ctx.strokeStyle = '#E4CE86';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (text) {
+      ctx.fillStyle = '#4A3B12';
+      ctx.font = font(12, 500);
+      const lines: string[] = [];
+      for (let i = 0; i < text.length && lines.length < 4; i += 13) lines.push(text.slice(i, i + 13));
+      lines.forEach((line, index) => ctx.fillText(line, px + 10, py + 20 + index * 17));
+    }
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#C0392B';
+  ctx.fill();
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
 function drawNode(ctx: CanvasRenderingContext2D, node: CaseNode): void {
+  // H5.12：钉子不是卡片
+  if (node.type === 'clusterPin') {
+    drawClusterPin(ctx, node);
+    return;
+  }
   const meta = NODE_TYPE_META[node.type];
   const status = STATUS_META[node.status];
   ctx.save();
@@ -277,6 +322,31 @@ function drawLegend(ctx: CanvasRenderingContext2D, doc: CaseDoc, x: number, y: n
 }
 
 /** 同步绘制整板到 canvas（图片要先由调用方预加载好）。 */
+/** 集中钉子之间的红线（H5.12）：直线、全局线宽、画在卡片之上 */
+function drawPinLinks(ctx: CanvasRenderingContext2D, doc: CaseDoc): void {
+  const links = doc.pinLinks ?? [];
+  if (links.length === 0) return;
+  const width = Math.max(1, Math.min(12, Math.round(doc.settings.pinLinkWidth ?? 4)));
+  const centerOf = (id: string): { x: number; y: number } | null => {
+    const node = doc.nodes.find((item) => item.id === id && item.type === 'clusterPin');
+    return node ? { x: node.x + node.w / 2, y: node.y + node.h / 2 } : null;
+  };
+  ctx.save();
+  ctx.strokeStyle = '#C0392B';
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  for (const link of links) {
+    const from = centerOf(link.source);
+    const to = centerOf(link.target);
+    if (!from || !to) continue;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 export function drawBoardToCanvas(doc: CaseDoc, options: BoardPngOptions = {}): BoardPngResult {
   const ratio = options.pixelRatio && options.pixelRatio > 0 ? options.pixelRatio : 2;
   // 排版与 SVG 共用 boardLayout（决策 D28）：同一份 doc 两种导出尺寸必须逐像素一致
@@ -332,6 +402,8 @@ export function drawBoardToCanvas(doc: CaseDoc, options: BoardPngOptions = {}): 
     drawImage(ctx, image, assetMap.get(image.assetId), options.images?.get(image.assetId));
   }
   for (const node of doc.nodes) drawNode(ctx, node);
+  // H5.12：红线也要进导出，且压在最上面
+  drawPinLinks(ctx, doc);
   ctx.restore();
 
   if (options.legend !== false) drawLegend(ctx, doc, layout.legendX, layout.legendY);

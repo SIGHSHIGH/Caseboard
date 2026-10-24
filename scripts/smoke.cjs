@@ -22,6 +22,8 @@ const {
 } = require(path.join(out, 'commands', 'annotationCommands.js'));
 const { addNode, deleteNode, moveNode, updateNode } = require(path.join(out, 'commands', 'nodeCommands.js'));
 const { addPinLink, removePinLink } = require(path.join(out, 'commands', 'pinLinkCommands.js'));
+const { updateSettings } = require(path.join(out, 'commands', 'docCommands.js'));
+const { setNodeZIndex } = require(path.join(out, 'commands', 'nodeCommands.js'));
 const { addEdge, deleteEdge, updateEdge } = require(path.join(out, 'commands', 'edgeCommands.js'));
 const { toJson, fromJson } = require(path.join(out, 'serializers', 'json.js'));
 const { normalizeDoc } = require(path.join(out, 'serializers', 'migrate.js'));
@@ -4305,6 +4307,53 @@ check(
       state().dispatch(applyDslChanges(report.changes));
       const after = doc();
       const ok = !after.nodes.some((node) => node.type === 'clusterPin') && (after.pinLinks || []).length === 0;
+      state().undo();
+      return ok;
+    })(),
+  );
+
+  check(
+    'H5.12：导出 SVG 把钉子画成圆点，并带上红线（直线、线宽跟设置）',
+    (() => {
+      const d = doc();
+      const pins = d.nodes.filter((node) => node.type === 'clusterPin');
+      if (pins.length < 2) return false;
+      state().dispatch(addPinLink(pins[0].id, pins[1].id));
+      state().dispatch(updateSettings({ pinLinkWidth: 7 }));
+      const svg = boardToSvg(doc()).svg;
+      const hasCircle = svg.includes('cb-svg-pin') && svg.includes('<circle');
+      const hasLine = svg.includes('cb-pinlink') && svg.includes('stroke-width="7"');
+      state().dispatch(updateSettings({ pinLinkWidth: 4 }));
+      return hasCircle && hasLine;
+    })(),
+  );
+
+  check(
+    'H5.12：层级数字框的 setNodeZIndex 会夹取范围、且不碰集中钉子',
+    (() => {
+      const card = doc().nodes.filter((node) => node.type !== 'clusterPin')[0];
+      const pin = doc().nodes.filter((node) => node.type === 'clusterPin')[0];
+      state().dispatch(setNodeZIndex(card.id, 333));
+      const ok333 = (doc().nodes.find((node) => node.id === card.id).zIndex === 333);
+      state().dispatch(setNodeZIndex(card.id, 99999));
+      const clamped = (doc().nodes.find((node) => node.id === card.id).zIndex === 9999);
+      state().dispatch(setNodeZIndex(pin.id, 42));
+      const pinUnchanged = (doc().nodes.find((node) => node.id === pin.id).zIndex === pin.zIndex);
+      state().undo(); state().undo(); state().undo();
+      return ok333 && clamped && pinUnchanged;
+    })(),
+  );
+
+  check(
+    'H5.12：层级写进 DSL（z:）并且解析回来一致',
+    (() => {
+      const card = doc().nodes.filter((node) => node.type !== 'clusterPin')[0];
+      state().dispatch(setNodeZIndex(card.id, 777));
+      const text = serializeDoc(doc());
+      if (!text.includes('z: 777')) return false;
+      const parsed = parseDsl(text);
+      const back = parsed.doc.nodes.find((node) => node.id === card.id);
+      const ok = Boolean(back) && back.zIndex === 777;
       state().undo();
       return ok;
     })(),

@@ -13,6 +13,7 @@ import type {
   View,
 } from '../types';
 import { NODE_TYPE_ORDER } from '../lib/nodeTemplates';
+import { CARD_LAYER_Z } from '../lib/imageNode';
 import { pinLinkId } from '../lib/clusterPin';
 import { DEFAULT_NODE_H, DEFAULT_NODE_W, DEFAULT_SETTINGS } from '../serializers/migrate';
 import { parser } from './generated/caseboard.parser';
@@ -425,6 +426,12 @@ class Builder {
           case 'confidence': {
             const confidence = this.numberOf(value, field, 'confidence');
             result.confidence = Math.max(0, Math.min(100, Math.round(confidence)));
+            break;
+          }
+          case 'z': {
+            // H5.12：层级数值（0–9999）；默认层级不写进模型，避免每次合并都冒出一条无意义的 diff
+            const z = Math.max(0, Math.min(9999, Math.round(this.numberOf(value, field, 'z'))));
+            if (z !== CARD_LAYER_Z) result.zIndex = z;
             break;
           }
           case 'tags':

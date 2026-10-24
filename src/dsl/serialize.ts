@@ -1,4 +1,5 @@
 import { NODE_TEMPLATES, NODE_TYPE_ORDER } from '../lib/nodeTemplates';
+import { CARD_LAYER_Z } from '../lib/imageNode';
 import type { CaseDoc, CaseEdge, CaseNode, Group, LineStyle, TimeRange, View } from '../types';
 
 /**
@@ -139,6 +140,8 @@ function nodeBlock(node: CaseNode, table: DslNameTable, redlines: Map<string, st
   lines.push('    size(' + num(node.w) + ', ' + num(node.h) + ')');
   lines.push('    status: ' + node.status);
   lines.push('    confidence: ' + num(node.confidence));
+  // H5.12：层级也进文本，否则代码视图改一次就丢掉手动调过的层级
+  lines.push('    z: ' + num(node.zIndex ?? CARD_LAYER_Z));
   lines.push(...idLine(node.id, name));
   if (node.tags.length > 0) lines.push('    tags: [' + node.tags.map((tag) => quoteString(tag)).join(', ') + ']');
   if (node.aliases && node.aliases.length > 0) {

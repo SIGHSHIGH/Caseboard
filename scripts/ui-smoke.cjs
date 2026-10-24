@@ -65,8 +65,8 @@ function check(name, condition, detail) {
     const brand = doc.querySelector('.cb-topbar__brand');
     return brand !== null && brand.querySelector('.cb-topbar__logo') === null;
   })());
-  check('左栏 9 个节点类型按钮（M17 加关系气泡）', doc.querySelectorAll('.cb-type-btn').length === 9, doc.querySelectorAll('.cb-type-btn').length);
-  check('每个类型按钮带字段数提示', doc.querySelectorAll('.cb-type-btn__hint').length === 9, doc.querySelectorAll('.cb-type-btn__hint').length);
+  check('左栏 10 个节点类型按钮（M17 加关系气泡、H5.3 加集中钉子）', doc.querySelectorAll('.cb-type-btn').length === 10, doc.querySelectorAll('.cb-type-btn').length);
+  check('每个类型按钮带字段数提示', doc.querySelectorAll('.cb-type-btn__hint').length === 10, doc.querySelectorAll('.cb-type-btn__hint').length);
   check('节点卡片展示模板字段摘要', doc.querySelectorAll('.cb-node__field').length >= 2, doc.querySelectorAll('.cb-node__field').length);
   check('画布渲染 6 个节点', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
   check('关系线已渲染', doc.querySelectorAll('.react-flow__edge').length === 6, doc.querySelectorAll('.react-flow__edge').length);
@@ -123,7 +123,7 @@ function check(name, condition, detail) {
   check('分组标签含 2 个入口', doc.querySelectorAll('.cb-group-actions .cb-btn').length === 2, doc.querySelectorAll('.cb-group-actions .cb-btn').length);
 
   check('可切回对象标签', await clickByText('.cb-tabs .cb-tab', '对象'));
-  check('切回后类型按钮恢复 9 个', doc.querySelectorAll('.cb-type-btn').length === 9, doc.querySelectorAll('.cb-type-btn').length);
+  check('切回后类型按钮恢复 10 个', doc.querySelectorAll('.cb-type-btn').length === 10, doc.querySelectorAll('.cb-type-btn').length);
   check('粘贴导入不会破坏初始渲染', doc.querySelectorAll('.cb-node').length === 6, doc.querySelectorAll('.cb-node').length);
 
   console.log('[UI] M2-4 自由图片节点');
@@ -644,7 +644,7 @@ function check(name, condition, detail) {
   await sleep(300);
   check('双击画布空白弹出「新建节点」对话框', doc.querySelector('.cb-newnode') !== null);
   check('对话框挂在遮罩层里（居中而不是塞进顶栏）', doc.querySelector('.cb-modal__mask .cb-newnode') !== null);
-  check('对话框有类型下拉（9 类）与标题输入', doc.querySelectorAll('.cb-newnode select option').length === 9 && doc.querySelector('.cb-newnode input') !== null, doc.querySelectorAll('.cb-newnode select option').length);
+  check('对话框有类型下拉（10 类）与标题输入', doc.querySelectorAll('.cb-newnode select option').length === 10 && doc.querySelector('.cb-newnode input') !== null, doc.querySelectorAll('.cb-newnode select option').length);
   const m9TitleInput = doc.querySelector('.cb-newnode input');
   if (m9TitleInput) await setInputValue(m9TitleInput, 'M9 新建实体');
   check('点「创建」提交新建', await clickByText('.cb-newnode .cb-modal__actions .cb-btn', '创建'));

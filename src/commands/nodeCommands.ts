@@ -91,6 +91,43 @@ export function addNode(input: AddNodeInput): Command {
   };
 }
 
+export function deleteClusterPin(id: string): Command {
+  return {
+    label: '删除集中钉子（连带钉集与红线）',
+    apply(draft) {
+      const index = draft.nodes.findIndex((item) => item.id === id && item.type === 'clusterPin');
+      if (index < 0) return;
+      // ① 成员放回自由状态：保留当前坐标（它们本来就写在 x/y 上），只摘掉钉集绑定
+      for (const image of draft.imageNodes) {
+        if (image.clusterId !== id) continue;
+        delete image.clusterId;
+        delete image.clusterOffset;
+      }
+      // ② 红线不是关系线，deleteNode 不会连带清理
+      if (draft.pinLinks && draft.pinLinks.length > 0) {
+        draft.pinLinks = draft.pinLinks.filter((link) => link.source !== id && link.target !== id);
+      }
+      // ③ 节点自身与它的关系线
+      draft.nodes.splice(index, 1);
+      draft.edges = draft.edges.filter((edge) => edge.source !== id && edge.target !== id);
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
+export function setNodeZIndex(id: string, zIndex: number): Command {
+  const value = Math.max(0, Math.min(9999, Math.round(Number.isFinite(zIndex) ? zIndex : CARD_LAYER_Z)));
+  return {
+    label: `设置卡片层级 ${value}`,
+    apply(draft) {
+      const node = draft.nodes.find((item) => item.id === id);
+      if (!node || node.type === 'clusterPin') return;
+      node.zIndex = value;
+      draft.meta.updatedAt = new Date().toISOString();
+    },
+  };
+}
+
 export function updateNode(id: string, patch: Partial<Omit<CaseNode, 'id'>>): Command {
   return {
     label: '修改节点属性',
