@@ -49,10 +49,42 @@
 - 桌面：`typecheck` 0 错误、`smoke`（含新增 5 条导出往返断言）全通过、`ui-smoke` 全通过。
 - 鸿蒙：`accept-h5.ps1` 干净数据 47/47。
 
+## 鸿蒙版下载与安装（.hap）
+
+- 文件：`CaseBoard-harmony-26-2026-10-24.hap`（与 Windows 版同源前端，4,050,397 B）
+- SHA-256：`9ffbe6a6a63088076ef50f370f41bd40dcbae4829e65b326c834deea293928ed`
+
+### 能装的设备
+
+| 条件 | 说明 |
+|---|---|
+| 系统版本 | **HarmonyOS 6**（工程 `compatibleSdkVersion` = `26.0.0`，5.x 装不上） |
+| 设备状态 | 已开启**开发者模式**与 USB 调试 |
+| 签名匹配 | 本包含正式证书 `caseboard_oh_271024.cer` + Release profile，设备需信任该证书链 |
+
+### 安装
+
+```bash
+# USB 连上设备后（hdc 在 DevEco Studio 的 SDK toolchains 目录下）
+hdc list targets
+hdc install -r CaseBoard-harmony-26-2026-10-24.hap
+```
+
+也可以直接把 `hdc install -r` 换成 DevEco Studio 打开工程后点运行；或把 hap 拖进 DevEco 的 Device Manager。
+
+升级安装会保留案卷数据；卸载会清空应用沙箱（素材、缩略图、本地案卷都在里面），需要先导出 `.caseboard`。
+
+### 为什么 GitHub 上给 `.hap` 而不是 `.app`
+
+- `.hap` 是模块安装包，能用 `hdc install` 直接装到设备上，适合开发者与小范围试用。
+- `.app` 是**上架物料**（`hvigorw assembleApp` 的产物），只能上传到 AppGallery Connect 审核，用户拿到后无法自己安装。
+- 想让普通用户「点一下就装」，只有一条路：把 `.app` 传 AGC，走应用市场的公开测试/邀请测试。
+
 ## 已知限制
 
 - 这是**绿色版 exe**，不是安装包；未做代码签名，Windows 首次运行可能提示「未知发布者」。
 - 需要系统已安装 WebView2 运行时（Windows 10/11 一般自带）。
+- 鸿蒙版只提供 `.hap`（开发者模式侧载），不是应用市场版本；上架形态需另行打 `.app` 提交审核。
 - 代码视图中「老文档」首次打开会自动补默认值（例如层级 100），这是预期行为，不算改动。
 
 ## 数据兼容
