@@ -321,3 +321,10 @@ powershell -File platforms/harmony/scripts/accept-h5.ps1 -SkipBuild -SkipWeb -Ta
   -Hap "F:\dsh-project\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
 ```
 本轮结果 46/47（唯一失败见硬结论 44）。
+
+## H5.14（导入侧补红线：导出 .caseboard 再打开不再丢）
+
+- 根因：`web/src/serializers/migrate.ts` 的 `normalizeDoc()` 是白名单重建，返回对象里没有 `pinLinks`，`settings` 也只留 theme/lineLegend/mapBackground/canvas。导出侧 `toJson` 是无损的，问题只在导入。
+- 修法：`normalizeDoc` 归一化红线（丢非对象/空 id/自连/端点不存在/端点非 clusterPin/重复；同一对钉子正反两向按排序后的 `pinLinkId` 规范化），结果挂回 `pinLinks`；`settings.pinLinkWidth` 一并保留。
+- 断言：桌面 `smoke` 新增 5 条，含真实链路 `buildCaseboard → readCaseboard` 的红线与粗细校验；鸿蒙 `accept-h5.ps1` 干净数据 **47/47**。
+- 硬结论 45：**白名单式 `normalizeDoc` 是这类「导出后再打开丢数据」的通用坑**——新增文档级字段（`pinLinks`、settings 子项）时必须同时改它，否则序列化层看着完全正确、用户数据却在本机丢失。

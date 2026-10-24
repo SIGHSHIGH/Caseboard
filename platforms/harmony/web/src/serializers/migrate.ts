@@ -18,6 +18,7 @@ import type {
   MapBackground,
   NodeComment,
   NodeType,
+  PinLink,
   Settings,
   Status,
   TimeRange,
@@ -32,6 +33,7 @@ import { isChainStageId } from '../lib/chains';
 import { CANVAS_OPACITY_DEFAULT, clampCanvasOpacity, normalizeCanvasSkin } from '../lib/canvasSkin';
 import { normalizeControlPoints } from '../lib/edgeCurve';
 import { NODE_TYPE_ORDER } from '../lib/nodeTemplates';
+import { normalizePinLinkWidth, pinLinkId } from '../lib/clusterPin';
 
 /**
  * 文档迁移与兜底（M2-1）。
@@ -619,6 +621,29 @@ export function normalizeDoc(input: unknown): CaseDoc {
 
   const timeline = normalizeTimeline(input.timeline);
 
+  // 红线（H5.6）：以前这里只白名单重建字段，pinLinks 被丢掉 → 打开导出的
+  // .caseboard/json 后红线全消失。现在归一化并保留，且只留两端都存在的集中钉子。
+  const pinLinks: PinLink[] = [];
+  const seenPinLinks = new Set<string>();
+  (Array.isArray(input.pinLinks) ? input.pinLinks : []).forEach((raw) => {
+    if (!isRecord(raw)) return;
+    const source = str(raw.source);
+    const target = str(raw.target);
+    if (source.length === 0 || target.length === 0 || source === target) return;
+    const sourceNode = nodes.find((node) => node.id === source);
+    const targetNode = nodes.find((node) => node.id === target);
+    if (!sourceNode || !targetNode) return;
+    if (sourceNode.type !== 'clusterPin' || targetNode.type !== 'clusterPin') return;
+    // 与 addPinLink 一致：同一对钉子正反两向算同一条，这里做规范化方向
+    const pair = [source, target].sort();
+    const head = pair[0];
+    const tail = pair[1];
+    const id = pinLinkId(head, tail);
+    if (seenPinLinks.has(id)) return;
+    seenPinLinks.add(id);
+    pinLinks.push({ id, source: head, target: tail });
+  });
+
   // 自定义证据链（M12）：丢掉未知阶段、未知实体与重复条目，避免脏链让界面报错
   const nodeIdSet = new Set(nodes.map((node) => node.id));
   const chains = (Array.isArray(input.chains) ? input.chains : [])
@@ -647,6 +672,7 @@ export function normalizeDoc(input: unknown): CaseDoc {
     imageNodes,
     views,
     hypotheses,
+    ...(pinLinks.length > 0 ? { pinLinks } : {}),
     ...(chains.length > 0 ? { chains } : {}),
     timeline,
     settings: {
@@ -656,6 +682,9 @@ export function normalizeDoc(input: unknown): CaseDoc {
         : DEFAULT_SETTINGS.lineLegend,
       ...(mapBackground ? { mapBackground } : {}),
       ...(canvas ? { canvas } : {}),
+      ...(settings && settings.pinLinkWidth !== undefined
+        ? { pinLinkWidth: normalizePinLinkWidth(settings.pinLinkWidth) }
+        : {}),
     },
   };
 }
