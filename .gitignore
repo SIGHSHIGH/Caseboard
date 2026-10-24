@@ -33,3 +33,8 @@ test project/
 # 安装包与本机演示视频（构建/录制产物，不入库）
 release/
 *.mp4
+
+# 项目文档只在本地保留（不参与构建，也不入库）
+/AGENTS.md
+/CHANGELOG.md
+/docs/**/*.md
